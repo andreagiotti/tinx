@@ -1,0 +1,60 @@
+
+-- File format --
+
+node, parent, son, from, to ::= {alphanumeric string}
+time ::= {unsigned integer}
+delay, offset ::= {signed integer}
+filename ::= {valid file name without extension}
+
+class ::= G | J | D [delay]
+component ::= node : class ; parent [, son [, son]]
+components ::= [component [components]]
+
+arc ::= (from, to)
+event ::= arc @ time
+events ::= [event [events]]
+
+io_mode ::= ! | ?
+stream ::= io_mode filename arc [@ offset]
+streams ::= [stream [streams]]
+
+bit ::= 0 | 1
+bits ::= [bit [bits]]
+
+filename.tin ::= components streams
+filename.evl ::= events
+filename.io ::= bits .
+
+-- Command syntax --
+
+tinx [-cdfilqv] [-I {state}] [-L {log}] [-t time] [{base}]
+tinx -h
+tinx_mt [-cdDfilqv] [-I {state}] [-L {log}] [-n processes] [-t time] [{base}]
+tinx_mt -h
+
+{base}: Specify knowledge base file name as {base} + ".tin". If no name is given, it defaults to "default.tin".
+-c: Use causal inference only (from past to future).
+-d: Display status (">" = processing, "*" = idle for closure, "|" = idle for buffer) and last event processed.
+-D: Display debug informations (in V3.3mt and later).
+-f: Enable file-based input and output, disable IPC.
+-h: Print usage.
+-i: Load an initial state file. If no file name is given by -I option, it defaults to {base} + "_ic.evl".
+-I {state}: Load an initial state file named {state} + ".evl".
+-l: Log processed events in a file. If no file name is given by -L option, it defaults to {base} + "_log.evl".
+-L {log}: Log processed events in a file named {log} + ".evl".
+-n {processes}: Specify number of threads for parallel processing (defaults to 7 in V3.3mt and later).
+-q: Disable input and output, both IPC and file-based I/O.
+-t {step}: Specify approximated sampling period in seconds as float {step} (defaults to 0.1 in V2.0 and later).
+-v: Verify soundness at runtime.
+
+The execution can be safely interrupted with a single SIGINT (^C) or by sending an Escape char (\x1b) through some input channel.
+
+tint [-q] [-t {step}] [{base}]
+tint -h
+
+{base}: Specify knowledge base file name as {base} + ".tin". If no name is given, it defaults to "default.tin".
+-h: Print usage.
+-q: Don't trace signals.
+-t {step}: Specify approximated sampling period in seconds as float {step} (defaults to 0.05 in V0.5, to 0.1 in V0.6 and later).
+
+

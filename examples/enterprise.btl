@@ -1,0 +1,11 @@
+input critical, ack, reset;
+output danger, alert, shutdown;
+init
+      ack @ -1,
+      reset @ -1,
+      ~ critical @ [-6, -1];
+
+danger   == (critical @ [-2, 0]) ? [-5, 0];
+alert    == since(~ danger @ -1 & danger, ~ ack & ~ shutdown);
+shutdown == since((danger & alert) @ [-60, -1], ~ reset);
+

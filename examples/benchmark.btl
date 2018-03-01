@@ -1,0 +1,20 @@
+
+/* Benchmark by Andrea Giotti, 2017 */
+
+output green, yellow, red;
+aux up_green, up_yellow, up_red;
+
+init red @ -1, green @ 0;
+
+green | yellow | red;
+~ (green & yellow) & ~ (yellow & red) & ~ (red & green);
+
+green == since(up_green, ~ up_yellow);
+yellow == since(up_yellow, ~ up_red);
+red == since(up_red, ~ up_green);
+
+up_yellow == green @ [-16, 0);
+up_red == yellow @ [-8, 0);
+up_green == red @ [-24, 0);
+
+

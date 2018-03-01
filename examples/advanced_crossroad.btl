@@ -1,0 +1,53 @@
+
+/* Advanced crossroad simulator by Andrea Giotti, 2016 */
+
+input set_blinking, switch_lights;
+aux up_set, up_switch, blinking, blink_tick;
+
+output green_light, yellow_light, red_light;
+aux green, yellow, red,
+    up_green, up_yellow, up_red;
+
+output green_light_2, yellow_light_2, red_light_2;
+aux green_2, yellow_2, red_2,
+    up_green_2, up_yellow_2, up_red_2;
+
+init ~ blinking @ 0, ~ up_switch @ 0, up_green @ 0, ~ blink_tick @ -1, blink_tick @ 0;
+
+up_set == ~ set_blinking @ -1 & set_blinking;
+up_switch == ~ switch_lights @ -1 & switch_lights;
+
+blinking == since(up_set & ~ blinking @ -1, ~ up_set);
+blink_tick == since(~ blink_tick @ [-4, 0), ~ blink_tick ? [-4, 0));
+
+green | yellow | red;
+~ (green & yellow) & ~ (yellow & red) & ~ (red & green);
+
+green == since(up_green, ~ up_yellow);
+yellow == since(up_yellow, ~ up_red);
+
+up_yellow == (up_switch & green @ -1) | green @ [-16, 0);
+up_red == yellow @ [-8, 0);
+up_green == up_red_2;
+
+green_light == ~ blinking & (green | yellow);
+yellow_light == (~ blinking & yellow) | (blinking & blink_tick);
+red_light == ~ blinking & red;
+
+green_2 | yellow_2 | red_2;
+~ (green_2 & yellow_2) & ~ (yellow_2 & red_2) & ~ (red_2 & green_2);
+
+green_2 == since(up_green_2, ~ up_yellow_2);
+yellow_2 == since(up_yellow_2, ~ up_red_2);
+
+up_yellow_2 == (up_switch & green_2 @ -1) | green_2 @ [-16, 0);
+up_red_2 == yellow_2 @ [-8, 0);
+up_green_2 == up_red;
+
+green_light_2 == ~ blinking & (green_2 | yellow_2);
+yellow_light_2 == (~ blinking & yellow_2) | (blinking & ~ blink_tick);
+red_light_2 == ~ blinking & red_2;
+
+~ ((green | yellow) & (green_2 | yellow_2));
+
+

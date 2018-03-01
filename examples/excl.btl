@@ -1,0 +1,29 @@
+input rq1, ex1, rq2, ex2;
+output gnt1, gnt2;
+aux req1, req2, wait_req1, wait_req2, wait_free1, wait_free2, up_ex1, up_ex2, sosp2;
+
+init wait_req1 @ 0, wait_req2 @ 0, ~sosp2 @ 0;
+
+up_ex1 == (ex1 & ~ex1 @ -1);
+wait_req1 --> ( req1 & (~gnt1 & ~gnt2) & (gnt1 & ~gnt2) @ 1) |
+              ( req1 & (~gnt1 &  gnt2) & wait_free1 @ 1) |
+              (~req1 &  ~gnt1 & wait_req1 @ 1);
+gnt1 --> ( up_ex1 & (wait_req1 & ~gnt1) @ 1) |
+         (~up_ex1 & (gnt1 & ~gnt2) @ 1);
+wait_free1 --> (~gnt2 & gnt1) |
+               ( gnt2 & wait_free1 @ 1);
+
+up_ex2 == (ex2 & ~ex2 @ -1);
+wait_req2 --> ( req2 & (~gnt1 & ~gnt2) & (gnt2 & ~gnt1) @ 1) | 
+              ( req2 & ( gnt1 & ~gnt2) & wait_free2 @ 1) |
+              (~req2 & ~gnt2 & wait_req2 @ 1);
+gnt2 --> ( up_ex2 & (wait_req2 & ~gnt2) @ 1) |
+         (~up_ex2 & (gnt2 & ~gnt1) @ 1);
+wait_free2 --> (~gnt1 & gnt2) |
+               ( gnt1 & wait_free2 @ 1);
+
+ rq1 & ~(rq2 | sosp2) -->  req1 & ~req2 & ~sosp2 @ 1;
+~rq1 &  (rq2 | sosp2) --> ~req1 &  req2 & ~sosp2 @ 1;
+~rq1 & ~(rq2 | sosp2) --> ~req1 & ~req2 & ~sosp2 @ 1;
+ rq1 &  (rq2 | sosp2) -->  req1 & ~req2 &  sosp2 @ 1;
+

@@ -1,0 +1,66 @@
+
+/* Crossroad simulator by Andrea Giotti, 2016 */
+
+output green_light, yellow_light, red_light;
+aux blinking,
+    green, yellow, red,
+    up_green, up_yellow, up_red,
+    blink_tick;
+
+output green_light2, yellow_light2, red_light2;
+aux blinking2,
+    green2, yellow2, red2,
+    up_green2, up_yellow2, up_red2,
+    blink_tick2;
+
+init blinking @ 0, ~ blinking @ 1, red @ 0, green @ 1, ~ blink_tick @ 0, blink_tick @ 1;
+
+/* Traffic light 1 */
+
+blinking == since(~ blinking @ [-192, 0), ~ blinking ? [-120, 0));
+
+green | yellow | red;
+~ (green & yellow) & ~ (yellow & red) & ~ (red & green);
+
+green == since(up_green, ~ up_yellow);
+yellow == since(up_yellow, ~ up_red);
+red == since(up_red, ~ up_green);
+
+up_yellow == green @ [-16, 0);
+up_red == yellow @ [-8, 0);
+up_green == red @ [-24, 0);
+
+blink_tick == since(~ blink_tick @ [-4, 0), ~ blink_tick ? [-4, 0));
+
+green_light == ~ blinking & (green | yellow);
+yellow_light == (~ blinking & yellow) | (blinking & blink_tick);
+red_light == ~ blinking & red;
+
+/* Traffic light 2 */
+
+blinking2 == since(~ blinking2 @ [-192, 0), ~ blinking2 ? [-120, 0));
+
+green2 | yellow2 | red2;
+~ (green2 & yellow2) & ~ (yellow2 & red2) & ~ (red2 & green2);
+
+green2 == since(up_green2, ~ up_yellow2);
+yellow2 == since(up_yellow2, ~ up_red2);
+red2 == since(up_red2, ~ up_green2);
+
+up_yellow2 == green2 @ [-16, 0);
+up_red2 == yellow2 @ [-8, 0);
+up_green2 == red2 @ [-24, 0);
+
+blink_tick2 == since(~ blink_tick2 @ [-4, 0), ~ blink_tick2 ? [-4, 0));
+
+green_light2 == ~ blinking2 & (green2 | yellow2);
+yellow_light2 == (~ blinking2 & yellow2) | (blinking2 & blink_tick2);
+red_light2 == ~ blinking2 & red2;
+
+/* Interface */
+
+blinking == blinking2;
+~ ((green | yellow) & (green2 | yellow2));
+blink_tick == blink_tick2;
+
+

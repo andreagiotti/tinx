@@ -1,0 +1,283 @@
+
+/* Benchmark by Andrea Giotti, 2017 */
+
+/* 0 */
+
+output green_0, yellow_0, red_0;
+aux up_green_0, up_yellow_0, up_red_0;
+
+init red_0 @ -1, green_0 @ 0;
+
+green_0 | yellow_0 | red_0;
+~ (green_0 & yellow_0) & ~ (yellow_0 & red_0) & ~ (red_0 & green_0);
+
+green_0 == since(up_green_0, ~ up_yellow_0);
+yellow_0 == since(up_yellow_0, ~ up_red_0);
+red_0 == since(up_red_0, ~ up_green_0);
+
+up_yellow_0 == green_0 @ [-16, 0);
+up_red_0 == yellow_0 @ [-8, 0);
+up_green_0 == red_0 @ [-24, 0);
+
+/* 1 */
+
+output green_1, yellow_1, red_1;
+aux up_green_1, up_yellow_1, up_red_1;
+
+green_1 | yellow_1 | red_1;
+~ (green_1 & yellow_1) & ~ (yellow_1 & red_1) & ~ (red_1 & green_1);
+
+green_1 == since(up_green_1, ~ up_yellow_1);
+yellow_1 == since(up_yellow_1, ~ up_red_1);
+red_1 == since(up_red_1, ~ up_green_1);
+
+up_yellow_1 == green_1 @ [-16, 0);
+up_red_1 == yellow_1 @ [-8, 0);
+up_green_1 == red_1 @ [-24, 0);
+
+/* 2 */
+
+output green_2, yellow_2, red_2;
+aux up_green_2, up_yellow_2, up_red_2;
+
+green_2 | yellow_2 | red_2;
+~ (green_2 & yellow_2) & ~ (yellow_2 & red_2) & ~ (red_2 & green_2);
+
+green_2 == since(up_green_2, ~ up_yellow_2);
+yellow_2 == since(up_yellow_2, ~ up_red_2);
+red_2 == since(up_red_2, ~ up_green_2);
+
+up_yellow_2 == green_2 @ [-16, 0);
+up_red_2 == yellow_2 @ [-8, 0);
+up_green_2 == red_2 @ [-24, 0);
+
+/* 3 */
+
+output green_3, yellow_3, red_3;
+aux up_green_3, up_yellow_3, up_red_3;
+
+green_3 | yellow_3 | red_3;
+~ (green_3 & yellow_3) & ~ (yellow_3 & red_3) & ~ (red_3 & green_3);
+
+green_3 == since(up_green_3, ~ up_yellow_3);
+yellow_3 == since(up_yellow_3, ~ up_red_3);
+red_3 == since(up_red_3, ~ up_green_3);
+
+up_yellow_3 == green_3 @ [-16, 0);
+up_red_3 == yellow_3 @ [-8, 0);
+up_green_3 == red_3 @ [-24, 0);
+
+/* 4 */
+
+output green_4, yellow_4, red_4;
+aux up_green_4, up_yellow_4, up_red_4;
+
+green_4 | yellow_4 | red_4;
+~ (green_4 & yellow_4) & ~ (yellow_4 & red_4) & ~ (red_4 & green_4);
+
+green_4 == since(up_green_4, ~ up_yellow_4);
+yellow_4 == since(up_yellow_4, ~ up_red_4);
+red_4 == since(up_red_4, ~ up_green_4);
+
+up_yellow_4 == green_4 @ [-16, 0);
+up_red_4 == yellow_4 @ [-8, 0);
+up_green_4 == red_4 @ [-24, 0);
+
+/* 5 */
+
+output green_5, yellow_5, red_5;
+aux up_green_5, up_yellow_5, up_red_5;
+
+green_5 | yellow_5 | red_5;
+~ (green_5 & yellow_5) & ~ (yellow_5 & red_5) & ~ (red_5 & green_5);
+
+green_5 == since(up_green_5, ~ up_yellow_5);
+yellow_5 == since(up_yellow_5, ~ up_red_5);
+red_5 == since(up_red_5, ~ up_green_5);
+
+up_yellow_5 == green_5 @ [-16, 0);
+up_red_5 == yellow_5 @ [-8, 0);
+up_green_5 == red_5 @ [-24, 0);
+
+/* 6 */
+
+output green_6, yellow_6, red_6;
+aux up_green_6, up_yellow_6, up_red_6;
+
+green_6 | yellow_6 | red_6;
+~ (green_6 & yellow_6) & ~ (yellow_6 & red_6) & ~ (red_6 & green_6);
+
+green_6 == since(up_green_6, ~ up_yellow_6);
+yellow_6 == since(up_yellow_6, ~ up_red_6);
+red_6 == since(up_red_6, ~ up_green_6);
+
+up_yellow_6 == green_6 @ [-16, 0);
+up_red_6 == yellow_6 @ [-8, 0);
+up_green_6 == red_6 @ [-24, 0);
+
+/* 7 */
+
+output green_7, yellow_7, red_7;
+aux up_green_7, up_yellow_7, up_red_7;
+
+green_7 | yellow_7 | red_7;
+~ (green_7 & yellow_7) & ~ (yellow_7 & red_7) & ~ (red_7 & green_7);
+
+green_7 == since(up_green_7, ~ up_yellow_7);
+yellow_7 == since(up_yellow_7, ~ up_red_7);
+red_7 == since(up_red_7, ~ up_green_7);
+
+up_yellow_7 == green_7 @ [-16, 0);
+up_red_7 == yellow_7 @ [-8, 0);
+up_green_7 == red_7 @ [-24, 0);
+
+/* 8 */
+
+output green_8, yellow_8, red_8;
+aux up_green_8, up_yellow_8, up_red_8;
+
+green_8 | yellow_8 | red_8;
+~ (green_8 & yellow_8) & ~ (yellow_8 & red_8) & ~ (red_8 & green_8);
+
+green_8 == since(up_green_8, ~ up_yellow_8);
+yellow_8 == since(up_yellow_8, ~ up_red_8);
+red_8 == since(up_red_8, ~ up_green_8);
+
+up_yellow_8 == green_8 @ [-16, 0);
+up_red_8 == yellow_8 @ [-8, 0);
+up_green_8 == red_8 @ [-24, 0);
+
+/* 9 */
+
+output green_9, yellow_9, red_9;
+aux up_green_9, up_yellow_9, up_red_9;
+
+green_9 | yellow_9 | red_9;
+~ (green_9 & yellow_9) & ~ (yellow_9 & red_9) & ~ (red_9 & green_9);
+
+green_9 == since(up_green_9, ~ up_yellow_9);
+yellow_9 == since(up_yellow_9, ~ up_red_9);
+red_9 == since(up_red_9, ~ up_green_9);
+
+up_yellow_9 == green_9 @ [-16, 0);
+up_red_9 == yellow_9 @ [-8, 0);
+up_green_9 == red_9 @ [-24, 0);
+
+/* A */
+
+output green_A, yellow_A, red_A;
+aux up_green_A, up_yellow_A, up_red_A;
+
+green_A | yellow_A | red_A;
+~ (green_A & yellow_A) & ~ (yellow_A & red_A) & ~ (red_A & green_A);
+
+green_A == since(up_green_A, ~ up_yellow_A);
+yellow_A == since(up_yellow_A, ~ up_red_A);
+red_A == since(up_red_A, ~ up_green_A);
+
+up_yellow_A == green_A @ [-16, 0);
+up_red_A == yellow_A @ [-8, 0);
+up_green_A == red_A @ [-24, 0);
+
+/* B */
+
+output green_B, yellow_B, red_B;
+aux up_green_B, up_yellow_B, up_red_B;
+
+green_B | yellow_B | red_B;
+~ (green_B & yellow_B) & ~ (yellow_B & red_B) & ~ (red_B & green_B);
+
+green_B == since(up_green_B, ~ up_yellow_B);
+yellow_B == since(up_yellow_B, ~ up_red_B);
+red_B == since(up_red_B, ~ up_green_B);
+
+up_yellow_B == green_B @ [-16, 0);
+up_red_B == yellow_B @ [-8, 0);
+up_green_B == red_B @ [-24, 0);
+
+/* C */
+
+output green_C, yellow_C, red_C;
+aux up_green_C, up_yellow_C, up_red_C;
+
+green_C | yellow_C | red_C;
+~ (green_C & yellow_C) & ~ (yellow_C & red_C) & ~ (red_C & green_C);
+
+green_C == since(up_green_C, ~ up_yellow_C);
+yellow_C == since(up_yellow_C, ~ up_red_C);
+red_C == since(up_red_C, ~ up_green_C);
+
+up_yellow_C == green_C @ [-16, 0);
+up_red_C == yellow_C @ [-8, 0);
+up_green_C == red_C @ [-24, 0);
+
+/* D */
+
+output green_D, yellow_D, red_D;
+aux up_green_D, up_yellow_D, up_red_D;
+
+green_D | yellow_D | red_D;
+~ (green_D & yellow_D) & ~ (yellow_D & red_D) & ~ (red_D & green_D);
+
+green_D == since(up_green_D, ~ up_yellow_D);
+yellow_D == since(up_yellow_D, ~ up_red_D);
+red_D == since(up_red_D, ~ up_green_D);
+
+up_yellow_D == green_D @ [-16, 0);
+up_red_D == yellow_D @ [-8, 0);
+up_green_D == red_D @ [-24, 0);
+
+/* E */
+
+output green_E, yellow_E, red_E;
+aux up_green_E, up_yellow_E, up_red_E;
+
+green_E | yellow_E | red_E;
+~ (green_E & yellow_E) & ~ (yellow_E & red_E) & ~ (red_E & green_E);
+
+green_E == since(up_green_E, ~ up_yellow_E);
+yellow_E == since(up_yellow_E, ~ up_red_E);
+red_E == since(up_red_E, ~ up_green_E);
+
+up_yellow_E == green_E @ [-16, 0);
+up_red_E == yellow_E @ [-8, 0);
+up_green_E == red_E @ [-24, 0);
+
+/* F */
+
+output green_F, yellow_F, red_F;
+aux up_green_F, up_yellow_F, up_red_F;
+
+green_F | yellow_F | red_F;
+~ (green_F & yellow_F) & ~ (yellow_F & red_F) & ~ (red_F & green_F);
+
+green_F == since(up_green_F, ~ up_yellow_F);
+yellow_F == since(up_yellow_F, ~ up_red_F);
+red_F == since(up_red_F, ~ up_green_F);
+
+up_yellow_F == green_F @ [-16, 0);
+up_red_F == yellow_F @ [-8, 0);
+up_green_F == red_F @ [-24, 0);
+
+/* Interface */
+
+red_0 == ~ red_1;
+red_2 == ~ red_3;
+red_4 == ~ red_5;
+red_6 == ~ red_7;
+red_8 == ~ red_9;
+red_A == ~ red_B;
+red_C == ~ red_D;
+red_E == ~ red_F;
+
+red_0 == ~ red_2;
+red_4 == ~ red_6;
+red_8 == ~ red_A;
+red_C == ~ red_E;
+
+red_0 == ~ red_4;
+red_8 == ~ red_C;
+
+red_0 == ~ red_8;
+
+

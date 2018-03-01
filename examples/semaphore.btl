@@ -1,0 +1,31 @@
+
+/* Traffic light simulator by Andrea Giotti, 2016 */
+
+output green_light, yellow_light, red_light;
+aux blinking,
+    green, yellow, red,
+    up_green, up_yellow, up_red,
+    blink_tick;
+
+init blinking @ 0, ~ blinking @ 1, red @ 0, green @ 1, ~ blink_tick @ 0, blink_tick @ 1;
+
+blinking == since(~ blinking @ [-192, 0), ~ blinking ? [-128, 0));
+
+green | yellow | red;
+~ (green & yellow) & ~ (yellow & red) & ~ (red & green);
+
+green == since(up_green, ~ up_yellow);
+yellow == since(up_yellow, ~ up_red);
+red == since(up_red, ~ up_green);
+
+up_yellow == green @ [-16, 0);
+up_red == yellow @ [-8, 0);
+up_green == red @ [-24, 0);
+
+blink_tick == since(~ blink_tick @ [-4, 0), ~ blink_tick ? [-4, 0));
+
+green_light == ~ blinking & (green | yellow);
+yellow_light == (~ blinking & yellow) | (blinking & blink_tick);
+red_light == ~ blinking & red;
+
+
