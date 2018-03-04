@@ -12,7 +12,7 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.6.0"
+#define PACK_VER "4.6.1"
 #define VER "1.3.0"
 
 INLINE m_time get_time()

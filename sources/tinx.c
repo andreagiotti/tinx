@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "4.2.1 (single core)"
+#define VER "4.2.2 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -1005,7 +1005,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->focus = null_event;
   kb->last_input = null_event;
 
-  bufsiz = pow(2, bufexp);
+  bufsiz = 1 << bufexp;
   kb->bsm1 = bufsiz - 1;
   kb->bsbt = bufexp;
   kb->bsd4 = bufsiz / 4;

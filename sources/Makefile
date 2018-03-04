@@ -3,10 +3,10 @@
 PROGS	= tinx tinx_mt ting tinxsh gtinxsh
 XFILES	= tinx.c ipc.c
 XDEPS	= $(XFILES) tinx.h
-XFLAGS	= -pipe -Ofast -Wall -lm -lrt
+XFLAGS	= -pipe -Ofast -Wall -lrt
 MFILES	= tinx_mt.c ipc_mt.c
 MDEPS	= $(MFILES) tinx_mt.h
-MFLAGS	= -pipe -Ofast -Wall -lm -lrt -pthread
+MFLAGS	= -pipe -Ofast -Wall -lrt -pthread
 GFILES	= ting_lexer.c ting_parser.c ting_core.c
 GDEPS	= $(GFILES) ting_lexer.h ting_parser.h ting_core.h
 GFLAGS	= -pipe -Ofast -Wall

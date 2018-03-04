@@ -7,7 +7,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "1.3.1"
+#define VER "1.4.0"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -39,7 +39,10 @@ btl_specification *create_ground(op_type ot, char *symbol, d_time value)
 
   sp = alloc_syntnode();
   if(!sp)
-    return NULL;
+    {
+      perror(NULL);
+      exit(EXIT_FAILURE);
+    }
 
   sp->ot = ot;
   strcpy(sp->symbol, symbol);
@@ -59,7 +62,10 @@ btl_specification *create_operation(op_type ot, btl_specification *left, btl_spe
 
   sp = alloc_syntnode();
   if(!sp)
-    return NULL;
+    {
+      perror(NULL);
+      exit(EXIT_FAILURE);
+    }
 
   sp->ot = ot;
   sp->left = left;
@@ -68,9 +74,12 @@ btl_specification *create_operation(op_type ot, btl_specification *left, btl_spe
   assert(left);
 
   if(right)
-    sprintf(sp->debug, debug, left->debug, right->debug);
+    snprintf(sp->debug, DEBUG_STRLEN, debug, left->debug, right->debug);
   else
-    sprintf(sp->debug, debug, left->debug);
+    snprintf(sp->debug, DEBUG_STRLEN, debug, left->debug);
+
+  if(strlen(sp->debug) == DEBUG_STRLEN - 1)
+    fprintf(stderr, "Warning, symbol table overflow in first phase\n");
 
   return sp;
 }
@@ -95,7 +104,10 @@ btl_specification *copy_specification(btl_specification *sp)
 
   rp = alloc_syntnode();
   if(!rp)
-    return NULL;
+    {
+      perror(NULL);
+      exit(EXIT_FAILURE);
+    }
 
   rp->ot = sp->ot;
 
@@ -269,6 +281,11 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
             if(create)
               {
                 wp = create_smallnode(cb, literal);
+                if(!wp)
+                 {
+                   perror(NULL);
+                   exit(EXIT_FAILURE);
+                 }
 
                 cb->symtab[vp->literal_id][cb->symcount[vp->literal_id]] = wp;
 
@@ -293,6 +310,11 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
       if(create)
         {
           vp = create_smallnode(cb, literal);
+          if(!vp)
+            {
+              perror(NULL);
+              exit(EXIT_FAILURE);
+            }
 
           cb->symtab[cb->num_literals][0] = vp;
 
@@ -1213,7 +1235,10 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       case op_and:
         wp = create_smallnode(cb, neg? gate : joint);
         if(!wp)
-          break;
+          {
+            perror(NULL);
+            exit(EXIT_FAILURE);
+          }
 
         wp->up = vp;
         wp->left = eval(cb, spec->left, wp, neg, sclass, t).vp;
@@ -1227,7 +1252,10 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       case op_or:
         wp = create_smallnode(cb, neg? joint : gate);
         if(!wp)
-          break;
+          {
+            perror(NULL);
+            exit(EXIT_FAILURE);
+          }
 
         wp->up = vp;
         wp->left = eval(cb, spec->left, wp, neg, sclass, t).vp;
@@ -1241,7 +1269,10 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       case op_delay:
         wp = create_smallnode(cb, delay);
         if(!wp)
-          break;
+          {
+            perror(NULL);
+            exit(EXIT_FAILURE);
+          }
 
         wp->up = vp;
         wp->left = eval(cb, spec->left, wp, neg, sclass, t).vp;
@@ -1864,7 +1895,11 @@ smallnode *build_smalltree(c_base *cb, int i, bool neg)
           if(yp)
             {
               xp = create_smallnode(cb, joint);
-              assert(xp);
+              if(!xp)
+                {
+                  perror(NULL);
+                  exit(EXIT_FAILURE);
+                }
 
               xp->left = vp;
               xp->right = yp;
@@ -1872,7 +1907,9 @@ smallnode *build_smalltree(c_base *cb, int i, bool neg)
               vp->up_2 = xp;
               yp->up_2 = xp;
 
-              sprintf(xp->debug, "%s & %s", vp->debug, yp->debug);
+              snprintf(xp->debug, DEBUG_STRLEN, "%s & %s", vp->debug, yp->debug);
+              if(strlen(xp->debug) == DEBUG_STRLEN - 1)
+                fprintf(stderr, "Warning, symbol table overflow in second phase\n");
 
               yp = xp;
             }
@@ -1908,7 +1945,11 @@ smallnode *build_twotrees(c_base *cb, int i)
     }
 
   xp = create_smallnode(cb, gate);
-  assert(xp);
+  if(!xp)
+    {
+      perror(NULL);
+      exit(EXIT_FAILURE);
+    }
 
   xp->left = vp;
   xp->right = wp;
@@ -1916,7 +1957,9 @@ smallnode *build_twotrees(c_base *cb, int i)
   vp->up_2 = xp;
   wp->up_2 = xp;
 
-  sprintf(xp->debug, "%s | %s", vp->debug, wp->debug);
+  snprintf(xp->debug, DEBUG_STRLEN, "%s | %s", vp->debug, wp->debug);
+  if(strlen(xp->debug) == DEBUG_STRLEN - 1)
+    fprintf(stderr, "Warning, symbol table overflow in second phase\n");
 
   return xp;
 }
@@ -1936,7 +1979,11 @@ smallnode *build_cotree(c_base *cb)
       if(yp)
         {
           xp = create_smallnode(cb, joint);
-          assert(xp);
+          if(!xp)
+            {
+              perror(NULL);
+              exit(EXIT_FAILURE);
+            }
 
           xp->left = vp;
           xp->right = yp;
@@ -1944,7 +1991,9 @@ smallnode *build_cotree(c_base *cb)
           vp->up_2 = xp;
           yp->up_2 = xp;
 
-          sprintf(xp->debug, "%s & %s", vp->debug, yp->debug);
+          snprintf(xp->debug, DEBUG_STRLEN, "%s & %s", vp->debug, yp->debug);
+          if(strlen(xp->debug) == DEBUG_STRLEN - 1)
+            fprintf(stderr, "Warning, symbol table overflow in second phase\n");
 
           yp = xp;
         }
@@ -1978,7 +2027,11 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
   strcat(base_filename, NETWORK_EXT);
 
   cb = malloc(sizeof(c_base));
-  assert(cb);
+  if(!cb)
+    {
+      perror(NULL);
+      return TRUE;
+    }
 
   memset(cb, 0, sizeof(c_base));
 

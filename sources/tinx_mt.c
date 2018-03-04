@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "4.2.1 MT (multiple cores)"
+#define VER "4.2.2 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -1221,7 +1221,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->done[num_threads] = FALSE;
   pthread_cond_init(&kb->cond_done[num_threads], NULL);
 
-  bufsiz = pow(2, bufexp);
+  bufsiz = 1 << bufexp;
   kb->bsm1 = bufsiz - 1;
   kb->bsbt = bufexp;
   kb->bsd4 = bufsiz / 4;
