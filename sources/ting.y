@@ -230,15 +230,18 @@ qname
     ;
 
 name
-    : TOKEN_NAME { $$ = create_ground(op_name, $1, 0); }
+    : TOKEN_NAME TOKEN_LPAREN expr[R] TOKEN_RPAREN { $$ = create_operation(op_parametric, create_ground(op_name, $1, 0), $R, "%s(%s)"); }
+    | TOKEN_NAME { $$ = create_ground(op_name, $1, 0); }
     ;
 
 dname
-    : TOKEN_NAME { $$ = create_ground(op_dname, $1, 0); }
+    : TOKEN_NAME TOKEN_LPAREN expr[R] TOKEN_RPAREN { $$ = create_operation(op_parametric, create_ground(op_dname, $1, 0), $R, "%s(%s)"); }
+    | TOKEN_NAME { $$ = create_ground(op_dname, $1, 0); }
     ;
 
 iname
-    : TOKEN_NAME { $$ = create_ground(op_iname, $1, 0); }
+    : TOKEN_NAME TOKEN_LPAREN expr[R] TOKEN_RPAREN { $$ = create_operation(op_parametric, create_ground(op_iname, $1, 0), $R, "%s(%s)"); }
+    | TOKEN_NAME { $$ = create_ground(op_iname, $1, 0); }
     ;
 
 cname

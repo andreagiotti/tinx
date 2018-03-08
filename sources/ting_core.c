@@ -7,7 +7,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "1.4.0"
+#define VER "1.5.0"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -525,7 +525,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
   constant *tp;
   d_time val;
   int h, k, l;
-  char *caret;
+  op_type ot;
 
   stv.btl = NULL;
   stv.btldef = NULL;
@@ -573,22 +573,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       case op_name:
       case op_dname:
       case op_iname:
-        strcpy(symbol, spec->symbol);
-        caret = strchr(symbol, '^');
-
-        if(caret)
-          {
-            l = level - strlen(symbol) + (caret - symbol);
-            if(l < 0)
-              {
-                fprintf(stderr, "%s: Error, parametric signal out of scope: { %s ; }\n", spec->symbol, spec->debug);
-                exit(EXIT_FAILURE);
-              }
-
-            sprintf(caret, "%d", cb->iterator[l]);
-          }
-
-        stv.btl = create_ground(spec->ot, symbol, 0);
+        stv.btl = create_ground(spec->ot, spec->symbol, 0);
       break;
 
       case op_number:
@@ -608,6 +593,19 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.btl = create_ground(op_number, "", cb->iterator[l]);
         stv.a = cb->iterator[l];
         stv.b = cb->iterator[l];
+      break;
+
+      case op_parametric:
+        stv = preval(cb, spec->left, level, param);
+        stv_2 = preval(cb, spec->right, level, param);
+
+        sprintf(symbol, "%s("TIME_FMT")", stv.btl->symbol, stv_2.a);
+        ot = stv.btl->ot;
+ 
+        free(stv.btl);
+        free(stv_2.btl);
+
+        stv.btl = create_ground(ot, symbol, 0);
       break;
 
       case op_join:
@@ -952,7 +950,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       break;
 
       case op_forall:
-        cb->iterator[level] = 1;
+        cb->iterator[level] = 0;
 
         stv = preval(cb, spec->left, level + 1, param);
         stv_2 = preval(cb, spec->right, level, param);
@@ -966,7 +964,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         p = stv.btl;
         q = stv.btldef;
 
-        for(k = 2; k <= stv_2.a; k++)
+        for(k = 1; k < stv_2.a; k++)
           {
             cb->iterator[level] = k;
 
@@ -985,7 +983,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       break;
 
       case op_exists:
-        cb->iterator[level] = 1;
+        cb->iterator[level] = 0;
 
         stv = preval(cb, spec->left, level + 1, param);
         stv_2 = preval(cb, spec->right, level, param);
@@ -999,7 +997,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         p = stv.btl;
         q = stv.btldef;
 
-        for(k = 2; k <= stv_2.a; k++)
+        for(k = 1; k < stv_2.a; k++)
           {
             cb->iterator[level] = k;
 
@@ -1018,7 +1016,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       break;
 
       case op_one:
-        cb->iterator[level] = 1;
+        cb->iterator[level] = 0;
 
         stv = preval(cb, spec->left, level + 1, param);
         stv_2 = preval(cb, spec->right, level, param);
@@ -1029,20 +1027,20 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
             exit(EXIT_FAILURE);
           }
 
-        if(stv_2.a < 1 || stv_2.a > stv_2.b)
+        if(stv_2.a < 0 || stv_2.a >= stv_2.b)
           {
             fprintf(stderr, TIME_FMT": Error, selection parameter out of range in <one> construct: { %s ; }\n", stv_2.a, spec->debug);
             exit(EXIT_FAILURE);
           }
 
-        if(stv_2.a == 1)
+        if(!stv_2.a)
           p = stv.btl;
         else
           p = create_operation(op_not, stv.btl, NULL, "~ %s");
 
         q = stv.btldef;
 
-        for(k = 2; k <= stv_2.b; k++)
+        for(k = 1; k < stv_2.b; k++)
           {
             cb->iterator[level] = k;
 
@@ -1074,13 +1072,13 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         p = NULL;
         q = NULL;
-        for(h = 1; h <= stv_2.a; h++)
+        for(h = 0; h < stv_2.a; h++)
           {
-            cb->iterator[level] = 1;
+            cb->iterator[level] = 0;
 
             stv = preval(cb, spec->left, level + 1, param);
 
-            if(h == 1)
+            if(!h)
               {
                 r = stv.btl;
                 q = stv.btldef;
@@ -1093,7 +1091,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                   q = create_operation(op_and, q, copy_specification(stv.btldef), "%s ; %s");
               }
 
-            for(k = 2; k <= stv_2.a; k++)
+            for(k = 1; k < stv_2.a; k++)
               {
                 cb->iterator[level] = k;
 
@@ -1121,7 +1119,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       break;
 
       case op_iter:
-        cb->iterator[level] = 1;
+        cb->iterator[level] = 0;
 
         stv = preval(cb, spec->left, level + 1, param);
         stv_2 = preval(cb, spec->right, level, param);
@@ -1135,7 +1133,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         p = stv.btl;
         q = stv.btldef;
 
-        for(k = 2; k <= stv_2.a; k++)
+        for(k = 1; k < stv_2.a; k++)
           {
             cb->iterator[level] = k;
 

@@ -57,7 +57,7 @@ LBRA        "{"
 RBRA        "}"
 SEMICOLON   ";"
 
-NAME        [a-zA-Z][a-zA-Z0-9_]*"^"*
+NAME        [a-zA-Z][a-zA-Z0-9_]*
 ITERATOR    "^"+
 NUMBER      [0-9]+
 BLANKS      [ \r\n\t]*

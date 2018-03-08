@@ -376,6 +376,8 @@ typedef struct thread_arg
 #define BLANKS " \t\n\r"
 #define SEPARATORS BLANKS"(,;:?!)@"
 #define NAME_FMT "%"MAX_NAMEBUF_C"[^"SEPARATORS"]"
+#define LESS_SEPARATORS BLANKS";:?!@"
+#define FUN_FMT "%"MAX_NAMEBUF_C"[^"LESS_SEPARATORS"]"
 #define OP_FMT "%c"
 #define ARG_FMT TIME_FMT
 

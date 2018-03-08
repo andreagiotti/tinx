@@ -1,5 +1,6 @@
 /*
-  Mutual exclusion system by Andrea Giotti, 2017
+  Mutual exclusion system by Andrea Giotti, 2017-2018
+  Release 2
 
   Four competitors gain exclusive access to one
   resource, which is granted to the one which
@@ -13,21 +14,21 @@ define number = 4, mintime = 8, maxtime = 32;
 
 iter(number)
 {
-input req^, rel^;
-output gnt^;
-aux beg^, end^, thr^, sat^;
-init ~ end^ @ -1;
+input req(^), rel(^);
+output gnt(^);
+aux beg(^), end(^), thr(^), sat(^);
+init ~ end(^) @ -1;
 
-beg^ == since(free @ -1 & ~ gnt^ & one(req^, ^, number), ~ gnt^ & ~ rel^);
-end^ == since(gnt^ & rel^, gnt^ & ~ req^);
-gnt^ == since((deny & beg^) @ -1, (~ end^ @ -1 & sat^) | thr^);
-thr^ == ~ gnt^ ? [- mintime, 0);
-sat^ == exists(thr^^ @ - ^ * mintime, maxtime / mintime - 1);
+beg(^) == since(free @ -1 & ~ gnt(^) & one(req(^), ^, number), ~ gnt(^) & ~ rel(^));
+end(^) == since(gnt(^) & rel(^), gnt(^) & ~ req(^));
+gnt(^) == since((deny & beg(^)) @ -1, (~ end(^) @ -1 & sat(^)) | thr(^));
+thr(^) == ~ gnt(^) ? [- mintime, 0);
+sat(^) == exists(thr(^^) @ - ^ * mintime, maxtime / mintime);
 }
 
 aux free, deny;
 init free @ -1, deny @ -1;
 
-free == ~ exists(beg^, number);
-deny == ~ exists(gnt^, number);
+free == ~ exists(beg(^), number);
+deny == ~ exists(gnt(^), number);
 

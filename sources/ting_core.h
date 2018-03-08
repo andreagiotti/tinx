@@ -23,6 +23,7 @@ typedef enum op_type
   op_number,
   op_constant,
   op_iterator,
+  op_parametric,
   op_plus,
   op_minus,
   op_mul,

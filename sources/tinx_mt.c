@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "4.2.2 MT (multiple cores)"
+#define VER "4.2.3 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -1328,7 +1328,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   ios = NULL;
   k = 0;
 
-  while(fscanf(fp, " "OP_FMT" "NAME_FMT" ( "NAME_FMT" , "NAME_FMT" ) @ "
+  while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) @ "
                    TIME_FMT" ",
                &c, name, name_v, name_w, &k) >= 4)
     {

@@ -12,8 +12,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.6.1"
-#define VER "1.3.0"
+#define PACK_VER "4.7.0"
+#define VER "1.3.1"
 
 INLINE m_time get_time()
 {
@@ -370,7 +370,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
 
             sb->fn = sb->gn = 0;
             sb->maxlen = 0;
-            while(fscanf(bp, SKIP_FMT" "OP_FMT" "NAME_FMT, &c, name) == 2)
+            while(fscanf(bp, SKIP_FMT" "OP_FMT" "FUN_FMT, &c, name) == 2)
               {
                 switch(c)
                   {
