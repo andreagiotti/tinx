@@ -7,7 +7,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "1.5.0"
+#define VER "1.5.1"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -1106,7 +1106,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                   q = create_operation(op_and, q, copy_specification(stv.btldef), "%s ; %s");
               }
 
-            if(h == 1)
+            if(!h)
               p = r;
             else
               p = create_operation(op_or, p, r, "%s | %s");
