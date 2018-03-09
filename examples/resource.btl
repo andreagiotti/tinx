@@ -1,0 +1,95 @@
+/*
+	Name:	Semaphore
+	Author:	Andrea Giotti, 2018
+
+	Description:
+	A mutually exclusive resource is granted to one task on <numtasks> while following requests
+	are put in a queue of <numpos> positions. A release of the requested resource remove the
+	request from the queue. The resource is granted for a minimum of <mintime> time units and a
+        maximum of <maxtime> time units.
+*/
+
+define	numtasks = 4,
+	numpos = 4,
+	mintime = 8,
+	maxtime = 32;
+
+iter(numtasks)
+{
+	define i = ^;
+
+	input req(i), rel(i);
+	output gnt(i);
+}
+
+iter(numpos)
+{
+	define	j = ^;
+
+	aux free(j);
+}
+
+iter(numtasks)
+{
+	define i = ^;
+
+	iter(numpos)
+		{
+			define	j = ^,
+				k = numpos * i + j;
+
+                        aux queued(k), begin(k), end(k), up(k), down(k);
+
+        		queued(k) == since(up(k), ~ down(k));
+
+			begin(k) == (free(j) & one(req(^) & ~ rel(^), i, numtasks)) @ -1;
+			end(k) == (queued(k) & ~ req(i) & rel(i)) @ -1;
+		}
+
+	iter(numpos - 1)
+		{
+			define	j = ^,
+				k = numpos * i + j;
+
+                        aux roll(k);
+
+			roll(k) == (free(j) & queued(k + 1)) @ -1;
+		}
+}
+
+iter(numpos)
+{
+	define	j = ^;
+
+	init free(j) @ 0;
+
+	free(j) == ~ exists(queued(numpos * ^ + j), numtasks);
+}
+
+iter(numtasks)
+{
+	define	i = ^,
+		k = numpos * i;
+
+        gnt(i) == queued(k);
+
+	up(k) == roll(k) | (begin(k) & ~ exists(roll(numpos * ^), numtasks));
+	down(k) == (end(k) ? (- mintime, 0] & gnt(i) @ [- mintime, 0)) | gnt(i) @ [- maxtime, 0);
+
+	iter(numpos - 2)
+		{
+			define	j = ^ + 1,
+				k = numpos * i + j;
+
+			up(k) == roll(k) | (begin(k) & ~ exists(roll(numpos * ^ + j), numtasks) & ~ exists(queued(numpos * i + ^), j) & forall(exists(queued(numpos * ^ + ^^), numtasks), j));
+			down(k) == roll(k - 1) | end(k);
+		}
+
+	define	j = numpos - 1,
+		k = numpos * i + j;
+
+	up(k) == begin(k) & ~ exists(queued(numpos * i + ^), j) & forall(exists(queued(numpos * ^ + ^^), numtasks), j);
+	down(k) == roll(k - 1) | end(k);
+}
+
+
