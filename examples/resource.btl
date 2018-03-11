@@ -1,12 +1,13 @@
 /*
-	Name:	Semaphore
+	Name:	Resource management
 	Author:	Andrea Giotti, 2018
+	Release: 1.1
 
 	Description:
 	A mutually exclusive resource is granted to one task on <numtasks> while following requests
 	are put in a queue of <numpos> positions. A release of the requested resource remove the
 	request from the queue. The resource is granted for a minimum of <mintime> time units and a
-        maximum of <maxtime> time units.
+	maximum of <maxtime> time units.
 */
 
 define	numtasks = 4,
@@ -16,17 +17,13 @@ define	numtasks = 4,
 
 iter(numtasks)
 {
-	define i = ^;
-
-	input req(i), rel(i);
-	output gnt(i);
+	input req(^), rel(^);
+	output gnt(^);
 }
 
 iter(numpos)
 {
-	define	j = ^;
-
-	aux free(j);
+	aux free(^);
 }
 
 iter(numtasks)
@@ -35,25 +32,23 @@ iter(numtasks)
 
 	iter(numpos)
 		{
-			define	j = ^,
-				k = numpos * i + j;
+			define	j = ^;
 
-                        aux queued(k), begin(k), end(k), up(k), down(k);
+			aux queued(i, j), begin(i, j), end(i, j), up(i, j), down(i, j);
 
-        		queued(k) == since(up(k), ~ down(k));
+			queued(i, j) == since(up(i, j), ~ down(i, j));
 
-			begin(k) == (free(j) & one(req(^) & ~ rel(^), i, numtasks)) @ -1;
-			end(k) == (queued(k) & ~ req(i) & rel(i)) @ -1;
+			begin(i, j) == (free(j) & one(req(^) & ~ rel(^), i, numtasks)) @ -1;
+			end(i, j) == (queued(i, j) & ~ req(i) & rel(i)) @ -1;
 		}
 
 	iter(numpos - 1)
 		{
-			define	j = ^,
-				k = numpos * i + j;
+			define	j = ^;
 
-                        aux roll(k);
+			aux roll(i, j);
 
-			roll(k) == (free(j) & queued(k + 1)) @ -1;
+			roll(i, j) == (free(j) & queued(i, j + 1)) @ -1;
 		}
 }
 
@@ -63,33 +58,28 @@ iter(numpos)
 
 	init free(j) @ 0;
 
-	free(j) == ~ exists(queued(numpos * ^ + j), numtasks);
+	free(j) == ~ exists(queued(^, j), numtasks);
 }
 
 iter(numtasks)
 {
-	define	i = ^,
-		k = numpos * i;
+	define	i = ^;
 
-        gnt(i) == queued(k);
+	up(i, 0) == roll(i, 0) | (begin(i, 0) & ~ exists(roll(^, 0), numtasks));
+	down(i, 0) == (end(i, 0) ? (- mintime, 0] & queued(i, 0) @ [- mintime, 0)) | queued(i, 0) @ [- maxtime, 0);
 
-	up(k) == roll(k) | (begin(k) & ~ exists(roll(numpos * ^), numtasks));
-	down(k) == (end(k) ? (- mintime, 0] & gnt(i) @ [- mintime, 0)) | gnt(i) @ [- maxtime, 0);
+	gnt(i) == queued(i, 0);
 
 	iter(numpos - 2)
 		{
-			define	j = ^ + 1,
-				k = numpos * i + j;
+			define	j = ^ + 1;
 
-			up(k) == roll(k) | (begin(k) & ~ exists(roll(numpos * ^ + j), numtasks) & ~ exists(queued(numpos * i + ^), j) & forall(exists(queued(numpos * ^ + ^^), numtasks), j));
-			down(k) == roll(k - 1) | end(k);
+			up(i, j) == roll(i, j) | (begin(i, j) & ~ exists(roll(^, j), numtasks) & ~ exists(queued(i, ^) | free(^), j));
+			down(i, j) == roll(i, j - 1) | end(i, j);
 		}
 
-	define	j = numpos - 1,
-		k = numpos * i + j;
-
-	up(k) == begin(k) & ~ exists(queued(numpos * i + ^), j) & forall(exists(queued(numpos * ^ + ^^), numtasks), j);
-	down(k) == roll(k - 1) | end(k);
+	up(i, numpos - 1) == begin(i, numpos - 1) & ~ exists(queued(i, ^) | free(^), numpos - 1);
+	down(i, numpos - 1) == roll(i, numpos - 2) | end(i, numpos - 1);
 }
 
 

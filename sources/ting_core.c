@@ -7,7 +7,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "1.5.1"
+#define VER "1.6.0"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -79,7 +79,10 @@ btl_specification *create_operation(op_type ot, btl_specification *left, btl_spe
     snprintf(sp->debug, DEBUG_STRLEN, debug, left->debug);
 
   if(strlen(sp->debug) == DEBUG_STRLEN - 1)
-    fprintf(stderr, "Warning, symbol table overflow in first phase\n");
+    {
+      strcpy(sp->debug, "<symbol>");
+      fprintf(stderr, "Warning, symbol table overflow in first phase\n");
+    }
 
   return sp;
 }
@@ -142,8 +145,8 @@ smallnode *create_smallnode(c_base *cb, node_class nclass)
   if(!vp)
     return NULL;
 
-  sprintf(vp->name, "%c%06d", class_symbol[nclass], cb->num_components[nclass]);
-  cb->num_components[nclass]++;
+  sprintf(vp->name, "%c%06d", class_symbol[nclass], cb->num_nodes[nclass]);
+  cb->num_nodes[nclass]++;
 
   vp->nclass = nclass;
   vp->k = 0;
@@ -184,6 +187,8 @@ void delete_smallnode(c_base *cb, smallnode *vp)
   else
    cb->network = vp->vp;
 
+  cb->num_nodes[vp->nclass]--;
+
   free(vp);
 }
 
@@ -204,6 +209,8 @@ void delete_zombies(c_base *cb)
             zp->vp = wp;
           else
             cb->network = wp;
+
+          cb->num_nodes[vp->nclass]--;
 
           free(vp);
         }
@@ -595,11 +602,24 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.b = cb->iterator[l];
       break;
 
-      case op_parametric:
+      case op_vector:
         stv = preval(cb, spec->left, level, param);
         stv_2 = preval(cb, spec->right, level, param);
 
         sprintf(symbol, "%s("TIME_FMT")", stv.btl->symbol, stv_2.a);
+        ot = stv.btl->ot;
+ 
+        free(stv.btl);
+        free(stv_2.btl);
+
+        stv.btl = create_ground(ot, symbol, 0);
+      break;
+
+      case op_matrix:
+        stv = preval(cb, spec->left, level, param);
+        stv_2 = preval(cb, spec->right, level, param);
+
+        sprintf(symbol, "%s("TIME_FMT","TIME_FMT")", stv.btl->symbol, stv_2.a, stv_2.b);
         ot = stv.btl->ot;
  
         free(stv.btl);
@@ -1500,7 +1520,7 @@ void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp
     }
   else
     {
-      fprintf(stderr, "%s, %s: Warning, pruning abnormal loop on nodes: { %s ; } - { %s ; }\n", xp? xp->name : "*", yp? yp->name : "*", xp? xp->debug : "*", yp? yp->debug : "*");
+      fprintf(stderr, "%s, %s: Warning, pruning abnormal loop on nodes: { %s ; } -- { %s ; }\n", xp? xp->name : "*", yp? yp->name : "*", xp? xp->debug : "*", yp? yp->debug : "*");
 
       right = get_neighbor_handle(xp, yp);
 
@@ -1906,8 +1926,12 @@ smallnode *build_smalltree(c_base *cb, int i, bool neg)
               yp->up_2 = xp;
 
               snprintf(xp->debug, DEBUG_STRLEN, "%s & %s", vp->debug, yp->debug);
+
               if(strlen(xp->debug) == DEBUG_STRLEN - 1)
-                fprintf(stderr, "Warning, symbol table overflow in second phase\n");
+                {
+                  strcpy(xp->debug, "<symbol>");
+                  fprintf(stderr, "Warning, symbol table overflow in second phase\n");
+                }
 
               yp = xp;
             }
@@ -1956,8 +1980,12 @@ smallnode *build_twotrees(c_base *cb, int i)
   wp->up_2 = xp;
 
   snprintf(xp->debug, DEBUG_STRLEN, "%s | %s", vp->debug, wp->debug);
+
   if(strlen(xp->debug) == DEBUG_STRLEN - 1)
-    fprintf(stderr, "Warning, symbol table overflow in second phase\n");
+    {
+      strcpy(xp->debug, "<symbol>");
+      fprintf(stderr, "Warning, symbol table overflow in second phase\n");
+    }
 
   return xp;
 }
@@ -1990,8 +2018,12 @@ smallnode *build_cotree(c_base *cb)
           yp->up_2 = xp;
 
           snprintf(xp->debug, DEBUG_STRLEN, "%s & %s", vp->debug, yp->debug);
+
           if(strlen(xp->debug) == DEBUG_STRLEN - 1)
-            fprintf(stderr, "Warning, symbol table overflow in second phase\n");
+            {
+              strcpy(xp->debug, "<symbol>");
+              fprintf(stderr, "Warning, symbol table overflow in second phase\n");
+            }
 
           yp = xp;
         }
@@ -2009,7 +2041,7 @@ smallnode *build_cotree(c_base *cb)
   return xp;
 }
 
-bool compile(char *source_name, char *base_name, char *state_name, char *xref_name)
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name)
 {
   c_base *cb;
   btl_specification *e, *f;
@@ -2017,6 +2049,10 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
   smallnode *cvp;
   FILE *fp, *gp, *hp, *ip;
   char source_filename[MAX_STRLEN], base_filename[MAX_STRLEN], state_filename[MAX_STRLEN], xref_filename[MAX_STRLEN];
+  compinfo cperf;
+  node_class nclass;
+
+  cperf.ok = FALSE;
 
   strcpy(source_filename, source_name);
   strcat(source_filename, SOURCE_EXT);
@@ -2028,7 +2064,7 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
   if(!cb)
     {
       perror(NULL);
-      return TRUE;
+      return cperf;
     }
 
   memset(cb, 0, sizeof(c_base));
@@ -2038,7 +2074,7 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
     {
       perror(source_filename);
       free(cb);
-      return TRUE;
+      return cperf;
     }
 
   fread(cb->source, SOURCE_BUFSIZE, sizeof(char), fp);
@@ -2046,7 +2082,7 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
     {
       perror(source_filename);
       free(cb);
-      return TRUE;
+      return cperf;
     }
 
   fclose(fp);
@@ -2055,7 +2091,7 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
   if(!e)
     {
       free(cb);
-      return TRUE;
+      return cperf;
     }
 
   stv = preval(cb, e, 0, 0);
@@ -2083,7 +2119,7 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
     {
       perror(base_filename);
       free(cb);
-      return TRUE;
+      return cperf;
     }
 
   save_smalltree(cb, gp);
@@ -2101,7 +2137,7 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
         {
           perror(state_filename);
           free(cb);
-          return TRUE;
+          return cperf;
         }
 
       save_ics(cb, hp);
@@ -2119,7 +2155,7 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
         {
           perror(xref_filename);
           free(cb);
-          return TRUE;
+          return cperf;
         }
 
       save_xref(cb, ip);
@@ -2129,16 +2165,27 @@ bool compile(char *source_name, char *base_name, char *state_name, char *xref_na
 
   delete_smalltree(cb);
 
+  for(nclass = 0; nclass < NODE_CLASSES_NUMBER; nclass++)
+    cperf.num_nodes[nclass] = cb->num_nodes[nclass];
+
+  cperf.num_signals = cb->num_signals;
+  cperf.num_ics = cb->num_ics;
+
   free(cb);
 
-  return FALSE;
+  cperf.edges = (3 * (cperf.num_nodes[gate] + cperf.num_nodes[joint]) + 2 * cperf.num_nodes[delay]) / 2;
+  cperf.tot_nodes = cperf.num_nodes[gate] + cperf.num_nodes[joint] + cperf.num_nodes[delay];
+  cperf.ok = TRUE;
+
+  return cperf;
 }
 
 int main(int argc, char *argv[])
 {
   char *source_name, *base_name, *state_name, *xref_name, *option, *ext;
   char default_state_name[MAX_STRLEN], default_xref_name[MAX_STRLEN];
-  int i, rv;
+  compinfo cperf;
+  int i;
 
   source_name = base_name = state_name = xref_name = NULL;
 
@@ -2299,13 +2346,15 @@ int main(int argc, char *argv[])
   printf("\nTING "VER" - Temporal Inference Network Generator\n"
          "Design & coding by Andrea Giotti, 2017-2018\n\n");
 
-  rv = compile(source_name, base_name, state_name, xref_name);
+  cperf = compile(source_name, base_name, state_name, xref_name);
 
-  if(!rv)
-    printf("Network generated\n");
+  if(cperf.ok)
+    printf("Network generated -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d signals, %d initial conditions\n",
+     cperf.edges, cperf.tot_nodes, cperf.num_nodes[gate], cperf.num_nodes[joint], cperf.num_nodes[delay], cperf.num_signals, cperf.num_ics);
   else
     printf("Network not generated\n");
 
-  return rv;
+  return !cperf.ok;
 }
+
 

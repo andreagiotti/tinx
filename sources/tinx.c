@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "4.2.3 (single core)"
+#define VER "4.2.4 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -616,7 +616,7 @@ bool output_m(k_base *kb, stream *ios)
 
 void trace(k_base *kb, event s)
 {
-  char debug[DEBUG_STRLEN];
+  char debug[2 * DEBUG_STRLEN + 8];
   arc e1, e2;
 
   if(valid(s))
@@ -628,7 +628,7 @@ void trace(k_base *kb, event s)
 
       *debug = '\0';
       if(e1.vp->debug && e2.vp->debug)
-        sprintf(debug, ": %s - %s", e1.vp->debug, e2.vp->debug);
+        sprintf(debug, ": %s -- %s", e1.vp->debug, e2.vp->debug);
 
       if(kb->echo_stdout)
         {
@@ -984,7 +984,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   char file_name[MAX_STRLEN], name[MAX_NAMEBUF], type[MAX_NAMEBUF],
        up[MAX_NAMEBUF], left[MAX_NAMEBUF], right[MAX_NAMEBUF],
        name_v[MAX_NAMEBUF], name_w[MAX_NAMEBUF],
-       debug[DEBUG_STRLEN];
+       debug[DEBUG_STRLEN + 1];
   char c;
   d_time k, offset;
   node *vp, *wp;

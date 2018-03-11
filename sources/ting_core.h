@@ -23,7 +23,8 @@ typedef enum op_type
   op_number,
   op_constant,
   op_iterator,
-  op_parametric,
+  op_vector,
+  op_matrix,
   op_plus,
   op_minus,
   op_mul,
@@ -152,10 +153,20 @@ typedef struct c_base
   constant *intptr[SYMTAB_SIZE][SYMTAB_DEPTH];
   int num_integers;
   int iterator[NUM_LEVELS];
-  int num_components[NODE_CLASSES_NUMBER];
+  int num_nodes[NODE_CLASSES_NUMBER];
   int num_vargen;
   smallnode *network;
 } c_base;
+
+typedef struct compinfo
+{
+  bool ok;
+  int edges;
+  int tot_nodes;
+  int num_nodes[NODE_CLASSES_NUMBER];
+  int num_signals;
+  int num_ics;
+} compinfo;
 
 typedef enum direction
 {
@@ -202,6 +213,6 @@ void raise_signals(c_base *cb, smallnode *vp);
 smallnode *build_smalltree(c_base *cb, int i, bool neg);
 smallnode *build_twotrees(c_base *cb, int i);
 smallnode *build_cotree(c_base *cb);
-bool compile(char *source_name, char *base_name, char *state_name, char *xref_name);
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name);
 char *opname(op_type ot);
 

@@ -12,8 +12,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.7.1"
-#define VER "1.3.1"
+#define PACK_VER "4.8.0"
+#define VER "1.3.2"
 
 INLINE m_time get_time()
 {
@@ -282,6 +282,7 @@ void tinxpipe(s_base *sb)
 {
   FILE *fp;
   char ch[2];
+  bool got;
 
   print(sb, "%s\n", sb->cmd);
 
@@ -294,17 +295,20 @@ void tinxpipe(s_base *sb)
       ch[1] = '\0';
       do
         {
-          fread(ch, 1, sizeof(char), fp);
+          got = fread(ch, 1, sizeof(char), fp);
           if(ferror(fp))
             {
               print_error(sb, "Pipe");
               break;
             }
 
-          if(ch[0] == '%')
-            print_add(sb, "%%");
-          else
-            print_add(sb, ch);
+          if(got)
+            {
+              if(ch[0] == '%')
+                print_add(sb, "%%");
+              else
+                print_add(sb, ch);
+            }
         }
       while(!feof(fp));
 
@@ -702,6 +706,7 @@ void gen_button_clicked(GtkWidget *widget, s_base *sb)
   FILE *fp;
   char cmd[MAX_STRLEN_IF];
   char ch[2];
+  bool got;
 
   strcpy(cmd, CMD_PATH"ting 2>&1 -o ");
   strcat(cmd, sb->base_name);
@@ -728,17 +733,20 @@ void gen_button_clicked(GtkWidget *widget, s_base *sb)
       ch[1] = '\0';
       do
         {
-          fread(ch, 1, sizeof(char), fp);
+          got = fread(ch, 1, sizeof(char), fp);
           if(ferror(fp))
             {
               print_error(sb, "Pipe");
               break;
             }
 
-          if(ch[0] == '%')
-            print_add(sb, "%%");
-          else
-            print_add(sb, ch);
+          if(got)
+            {
+              if(ch[0] == '%')
+                print_add(sb, "%%");
+              else
+                print_add(sb, ch);
+            }
         }
       while(!feof(fp));
 

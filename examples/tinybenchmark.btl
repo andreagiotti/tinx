@@ -1,0 +1,24 @@
+/*
+  Benchmark by Andrea Giotti, 2017-2018
+  Execute as: tinx -ciq -z 10000000 -r 4 tinybenchmark
+*/
+
+define green_time = 2, yellow_time = 1, red_time = green_time + yellow_time;
+
+output green, yellow, red;
+aux up_green, up_yellow, up_red;
+
+init red @ -1, green @ 0;
+
+green | yellow | red;
+~ (green & yellow) & ~ (yellow & red) & ~ (red & green);
+
+green == since(up_green, ~ up_yellow);
+yellow == since(up_yellow, ~ up_red);
+red == since(up_red, ~ up_green);
+
+up_yellow == green @ [- green_time, 0);
+up_red == yellow @ [- yellow_time, 0);
+up_green == red @ [- red_time, 0);
+
+
