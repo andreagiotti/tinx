@@ -131,10 +131,10 @@ typedef struct initial_condition
 
 #define SYMTAB_SIZE 8191
 #define SYMTAB_DEPTH 64
-#define NUM_LITERALS 1024
-#define NUM_OCCURRENCES 1024
-#define NUM_ICS NUM_LITERALS
-#define NUM_INTEGERS 1024
+#define NUM_LITERALS 4096
+#define NUM_OCCURRENCES 4096
+#define NUM_ICS 4096
+#define NUM_INTEGERS 4096
 #define NUM_LEVELS 256
 
 typedef struct c_base
@@ -190,7 +190,8 @@ smallnode *create_smallnode(c_base *cb, node_class nclass);
 void delete_smallnode(c_base *cb, smallnode *vp);
 void delete_zombies(c_base *cb);
 void delete_smalltree(c_base *cb);
-btl_specification *parse(const char *expr);
+btl_specification *parse(char *expr);
+unsigned long int hashsymbol(char *name);
 smallnode *name2smallnode(c_base *cb, char *name, bool create);
 io_signal *name2signal(c_base *cb, char *name, bool create);
 constant *name2constant(c_base *cb, char *name, bool create);

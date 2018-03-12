@@ -5,6 +5,8 @@
   Revised 2016-2018
 */
 
+#define NDEBUG
+
 #define ANSI_FILE_IO
 /* #define UNIX_FILE_IO */
 #define POSIX_IPC_IO
@@ -12,7 +14,7 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.8.0"
+#define PACK_VER "4.8.1"
 #define VER "1.3.2"
 
 INLINE m_time get_time()

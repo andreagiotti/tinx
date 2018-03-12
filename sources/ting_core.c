@@ -3,11 +3,13 @@
   Design & coding by Andrea Giotti, 2017
 */
 
+#define NDEBUG
+
 #include "ting_core.h"
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "1.6.0"
+#define VER "1.6.1"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -237,7 +239,7 @@ void delete_smalltree(c_base *cb)
     }
 }
 
-btl_specification *parse(const char *expr)
+btl_specification *parse(char *expr)
 {
   btl_specification *spec;
   yyscan_t scanner;
@@ -261,6 +263,28 @@ btl_specification *parse(const char *expr)
   return spec;
 }
 
+unsigned long int hashsymbol(char *name)
+{
+  unsigned long int k;
+
+  k = 0;
+
+  while(*name)
+    {
+      k = k * 36;
+
+      if(isdigit(*name))
+        k += *name - '0';
+      else
+        if(isalpha(*name))
+          k += toupper(*name) - 'A' + 10;
+
+      name++;
+    }
+
+  return k;
+}
+
 smallnode *name2smallnode(c_base *cb, char *name, bool create)
 {
   smallnode *vp, *wp;
@@ -268,7 +292,7 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
 
   if(*name)
     {
-      h = hash(name) % SYMTAB_SIZE;
+      h = hashsymbol(name) % SYMTAB_SIZE;
       i = 0;
 
       while((vp = cb->symptr[h][i]))
@@ -355,7 +379,7 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
 
   if(*name)
     {
-      h = hash(name) % SYMTAB_SIZE;
+      h = hashsymbol(name) % SYMTAB_SIZE;
       i = 0;
 
       while((sp = cb->sigptr[h][i]))
@@ -408,7 +432,7 @@ constant *name2constant(c_base *cb, char *name, bool create)
 
   if(*name)
     {
-      h = hash(name) % SYMTAB_SIZE;
+      h = hashsymbol(name) % SYMTAB_SIZE;
       i = 0;
 
       while((tp = cb->intptr[h][i]))
@@ -521,6 +545,8 @@ char *opname(op_type ot)
         assert(FALSE);
       break;
     }
+
+  return "";
 }
 
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
@@ -1394,6 +1420,8 @@ smallnode **get_neighbor_handle(smallnode *vp, smallnode *wp)
 
   assert(vp && wp);
 
+  zpp = NULL;
+
   if(vp == *genup(wp))
     zpp = genup(wp);
   else
@@ -1413,6 +1441,8 @@ smallnode *gendir(smallnode *vp, smallnode *bp, direction dir)
   smallnode *zp;
 
   assert(vp && !vp->zombie);
+
+  zp = NULL;
 
   switch(dir)
     {
@@ -2350,11 +2380,11 @@ int main(int argc, char *argv[])
 
   if(cperf.ok)
     printf("Network generated -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d signals, %d initial conditions\n",
-     cperf.edges, cperf.tot_nodes, cperf.num_nodes[gate], cperf.num_nodes[joint], cperf.num_nodes[delay], cperf.num_signals, cperf.num_ics);
+            cperf.edges, cperf.tot_nodes, cperf.num_nodes[gate], cperf.num_nodes[joint], cperf.num_nodes[delay], cperf.num_signals, cperf.num_ics);
   else
     printf("Network not generated\n");
 
-  return !cperf.ok;
+  return cperf.ok? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 

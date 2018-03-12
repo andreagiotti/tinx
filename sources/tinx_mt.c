@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "4.2.4 MT (multiple cores)"
+#define VER "4.2.5 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -62,6 +62,33 @@ INLINE m_time get_time()
   clock_gettime(CLOCK_TYPE, &ts);
 
   return ts.tv_sec + 0.000000001 * ts.tv_nsec;
+}
+
+unsigned long int hashnode(char *name)
+{
+  unsigned long int k;
+  char *c;
+
+  k = 0;
+
+  while(*name)
+    {
+      k = k * 10;
+
+      if(isdigit(*name))
+        k += *name - '0';
+      else
+        if(isalpha(*name))
+          {
+            c = strchr(class_symbol, toupper(*name));
+            if(c)
+              k += c - class_symbol;
+          }
+
+      name++;
+    }
+
+  return k;
 }
 
 int gcd(int p, int q)
@@ -1047,7 +1074,7 @@ node *name2node(k_base *kb, char *name)
 
   if(*name)
     {
-      h = hash(name) % HASH_SIZE;
+      h = hashnode(name) % HASH_SIZE;
       i = 0;
 
       while((vp = kb->table[h][i]))

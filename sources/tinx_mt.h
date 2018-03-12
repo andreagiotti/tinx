@@ -123,7 +123,6 @@ typedef struct linkage
 #define MAX_NAMELEN 63
 #define MAX_NAMEBUF (2 * MAX_NAMELEN + 1)
 #define MAX_NAMEBUF_C "126"
-#define FAKE_BASE_BITS 2    /* b = 4 = 2^2 bits (should be 36 for exact behaviour), n = 15 (lenght), 2 * b^n - 1 == LONG_MAX */
 #define DEBUG_STRLEN 65536
 
 #if defined ANSI_FILE_IO
@@ -205,6 +204,10 @@ typedef struct linkage
   #define MAGIC_TOKEN 'G'
   #define PERMS 0660
 
+  #define FAKE_BASE_BITS 2    /* b = 4 = 2^2 bits (should be 36 for exact behaviour), n = 15 (lenght), 2 * b^n - 1 == LONG_MAX */
+
+  long int queue_key(char *name);
+
   #define IO_ERR_LIMIT 1000000
 
 #endif
@@ -278,9 +281,8 @@ struct node
 #define myexit(RV) pthread_exit(NULL)
 
 #define HASH_SIZE 8191    /* Prime number */
-#define HASH_DEPTH 8
+#define HASH_DEPTH 64
 #define HASH_FMT "%X"
-#define hash(X) strtoul(X, NULL, 36)
 
 #define set_fields(F, TID) ((F) |= 1 << (TID))
 #define reset_fields(F, TID) ((F) &= ~ (1 << (TID)))
@@ -400,6 +402,7 @@ typedef struct thread_arg
 INLINE event ev_neg(event s);
 arc arc_between(node *vp, node *wp);
 INLINE m_time get_time(void);
+unsigned long int hashnode(char *name);
 int gcd(int p, int q);
 
 INLINE void state(k_base *kb, event s, int tid);
