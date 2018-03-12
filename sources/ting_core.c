@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "1.6.1"
+#define VER "1.6.2"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 

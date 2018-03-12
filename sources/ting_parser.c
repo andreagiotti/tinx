@@ -1874,7 +1874,7 @@ yyreduce:
   case 55:
 #line 233 "ting.y" /* yacc.c:1646  */
     { (yyval.varname) = create_operation(op_matrix, create_ground(op_name, (yyvsp[-5].symbol), 0),
-      create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s,%s)"); }
+      create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s)"); }
 #line 1879 "ting_parser.c" /* yacc.c:1646  */
     break;
 
@@ -1893,7 +1893,7 @@ yyreduce:
   case 58:
 #line 240 "ting.y" /* yacc.c:1646  */
     { (yyval.declname) = create_operation(op_matrix, create_ground(op_dname, (yyvsp[-5].symbol), 0),
-      create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s,%s)"); }
+      create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s)"); }
 #line 1898 "ting_parser.c" /* yacc.c:1646  */
     break;
 
@@ -1912,7 +1912,7 @@ yyreduce:
   case 61:
 #line 247 "ting.y" /* yacc.c:1646  */
     { (yyval.initname) = create_operation(op_matrix, create_ground(op_iname, (yyvsp[-5].symbol), 0),
-      create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s,%s)"); }
+      create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s)"); }
 #line 1917 "ting_parser.c" /* yacc.c:1646  */
     break;
 
