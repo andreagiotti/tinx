@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.8.2"
-#define VER "1.3.2"
+#define PACK_VER "4.9.0"
+#define VER "1.4.0"
 
 INLINE m_time get_time()
 {
@@ -170,7 +170,6 @@ gboolean tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, s_base *sb
 void tintloop(s_base *sb)
 {
   d_time tau[MAX_FILES];
-  m_time time_base;
   char ic, oc;
   int i;
 
@@ -179,11 +178,9 @@ void tintloop(s_base *sb)
 
   sb->t = 0;
 
-  time_base = get_time();
-
   for(;;)
     {
-      sb->time = get_time() - time_base;
+      sb->time = get_time() - sb->time_base;
       if(sb->time >= sb->t * sb->cp_step * (1 + sb->correction))
         {
           if(!sb->batch)
@@ -478,22 +475,26 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
               }
           }
 
+        sb->time_base = get_time();
         sb->mt = (sb->num_threads > 1);
 
         strcpy(cmd, CMD_PATH);
         strcat(cmd, sb->mt? "tinx_mt" : "tinx");
         strcat(cmd, " 2>&1");
 
-        sprintf(arg, " -t "REAL_FMT, sb->step);
-        strcat(cmd, arg);
-
-        sprintf(arg, " -z "TIME_FMT, sb->max_time);
-        strcat(cmd, arg);
-
         sprintf(arg, " -n %d", sb->num_threads);
         strcat(cmd, arg);
 
         sprintf(arg, " -r %d", sb->bsbt);
+        strcat(cmd, arg);
+
+        sprintf(arg, " -t "REAL_FMT, sb->step);
+        strcat(cmd, arg);
+
+        sprintf(arg, " -g "ORIGIN_FMT, sb->time_base);
+        strcat(cmd, arg);
+
+        sprintf(arg, " -z "TIME_FMT, sb->max_time);
         strcat(cmd, arg);
 
         if(sb->load_state)

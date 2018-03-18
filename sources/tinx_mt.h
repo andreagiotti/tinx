@@ -173,7 +173,7 @@ typedef struct linkage
   #define MAGIC_PREFIX "/"MAGIC_NAME":"
   #define PERMS 0660
   #define MAX_MESSAGES 10
-  #define MSG_SIZE 1024
+  #define MSG_SIZE 128
 
   #define IO_ERR_LIMIT 1000000
 
@@ -440,7 +440,7 @@ void loops(thread_arg *tp);
 void loops_io(thread_arg *tp);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sturdy,
-         int bufexp, d_time max_time, m_time step, int num_threads);
+         int bufexp, d_time max_time, m_time step, m_time origin, int num_threads);
 
 /* End of protos */
 

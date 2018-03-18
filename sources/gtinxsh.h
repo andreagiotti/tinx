@@ -39,6 +39,7 @@
                "This software is licensed under the GNU Public License."
 
 #define REAL_FMT "%.3f"
+#define ORIGIN_FMT "%.9f"
 
 #define XBUFSIZE 262144
 
@@ -77,6 +78,7 @@ typedef struct s_base
     int gn;
     d_time t;
     m_time time;
+    m_time time_base;
     char fnames[MAX_FILES][MAX_STRLEN];
     char gnames[MAX_FILES][MAX_STRLEN];
     int maxlen;

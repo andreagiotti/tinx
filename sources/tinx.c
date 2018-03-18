@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "4.2.5 (single core)"
+#define VER "4.3.0 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -1477,7 +1477,7 @@ void trap()
 
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy,
-         int bufexp, d_time max_time, m_time step)
+         int bufexp, d_time max_time, m_time step, m_time origin)
 {
   k_base *kb;
   info perf;
@@ -1500,7 +1500,10 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
 
   signal(SIGINT, (void (*)())&trap);
 
-  kb->time_base = get_time();
+  if(origin > 0)
+    kb->time_base = origin;
+  else
+    kb->time_base = get_time();
 
   while(!irq && !loop(kb));
 
@@ -1525,13 +1528,14 @@ int main(int argc, char **argv)
   int i;
   info perf;
   d_time max_time;
-  m_time step, default_step;
+  m_time step, default_step, origin;
   int bufexp;
 
   base_name = state_name = logfile_name = xref_name = NULL;
   strictly_causal = soundness_check = echo_stdout = file_io = quiet = hard = sturdy = FALSE;
   bufexp = DEFAULT_BUFEXP;
   max_time = 0;
+  origin = 0;
   default_step = -1;
 
   for(i = 1; i < argc; i++)
@@ -1542,9 +1546,34 @@ int main(int argc, char **argv)
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-cdfilqsvxy] [-I state] [-L log] [-X symbols] [-r core] [-t step] [-z horizon] [base]\n",
+              fprintf(stderr, "Usage: %s [-cdfilqsvxy] [-I state] [-L log] [-X symbols] [-r core] [-t step] [-g origin] [-z horizon] [base]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
+            break;
+
+            case 'g':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                {
+                  origin = atof(argv[i]);
+                  if(origin <= 0)
+                    {
+                      fprintf(stderr, "%f: Argument out of range\n", origin);
+                      exit(EXIT_FAILURE);
+                    }
+                } 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
             break;
 
             case 'I':
@@ -1829,7 +1858,7 @@ int main(int argc, char **argv)
   fflush(stdout);
 
   perf = run(base_name, state_name, logfile_name, xref_name,
-      strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, bufexp, max_time, step);
+      strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, bufexp, max_time, step, origin);
 
   printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.3f seconds, %.3f KLIPS, %lu depth (avg %.3f)\n",
 	irq? "Execution interrupted" : "End of execution",

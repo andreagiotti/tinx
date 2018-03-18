@@ -168,7 +168,7 @@ typedef struct linkage
   #define MAGIC_PREFIX "/"MAGIC_NAME":"
   #define PERMS 0660
   #define MAX_MESSAGES 10
-  #define MSG_SIZE 1024
+  #define MSG_SIZE 128
 
   #define IO_ERR_LIMIT 1000000
 
@@ -371,7 +371,7 @@ void init_state(k_base *kb, char *state_name);
 void trap(void);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy,
-         int bufexp, d_time max_time, m_time step);
+         int bufexp, d_time max_time, m_time step, m_time origin);
 
 /* End of protos */
 
