@@ -57,7 +57,8 @@
 #define ASPECT 0.6
 #define MAX_FONT_PIXELS 16
 
-#define DELAY 1
+#define DELAY 0.1
+#define TAIL_LEN 8
 
 #define round(x) floor(x + 0.5)
 #define print_error(SB, A) print(SB, "%s: %s\n", A, strerror(errno))

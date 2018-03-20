@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.9.0"
-#define VER "1.4.0"
+#define PACK_VER "4.9.1"
+#define VER "1.4.1"
 
 INLINE m_time get_time()
 {
@@ -316,7 +316,7 @@ void tinxpipe(s_base *sb)
 
   sb->term = TRUE;
 
-  if(sb->rs == starting)
+  while(sb->rs == starting)
     sleep(DELAY);
 
   if(sb->rs == started)
@@ -331,8 +331,9 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
   char cmd[MAX_STRLEN_IF], arg[MAX_STRLEN_IF];
   pthread_attr_t attributes;
-  int i, k, len;
-  char c, oc;
+  int i, k, len, count;
+  char c, ic, oc;
+  bool tokill;
   pid_t pid;
 
   switch(sb->rs)
@@ -596,6 +597,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
       case started:
         sb->rs = stopping;
 
+        tokill = !sb->fn;
         if(!sb->cp_quiet)
           {
             pthread_join(sb->tintloop, NULL);
@@ -637,29 +639,62 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
               }
 
             for(i = 0; i < sb->gn; i++)
-              if(sb->cp_file_io)
-                {
-                  if(sb->gp[i] && close_file(sb->gp[i]))
-                    {
-                      print_error(sb, sb->gnames[i]);
-                      break;
-                    }
-                }
-              else
-                {
-                  if(!failed_queue(sb->dp[i]) && commit_queue(sb->dp[i]))
-                    {
-                      print_error(sb, sb->gnames[i]);
-                      break;
-                    }
-                }
+              {
+                if(!tokill)
+                  {
+                    count = 0;
+                    do
+                      {
+                        if(sb->cp_file_io)
+                          {
+                            if(get_file(sb->gp[i], &ic) && file_error(sb->gp[i]))
+                              {
+                                print_error(sb, sb->gnames[i]);
+                                break;
+                              }
+
+                            if(ic == EOF)
+                              reset_file(sb->gp[i]);
+                          }
+                        else
+                          read_message(sb->dp[i], &ic);
+
+                        if(ic != EOF)
+                          count++;
+                      }
+                    while(!sb->term && ic != END_CHAR && count < TAIL_LEN);
+
+                    if(count >= TAIL_LEN)
+                      tokill = TRUE;
+                  }
+
+                if(sb->cp_file_io)
+                  {
+                    if(sb->gp[i] && close_file(sb->gp[i]))
+                      {
+                        print_error(sb, sb->gnames[i]);
+                        break;
+                      }
+                  }
+                else
+                  {
+                    if(!failed_queue(sb->dp[i]) && commit_queue(sb->dp[i]))
+                      {
+                        print_error(sb, sb->gnames[i]);
+                        break;
+                      }
+                  }
+              }
           }
 
-        pid = pidof(sb, sb->mt? "tinx_mt" : "tinx");
-        if(pid > 0)
+        if(tokill)
           {
-            kill(pid, SIGINT);
-            waitpid(pid);
+            pid = pidof(sb, sb->mt? "tinx_mt" : "tinx");
+            if(pid > 0)
+              {
+                kill(pid, SIGINT);
+                waitpid(pid);
+              }
           }
 
         pthread_join(sb->tinxpipe, NULL);
@@ -764,7 +799,7 @@ void about_button_clicked(GtkWidget *widget, s_base *sb)
 
 void exit_button_clicked(GtkWidget *widget, s_base *sb)
 {
-  if(sb->rs == starting || sb->rs == stopping)
+  while(sb->rs == starting || sb->rs == stopping)
     sleep(DELAY);
 
   if(sb->rs == started)
@@ -1264,10 +1299,23 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   sbs.sturdy = sturdy;
   sbs.batch = batch;
 
+  sbs.cp_step = step;
+  sbs.cp_max_time = max_time;
+  sbs.cp_echo_stdout = echo_stdout;
+  sbs.cp_file_io = file_io;
+  sbs.cp_quiet = quiet;
+
+  sbs.fn = 0;
+  sbs.gn = 0;
   sbs.t = 0;
   sbs.time = 0;
-  sbs.rs = stopped;
+  sbs.time_base = 0;
+  sbs.maxlen = 0;
+  sbs.xstart = 0;
+  sbs.xend = 0;
   sbs.xcat = FALSE;
+  sbs.mt = FALSE;
+  sbs.rs = stopped;
 
   gtk_init(NULL, NULL);
 
