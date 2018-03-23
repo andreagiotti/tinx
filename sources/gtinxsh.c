@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.9.1"
-#define VER "1.4.1"
+#define PACK_VER "4.9.2"
+#define VER "1.4.2"
 
 INLINE m_time get_time()
 {
@@ -333,7 +333,6 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
   pthread_attr_t attributes;
   int i, k, len, count;
   char c, ic, oc;
-  bool tokill;
   pid_t pid;
 
   switch(sb->rs)
@@ -597,7 +596,6 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
       case started:
         sb->rs = stopping;
 
-        tokill = !sb->fn;
         if(!sb->cp_quiet)
           {
             pthread_join(sb->tintloop, NULL);
@@ -638,63 +636,69 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                   }
               }
 
-            for(i = 0; i < sb->gn; i++)
+            count = 0;
+            do
               {
-                if(!tokill)
+                for(i = 0; i < sb->gn; i++)
                   {
-                    count = 0;
-                    do
+                    if(sb->cp_file_io)
                       {
-                        if(sb->cp_file_io)
+                        if(get_file(sb->gp[i], &ic) && file_error(sb->gp[i]))
                           {
-                            if(get_file(sb->gp[i], &ic) && file_error(sb->gp[i]))
-                              {
-                                print_error(sb, sb->gnames[i]);
-                                break;
-                              }
-
-                            if(ic == EOF)
-                              reset_file(sb->gp[i]);
+                            print_error(sb, sb->gnames[i]);
+                            break;
                           }
-                        else
-                          read_message(sb->dp[i], &ic);
 
-                        if(ic != EOF)
-                          count++;
+                        if(ic == EOF)
+                          reset_file(sb->gp[i]);
                       }
-                    while(!sb->term && ic != END_CHAR && count < TAIL_LEN);
+                    else
+                      read_message(sb->dp[i], &ic);
 
-                    if(count >= TAIL_LEN)
-                      tokill = TRUE;
-                  }
-
-                if(sb->cp_file_io)
-                  {
-                    if(sb->gp[i] && close_file(sb->gp[i]))
-                      {
-                        print_error(sb, sb->gnames[i]);
-                        break;
-                      }
-                  }
-                else
-                  {
-                    if(!failed_queue(sb->dp[i]) && commit_queue(sb->dp[i]))
-                      {
-                        print_error(sb, sb->gnames[i]);
-                        break;
-                      }
+                    if(ic == END_CHAR)
+                      count += TAIL_LEN;
+                    else
+                      if(ic != EOF)
+                        count++;
                   }
               }
+            while(!sb->term && count < sb->gn * TAIL_LEN);
+
+            for(i = 0; i < sb->gn; i++)
+              if(sb->cp_file_io)
+                {
+                  if(sb->gp[i] && close_file(sb->gp[i]))
+                    {
+                      print_error(sb, sb->gnames[i]);
+                      break;
+                    }
+                }
+              else
+                {
+                  if(!failed_queue(sb->dp[i]) && commit_queue(sb->dp[i]))
+                    {
+                      print_error(sb, sb->gnames[i]);
+                      break;
+                    }
+                }
           }
 
-        if(tokill)
+        pid = 0;
+
+        for(k = 0; k < MAX_WAIT; k++)
           {
             pid = pidof(sb, sb->mt? "tinx_mt" : "tinx");
-            if(pid > 0)
-              {
-                kill(pid, SIGINT);
-                waitpid(pid);
-              }
+
+            if(!pid)
+              break;
+
+            sleep(DELAY);
+          }
+
+        if(pid > 0)
+          {
+            kill(pid, SIGINT);
+            waitpid(pid);
           }
 
         pthread_join(sb->tinxpipe, NULL);

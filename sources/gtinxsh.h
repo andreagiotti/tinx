@@ -58,7 +58,8 @@
 #define MAX_FONT_PIXELS 16
 
 #define DELAY 0.1
-#define TAIL_LEN 8
+#define MAX_WAIT 10
+#define TAIL_LEN 4
 
 #define round(x) floor(x + 0.5)
 #define print_error(SB, A) print(SB, "%s: %s\n", A, strerror(errno))
