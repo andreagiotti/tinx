@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.9.2"
-#define VER "1.4.2"
+#define PACK_VER "4.9.3"
+#define VER "1.4.3"
 
 INLINE m_time get_time()
 {
@@ -317,7 +317,7 @@ void tinxpipe(s_base *sb)
   sb->term = TRUE;
 
   while(sb->rs == starting)
-    sleep(DELAY);
+    usleep(DELAY);
 
   if(sb->rs == started)
     g_signal_emit_by_name(sb->run_button, "clicked");
@@ -692,7 +692,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
             if(!pid)
               break;
 
-            sleep(DELAY);
+            usleep(DELAY);
           }
 
         if(pid > 0)
@@ -804,7 +804,7 @@ void about_button_clicked(GtkWidget *widget, s_base *sb)
 void exit_button_clicked(GtkWidget *widget, s_base *sb)
 {
   while(sb->rs == starting || sb->rs == stopping)
-    sleep(DELAY);
+    usleep(DELAY);
 
   if(sb->rs == started)
     run_button_clicked(GTK_WIDGET(sb->run_button), sb);

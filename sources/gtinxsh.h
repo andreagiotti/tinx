@@ -57,11 +57,11 @@
 #define ASPECT 0.6
 #define MAX_FONT_PIXELS 16
 
-#define DELAY 0.1
-#define MAX_WAIT 10
-#define TAIL_LEN 4
+#define DELAY 10000
+#define MAX_WAIT 50
+#define TAIL_LEN 8
 
-#define round(x) floor(x + 0.5)
+#define round(x) floor((x) + 0.5)
 #define print_error(SB, A) print(SB, "%s: %s\n", A, strerror(errno))
 
 typedef enum runstate
