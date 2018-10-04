@@ -216,7 +216,8 @@ struct stream
 {
   char name[MAX_NAMELEN];
   stream_class sclass;
-  linkage *pin;
+  arc e;
+  arc ne;
   d_time deadline;
   char file_name[MAX_STRLEN];
   char chan_name[MAX_STRLEN];

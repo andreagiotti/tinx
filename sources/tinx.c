@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "4.3.0 (single core)"
+#define VER "4.3.1 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -404,7 +404,7 @@ INLINE bool loop(k_base *kb)
           }
     }
 
-  kb->slice = INFERENCE_SLICE;
+  kb->slice = kb->max_slice;
 
   if(valid(kb->focus) && kb->curr_time - kb->focus.t >= kb->bsd4)
     return FALSE;
@@ -458,11 +458,11 @@ bool input_f(k_base *kb, stream *ios)
     break;
 
     case LO_CHAR:
-      s.e = ios->pin->e;
+      s.e = ios->ne;
     break;
 
     case HI_CHAR:
-      s.e = arc_neg(ios->pin->e);
+      s.e = ios->e;
     break;
 
     case END_CHAR:
@@ -524,11 +524,11 @@ bool input_m(k_base *kb, stream *ios)
     break;
 
     case LO_CHAR:
-      s.e = ios->pin->e;
+      s.e = ios->ne;
     break;
 
     case HI_CHAR:
-      s.e = arc_neg(ios->pin->e);
+      s.e = ios->e;
     break;
 
     case END_CHAR:
@@ -564,13 +564,13 @@ bool output_f(k_base *kb, stream *ios)
   char c;
 
   s.t = kb->curr_time;
-  s.e = ios->pin->e;
+  s.e = ios->ne;
 
   if(is_stated(kb, s))
     c = LO_CHAR;
   else
     {
-      s.e = arc_neg(ios->pin->e);
+      s.e = ios->e;
 
       if(is_stated(kb, s))
         c = HI_CHAR;
@@ -604,13 +604,13 @@ bool output_m(k_base *kb, stream *ios)
   char c;
 
   s.t = kb->curr_time;
-  s.e = ios->pin->e;
+  s.e = ios->ne;
 
   if(is_stated(kb, s))
     c = LO_CHAR;
   else
     {
-      s.e = arc_neg(ios->pin->e);
+      s.e = ios->e;
 
       if(is_stated(kb, s))
         c = HI_CHAR;
@@ -696,6 +696,7 @@ void trace(k_base *kb, event s)
 stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io)
 {
   stream *ios;
+  linkage *pin;
 
   ios = malloc(sizeof(stream));
   if(!ios)
@@ -707,9 +708,13 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   strcpy(ios->name, name);
   ios->sclass = sclass;
 
-  ios->pin = &link_of(e);
-  ios->pin->io_stream[sclass] = ios;
-  link_of(ios->pin->e).io_stream[sclass] = ios;
+  pin = &link_of(e);
+
+  ios->e = e;
+  ios->ne = pin->e;
+
+  pin->io_stream[sclass] = ios;
+  link_of(pin->e).io_stream[sclass] = ios;
 
   if(file_io)
     {
@@ -756,8 +761,8 @@ void close_stream(stream *ios)
 {
   char c;
 
-  ios->pin->io_stream[ios->sclass] = NULL;
-  link_of(ios->pin->e).io_stream[ios->sclass] = NULL;
+  link_of(ios->e).io_stream[ios->sclass] = NULL;
+  link_of(ios->ne).io_stream[ios->sclass] = NULL;
 
   c = END_CHAR;
 
@@ -1339,7 +1344,9 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
         }
     }
 
-  kb->slice = INFERENCE_SLICE;
+  kb->max_slice = kb->perf.edges / (IO_INFERENCE_RATIO * max(1, max(kb->io_num[input_stream], kb->io_num[output_stream])));
+  kb->slice = kb->max_slice;
+
   kb->io_count[input_stream] = kb->io_num[input_stream];
   kb->io_count[output_stream] = kb->io_num[output_stream];
 

@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "4.9.3"
-#define VER "1.4.3"
+#define PACK_VER "4.9.4"
+#define VER "1.4.4"
 
 INLINE m_time get_time()
 {
@@ -78,11 +78,11 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
       cairo_set_font_size(dr, fonth);
     }
   else
-   {
-     recth = 0;
-     fonth = 0;
-     offset = 0;
-   }
+    {
+      recth = 0;
+      fonth = 0;
+      offset = 0;
+    }
 
   cairo_set_source_rgb(dr, 0, 0, 0);
   cairo_rectangle(dr, 0, 0, width, height);
@@ -141,30 +141,35 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
 
 gboolean tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, s_base *sb)
 {
-  char timerstring[MAX_STRLEN_IF];
-  cairo_t *cr;
-  d_time t;
-  m_time time;
-
   if(sb->rs != stopped)
     {
-      cr = gdk_cairo_create(gtk_widget_get_window(widget));
-
-      draw_callback(widget, cr, sb);
-
-      cairo_destroy(cr);
-
-      t = sb->t;        /* mt cache */
-      time = sb->time;
-
-      sprintf(timerstring, TIME_FMT" (%.3f s) %s %.3f s", t, t * sb->cp_step, ((t + 1) * sb->cp_step) < time? "<" : (((t - 1) * sb->cp_step > time)? ">" : "~"), time);
-      gtk_label_set_label(sb->timer, timerstring);
+      update_drawing(sb);
 
       if(sb->cp_echo_stdout)
         g_idle_add((gboolean (*)(gpointer))update_view, sb);
     }
 
   return G_SOURCE_CONTINUE;
+}
+
+void update_drawing(s_base *sb)
+{
+  char timerstring[MAX_STRLEN_IF];
+  cairo_t *cr;
+  d_time t;
+  m_time time;
+
+  cr = gdk_cairo_create(gtk_widget_get_window(GTK_WIDGET(sb->drawingarea)));
+
+  draw_callback(GTK_WIDGET(sb->drawingarea), cr, sb);
+
+  cairo_destroy(cr);
+
+  t = sb->t;        /* mt cache */
+  time = sb->time;
+
+  sprintf(timerstring, TIME_FMT" (%.3f s) %s %.3f s", t, t * sb->cp_step, ((t + 1) * sb->cp_step) < time? "<" : (((t - 1) * sb->cp_step > time)? ">" : "~"), time);
+  gtk_label_set_label(sb->timer, timerstring);
 }
 
 void tintloop(s_base *sb)
@@ -334,6 +339,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
   int i, k, len, count;
   char c, ic, oc;
   pid_t pid;
+  m_time halt;
 
   switch(sb->rs)
     {
@@ -600,6 +606,8 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
           {
             pthread_join(sb->tintloop, NULL);
 
+            update_drawing(sb);
+
             for(i = 0; i < sb->fn; i++)
               {
                 oc = END_CHAR;
@@ -637,6 +645,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
               }
 
             count = 0;
+            halt = get_time();
             do
               {
                 for(i = 0; i < sb->gn; i++)
@@ -662,7 +671,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                         count++;
                   }
               }
-            while(!sb->term && count < sb->gn * TAIL_LEN);
+            while(!sb->term && count < sb->gn * TAIL_LEN && get_time() - halt < MAX_SEC_HALT);
 
             for(i = 0; i < sb->gn; i++)
               if(sb->cp_file_io)
@@ -1347,6 +1356,8 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_widget_set_size_request(drawingarea, WINDOW_WIDTH, GRAPHICS_HEIGHT);
   g_signal_connect(G_OBJECT(drawingarea), "draw", G_CALLBACK(draw_callback), &sbs);
   gtk_widget_add_tick_callback(drawingarea, (gboolean (*)(GtkWidget *, GdkFrameClock *, gpointer))tick_callback, &sbs, NULL);
+
+  sbs.drawingarea = GTK_DRAWING_AREA(drawingarea);
 
   gtk_box_pack_start(GTK_BOX(vboxgfx), drawingarea, TRUE, TRUE, 0);
   gtk_container_add(GTK_CONTAINER(frgfx), vboxgfx);

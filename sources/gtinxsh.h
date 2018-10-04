@@ -57,8 +57,9 @@
 #define ASPECT 0.6
 #define MAX_FONT_PIXELS 16
 
+#define MAX_SEC_HALT 0.5
 #define DELAY 10000
-#define MAX_WAIT 50
+#define MAX_WAIT 10
 #define TAIL_LEN 8
 
 #define round(x) floor((x) + 0.5)
@@ -127,6 +128,7 @@ typedef struct s_base
     pthread_t tinxpipe;
     pthread_mutex_t mutex;
     GtkWindow *window;
+    GtkDrawingArea *drawingarea;
     GtkTextView *textarea;
     GtkButton *run_button;
     GtkLabel *timer;
@@ -173,6 +175,7 @@ void max_time_value(GtkWidget *widget, s_base *sb);
 void num_threads_value(GtkWidget *widget, s_base *sb);
 void prob_value(GtkWidget *widget, s_base *sb);
 void correction_value(GtkWidget *widget, s_base *sb);
+void update_drawing(s_base *sb);
 gboolean update_view(s_base *sb);
 gboolean reset_view(s_base *sb);
 void print(s_base *sb, char *string, ...);

@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "4.3.0 MT (multiple cores)"
+#define VER "4.3.1 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -616,11 +616,11 @@ bool input_f(k_base *kb, stream *ios)
     break;
 
     case LO_CHAR:
-      s.e = ios->pin->e;
+      s.e = ios->ne;
     break;
 
     case HI_CHAR:
-      s.e = arc_neg(ios->pin->e);
+      s.e = ios->e;
     break;
 
     case END_CHAR:
@@ -683,11 +683,11 @@ bool input_m(k_base *kb, stream *ios)
     break;
 
     case LO_CHAR:
-      s.e = ios->pin->e;
+      s.e = ios->ne;
     break;
 
     case HI_CHAR:
-      s.e = arc_neg(ios->pin->e);
+      s.e = ios->e;
     break;
 
     case END_CHAR:
@@ -723,13 +723,13 @@ bool output_f(k_base *kb, stream *ios)
   char c;
 
   s.t = kb->curr_time;
-  s.e = ios->pin->e;
+  s.e = ios->ne;
 
   if(is_stated(kb, s))
     c = LO_CHAR;
   else
     {
-      s.e = arc_neg(ios->pin->e);
+      s.e = ios->e;
 
       if(is_stated(kb, s))
         c = HI_CHAR;
@@ -765,13 +765,13 @@ bool output_m(k_base *kb, stream *ios)
   char c;
 
   s.t = kb->curr_time;
-  s.e = ios->pin->e;
+  s.e = ios->ne;
 
   if(is_stated(kb, s))
     c = LO_CHAR;
   else
     {
-      s.e = arc_neg(ios->pin->e);
+      s.e = ios->e;
 
       if(is_stated(kb, s))
         c = HI_CHAR;
@@ -807,6 +807,7 @@ void trace(k_base *kb, event s, int tid)
 {
   char buffer[MAX_STRLEN], buffer2[MAX_STRLEN], debug[2 * DEBUG_STRLEN + 8];
   arc e1, e2;
+  event r;
   int tid_2;
 
   if(valid(s))
@@ -828,15 +829,16 @@ void trace(k_base *kb, event s, int tid)
 
               for(tid_2 = 0; tid_2 < kb->num_threads; tid_2++)
                 {
-                  if(valid(kb->pv[tid_2].focus))
-                    sprintf(buffer2, " "TIME_FMT" (%d)", kb->pv[tid_2].focus.t, kb->pv[tid_2].delta_len);
+                  r = kb->pv[tid_2].focus;
+                  if(valid(r))
+                    sprintf(buffer2, " "FTIME_FMT" (%04d)", r.t, kb->pv[tid_2].delta_len);
                   else
-                    sprintf(buffer2, " * (%d)", kb->pv[tid_2].delta_len);
+                    sprintf(buffer2, " ****** (%04d)", kb->pv[tid_2].delta_len);
 
                   strcat(buffer, buffer2);
                 }
 
-              sprintf(buffer2, " ] {"TIME_FMT"}", kb->anchor_time);
+              sprintf(buffer2, " ] {"FTIME_FMT"}", kb->anchor_time);
               strcat(buffer, buffer2);
             }
           else
@@ -881,6 +883,7 @@ void trace(k_base *kb, event s, int tid)
 stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io)
 {
   stream *ios;
+  linkage *pin;
 
   ios = malloc(sizeof(stream));
   if(!ios)
@@ -892,9 +895,13 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   strcpy(ios->name, name);
   ios->sclass = sclass;
 
-  ios->pin = &link_of(e);
-  ios->pin->io_stream[sclass] = ios;
-  link_of(ios->pin->e).io_stream[sclass] = ios;
+  pin = &link_of(e);
+
+  ios->e = e;
+  ios->ne = pin->e;
+
+  pin->io_stream[sclass] = ios;
+  link_of(pin->e).io_stream[sclass] = ios;
 
   if(file_io)
     {
@@ -941,8 +948,8 @@ void close_stream(stream *ios)
 {
   char c;
 
-  ios->pin->io_stream[ios->sclass] = NULL;
-  link_of(ios->pin->e).io_stream[ios->sclass] = NULL;
+  link_of(ios->e).io_stream[ios->sclass] = NULL;
+  link_of(ios->ne).io_stream[ios->sclass] = NULL;
 
   c = END_CHAR;
 

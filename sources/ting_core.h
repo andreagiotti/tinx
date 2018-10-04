@@ -10,7 +10,7 @@
 
 #define SOURCE_EXT ".btl"
 
-#define VARSEP "][)(}{"SEPARATORS"~&|@?,;*/+-"
+#define VARSEP "][)(}{"BLANKS"~&|@?,;*/+-#"
 #define VARNAME_FMT "%"MAX_NAMEBUF_C"[^"VARSEP"]"
 
 typedef enum op_type

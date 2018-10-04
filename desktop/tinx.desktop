@@ -1,10 +1,13 @@
 [Desktop Entry]
-Version=1.0
-Type=Application
+Encoding=UTF-8
 Name=TINX
-Exec=gtinxsh
-Comment=A real time inference engine
-Icon=tinx
+Version=4.9.4
+Comment=Real time inference engine for temporal logic specifications
+Exec=/usr/bin/gtinxsh
+Path=/usr/bin/
+Icon=/usr/share/icons/hicolor/512x512/apps/tinx.png
 Terminal=false
+Type=Application
 Categories=Development
-
+GenericName=Real time inference engine
+StartupNotify=false

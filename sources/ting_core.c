@@ -9,11 +9,11 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "1.6.2"
+#define VER "1.6.3"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
-const char class_symbol[NODE_CLASSES_NUMBER + 1] = CLASS_SYMBOLS"L";
+const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
 btl_specification *alloc_syntnode()
 {
@@ -495,7 +495,7 @@ void add_ic(c_base *cb, char *name, bool neg, d_time t)
 
 void gensym(c_base *cb, char *symbol)
 {
-  sprintf(symbol, "%d", cb->num_vargen);
+  sprintf(symbol, "#%d", cb->num_vargen);
   assert(strlen(symbol) <= MAX_NAMELEN);
 
   cb->num_vargen++;
@@ -1220,7 +1220,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
   switch(spec->ot)
     {
       case op_name:
-        sp = name2signal(cb, spec->symbol, isdigit(spec->symbol[0])? TRUE : FALSE);
+        sp = name2signal(cb, spec->symbol, spec->symbol[0] == '#');
         if(sp)
           {
             wp = name2smallnode(cb, spec->symbol, TRUE);

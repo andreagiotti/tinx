@@ -52,7 +52,7 @@ typedef float m_time;
 
 #define DEFAULT_BUFEXP 10    /* 1024 */
 
-#define INFERENCE_SLICE 8
+#define IO_INFERENCE_RATIO 2
 
 typedef enum link_code
 {
@@ -211,7 +211,8 @@ struct stream
 {
   char name[MAX_NAMELEN];
   stream_class sclass;
-  linkage *pin;
+  arc e;
+  arc ne;
   d_time deadline;
   char file_name[MAX_STRLEN];
   char chan_name[MAX_STRLEN];
@@ -291,6 +292,7 @@ typedef struct k_base
   int fails;
   int errors;
   int slice;
+  int max_slice;
   d_time curr_time;
   d_time max_time;
   d_time offset;
