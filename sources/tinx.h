@@ -50,9 +50,9 @@ typedef float m_time;
 #define CLOCK_TYPE CLOCK_MONOTONIC_RAW
 #define DEFAULT_STEP_SEC ((m_time) 0.1)
 
-#define DEFAULT_BUFEXP 10    /* 1024 */
+#define DEFAULT_BUFEXP 10     /* 1024 */
 
-#define IO_INFERENCE_RATIO 2
+#define IO_INFERENCE_RATIO 3  /* 90.625 % */
 
 typedef enum link_code
 {
@@ -275,6 +275,17 @@ typedef struct info
   m_time ticks;
 } info;
 
+typedef enum symbol
+{
+  false_symbol,
+  true_symbol,
+  unknown_symbol,
+  end_symbol,
+  term_symbol,
+  eof_symbol,
+  SYMBOL_NUMBER
+} symbol;
+
 typedef struct k_base k_base;
 
 typedef struct k_base
@@ -293,6 +304,7 @@ typedef struct k_base
   int errors;
   int slice;
   int max_slice;
+  char alpha[SYMBOL_NUMBER + 1];
   d_time curr_time;
   d_time max_time;
   d_time offset;
@@ -331,11 +343,7 @@ typedef struct k_base
 #define STREAM_EXT ".io"
 #define XREF_EXT ".sym"
 
-#define LO_CHAR '0'
-#define HI_CHAR '1'
-#define UNKNOWN_CHAR '?'
-#define END_CHAR '.'
-#define TERM_CHAR '\x1b' /* Escape */
+#define IO_SYMBOLS "01?.\x1b\xff"
 
 /* Protos */
 
@@ -356,24 +364,24 @@ bool output_f(k_base *kb, stream *ios);
 bool input_m(k_base *kb, stream *ios);
 bool output_m(k_base *kb, stream *ios);
 void trace(k_base *kb, event s);
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io);
-void close_stream(stream *ios);
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, char *prefix, char *path);
+void close_stream(stream *ios, char *alpha);
 void remove_stream(stream **handle);
 
 node *alloc_node(k_base *kb, char *name);
 void free_node(k_base *kb, node *vp);
-node *name2node(k_base *kb, char *name);
+node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
                   bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sturdy,
-                  int bufexp, d_time max_time, m_time step);
+                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha);
 void close_base(k_base *kb);
 void init_state(k_base *kb, char *state_name);
 
 void trap(void);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy,
-         int bufexp, d_time max_time, m_time step, m_time origin);
+         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha);
 
 /* End of protos */
 

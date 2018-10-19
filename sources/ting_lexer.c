@@ -527,16 +527,21 @@ static yyconst flex_int32_t yy_rule_can_match_eol[41] =
 #include "ting_core.h"
 #include "ting_parser.h"
 
-#define YY_USER_ACTION yylloc->first_line = yylloc->last_line = yylineno + 1; \
-                       yylloc->first_column = yycolumn; \
-                       yylloc->last_column = yycolumn + yyleng - 1; \
+#define YY_USER_ACTION tr.token[tr.idx] = strdup(yytext); \
+                       tr.line[tr.idx] = yylineno; \
+                       tr.column[tr.idx] = yycolumn; \
+                       tr.length[tr.idx] = yyleng; \
+                       yyset_extra(tr,yyg); \
+                       tr.idx = (tr.idx + 1) % NUM_TOKENS; \
                        yycolumn += yyleng;
+
+tracker tr;
 
 int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, const char *msg);
 
 #define YY_NO_UNISTD_H 1
 #define YY_NO_INPUT 1
-#line 540 "ting_lexer.c"
+#line 545 "ting_lexer.c"
 
 #define INITIAL 0
 
@@ -548,9 +553,7 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
 #include <unistd.h>
 #endif
 
-#ifndef YY_EXTRA_TYPE
-#define YY_EXTRA_TYPE void *
-#endif
+#define YY_EXTRA_TYPE tracker
 
 /* Holds the entire state of the reentrant scanner. */
 struct yyguts_t
@@ -822,10 +825,10 @@ YY_DECL
 		}
 
 	{
-#line 65 "ting.l"
+#line 71 "ting.l"
 
 
-#line 829 "ting_lexer.c"
+#line 832 "ting_lexer.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -893,207 +896,207 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 67 "ting.l"
+#line 73 "ting.l"
 {  }
 	YY_BREAK
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 68 "ting.l"
+#line 74 "ting.l"
 {  }
 	YY_BREAK
 case 3:
 YY_RULE_SETUP
-#line 70 "ting.l"
+#line 76 "ting.l"
 { return TOKEN_NOT; }
 	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 71 "ting.l"
+#line 77 "ting.l"
 { return TOKEN_AND; }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 72 "ting.l"
+#line 78 "ting.l"
 { return TOKEN_OR; }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 73 "ting.l"
+#line 79 "ting.l"
 { return TOKEN_AT; }
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 74 "ting.l"
+#line 80 "ting.l"
 { return TOKEN_HAPPEN; }
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 75 "ting.l"
+#line 81 "ting.l"
 { return TOKEN_SINCE; }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 76 "ting.l"
+#line 82 "ting.l"
 { return TOKEN_UNTIL; }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 77 "ting.l"
+#line 83 "ting.l"
 { return TOKEN_FORALL; }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 78 "ting.l"
+#line 84 "ting.l"
 { return TOKEN_EXISTS; }
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 79 "ting.l"
+#line 85 "ting.l"
 { return TOKEN_ONE; }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 80 "ting.l"
+#line 86 "ting.l"
 { return TOKEN_UNIQUE; }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 81 "ting.l"
+#line 87 "ting.l"
 { return TOKEN_IMPLY; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 82 "ting.l"
+#line 88 "ting.l"
 { return TOKEN_EQV; }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 83 "ting.l"
+#line 89 "ting.l"
 { return TOKEN_EQUAL; }
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 84 "ting.l"
+#line 90 "ting.l"
 { return TOKEN_PLUS; }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 85 "ting.l"
+#line 91 "ting.l"
 { return TOKEN_MINUS; }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 86 "ting.l"
+#line 92 "ting.l"
 { return TOKEN_MUL; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 87 "ting.l"
+#line 93 "ting.l"
 { return TOKEN_DIV; }
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 88 "ting.l"
+#line 94 "ting.l"
 { return TOKEN_INPUT; }
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 89 "ting.l"
+#line 95 "ting.l"
 { return TOKEN_OUTPUT; }
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 90 "ting.l"
+#line 96 "ting.l"
 { return TOKEN_AUX; }
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 91 "ting.l"
+#line 97 "ting.l"
 { return TOKEN_INIT; }
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 92 "ting.l"
+#line 98 "ting.l"
 { return TOKEN_DEFINE; }
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 93 "ting.l"
+#line 99 "ting.l"
 { return TOKEN_ITER; }
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 95 "ting.l"
+#line 101 "ting.l"
 { return TOKEN_COMMA; }
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 96 "ting.l"
+#line 102 "ting.l"
 { return TOKEN_LPAREN; }
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 97 "ting.l"
+#line 103 "ting.l"
 { return TOKEN_RPAREN; }
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 98 "ting.l"
-{ return TOKEN_LSQUAR; }
+#line 104 "ting.l"
+{ return TOKEN_LSQUARED; }
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 99 "ting.l"
-{ return TOKEN_RSQUAR; }
+#line 105 "ting.l"
+{ return TOKEN_RSQUARED; }
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 100 "ting.l"
+#line 106 "ting.l"
 { return TOKEN_SEMICOLON; }
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 101 "ting.l"
-{ return TOKEN_LBRA; }
+#line 107 "ting.l"
+{ return TOKEN_LBRACKET; }
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 102 "ting.l"
-{ return TOKEN_RBRA; }
+#line 108 "ting.l"
+{ return TOKEN_RBRACKET; }
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 104 "ting.l"
+#line 110 "ting.l"
 { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_NAME; }
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 105 "ting.l"
+#line 111 "ting.l"
 { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_ITERATOR; }
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 106 "ting.l"
+#line 112 "ting.l"
 { sscanf(yytext, TIME_FMT, &yylval->value); return TOKEN_NUMBER; }
 	YY_BREAK
 case 38:
 /* rule 38 can match eol */
 YY_RULE_SETUP
-#line 107 "ting.l"
+#line 113 "ting.l"
 {  }
 	YY_BREAK
 case 39:
 YY_RULE_SETUP
-#line 109 "ting.l"
-{ yyerror(yylloc, NULL, NULL, "unknown keyword"); exit(EXIT_FAILURE); }
+#line 115 "ting.l"
+{ yyerror(yylloc, NULL, yyg, "unknown keyword"); exit(EXIT_FAILURE); }
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 111 "ting.l"
+#line 117 "ting.l"
 YY_FATAL_ERROR( "flex scanner jammed" );
 	YY_BREAK
-#line 1097 "ting_lexer.c"
+#line 1100 "ting_lexer.c"
 case YY_STATE_EOF(INITIAL):
 	yyterminate();
 
@@ -2258,7 +2261,7 @@ void yyfree (void * ptr , yyscan_t yyscanner)
 
 #define YYTABLES_NAME "yytables"
 
-#line 111 "ting.l"
+#line 117 "ting.l"
 
 
 

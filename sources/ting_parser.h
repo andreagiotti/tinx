@@ -40,14 +40,25 @@
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 17 "ting.y" /* yacc.c:1909  */
+#line 34 "ting.y" /* yacc.c:1909  */
 
 #ifndef YY_TYPEDEF_YY_SCANNER_T
 #define YY_TYPEDEF_YY_SCANNER_T
   typedef void *yyscan_t;
 #endif
 
-#line 51 "ting_parser.h" /* yacc.c:1909  */
+#define NUM_TOKENS 3
+
+typedef struct tracker
+  {
+    char *token[NUM_TOKENS];
+    int line[NUM_TOKENS];
+    int column[NUM_TOKENS];
+    int length[NUM_TOKENS];
+    int idx;
+  } tracker;
+
+#line 62 "ting_parser.h" /* yacc.c:1909  */
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -68,12 +79,12 @@ extern int yydebug;
     TOKEN_MINUS = 269,
     TOKEN_MUL = 270,
     TOKEN_DIV = 271,
-    TOKEN_LBRA = 272,
-    TOKEN_RBRA = 273,
+    TOKEN_LBRACKET = 272,
+    TOKEN_RBRACKET = 273,
     TOKEN_LPAREN = 274,
     TOKEN_RPAREN = 275,
-    TOKEN_LSQUAR = 276,
-    TOKEN_RSQUAR = 277,
+    TOKEN_LSQUARED = 276,
+    TOKEN_RSQUARED = 277,
     TOKEN_COMMA = 278,
     TOKEN_ITER = 279,
     TOKEN_DEFINE = 280,
@@ -97,7 +108,7 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 35 "ting.y" /* yacc.c:1909  */
+#line 64 "ting.y" /* yacc.c:1909  */
 
   char symbol[MAX_NAMELEN];
   d_time value;
@@ -122,7 +133,7 @@ union YYSTYPE
   btl_specification *expression;
   btl_specification *number;
 
-#line 126 "ting_parser.h" /* yacc.c:1909  */
+#line 137 "ting_parser.h" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;

@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "4.3.1 MT (multiple cores)"
+#define VER "5.0.1 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -108,10 +108,11 @@ int gcd(int p, int q)
 
 /******** Inference engine ********/
 
-INLINE void state(k_base *kb, event s, int tid)
+INLINE void state(k_base *kb, event s)
 {
   event q, r;
   priv_vars *pvp;
+  int tid;
 
   assert(kb);
   assert(valid(s));
@@ -128,6 +129,7 @@ INLINE void state(k_base *kb, event s, int tid)
 
   set_stated(kb, s);
 
+  tid = s.e.vp->def_proc;
   pvp = &kb->pv[tid];
 
   lock_delta(kb, tid);
@@ -262,15 +264,13 @@ INLINE event choose(k_base *kb, int tid)
   return s;
 }
 
-INLINE void process(k_base *kb, event s, int tid)
+INLINE void process(k_base *kb, event s)
 {
   event r;
   link_code lc1, lc2;
 
   assert(kb);
   assert(valid(s));
-
-  kb->pv[tid].count++;
 
   switch(s.e.vp->nclass)
     {
@@ -284,7 +284,7 @@ INLINE void process(k_base *kb, event s, int tid)
           r.e = s.e.vp->pin[lc2].e;
           r.t = s.t;
 
-          safe_state(kb, r, tid);
+          safe_state(kb, r);
         }
       else
         if(s.e.vp->pin[lc2].history[index_of(kb, s)].chosen == phase_of(kb, s))
@@ -292,7 +292,7 @@ INLINE void process(k_base *kb, event s, int tid)
             r.e = s.e.vp->pin[lc1].e;
             r.t = s.t;
 
-            safe_state(kb, r, tid);
+            safe_state(kb, r);
           }
 
     break;
@@ -305,17 +305,17 @@ INLINE void process(k_base *kb, event s, int tid)
         {
           r.e = s.e.vp->pin[left_son].e;
 
-          safe_state(kb, r, tid);
+          safe_state(kb, r);
 
           r.e = s.e.vp->pin[right_son].e;
 
-          safe_state(kb, r, get_tid(kb, tid));
+          safe_state(kb, r);
         }
       else
         {
           r.e = s.e.vp->pin[parent].e;
 
-          safe_state(kb, r, tid);
+          safe_state(kb, r);
         }
 
       break;
@@ -336,10 +336,10 @@ INLINE void process(k_base *kb, event s, int tid)
       if(kb->strictly_causal)
         {
           if(r.t >= s.t)
-            safe_state(kb, r, tid);
+            safe_state(kb, r);
         }
       else
-        safe_state(kb, r, tid);
+        safe_state(kb, r);
 
       break;
 
@@ -350,6 +350,8 @@ INLINE void process(k_base *kb, event s, int tid)
 
 INLINE void scan_inputs(k_base *kb)
 {
+  stream *ios;
+
   assert(kb);
 
   if(kb->io_stream[input_stream])
@@ -369,7 +371,9 @@ INLINE void scan_inputs(k_base *kb)
             kb->io_stream[input_stream] = kb->io_stream[input_stream]->next_ios;
           else
             {
+              ios = kb->io_stream[input_stream];
               remove_stream(&kb->io_stream[input_stream]);
+              close_stream(ios, kb->alpha);
 
               kb->io_num[input_stream]--;
               kb->io_count[input_stream]--;
@@ -383,6 +387,8 @@ INLINE void scan_inputs(k_base *kb)
 
 INLINE void scan_outputs(k_base *kb)
 {
+  stream *ios;
+
   assert(kb);
 
   if(kb->io_stream[output_stream])
@@ -412,7 +418,9 @@ INLINE void scan_outputs(k_base *kb)
               kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
             else
               {
+                ios = kb->io_stream[output_stream];
                 remove_stream(&kb->io_stream[output_stream]);
+                close_stream(ios, kb->alpha);
 
                 kb->io_num[output_stream]--;
                 kb->io_count[output_stream]--;
@@ -437,7 +445,10 @@ INLINE bool loop(k_base *kb, int tid)
     trace(kb, s, tid);
 
   if(valid(s))
-    process(kb, s, tid);
+    {
+      process(kb, s);
+      kb->pv[tid].count++;
+    }
 
   if(kb->pv[tid].passed)
     {
@@ -561,32 +572,6 @@ INLINE void barrier(k_base *kb, int tid)
   unlock_barrier(kb);
 }
 
-INLINE int get_tid(k_base *kb, int tid)
-{
-  int tid_1, tid_2;
-
-  tid_1 = kb->pv[tid].curr_tid;
-  tid_2 = (tid_1 + 1) % kb->num_threads;
-
-  if(kb->pv[tid_2].delta_len < kb->pv[tid_1].delta_len)
-    kb->pv[tid].curr_tid = tid_2;
-
-  return tid_1;
-}
-
-INLINE int get_tid_io(k_base *kb)
-{
-  int tid_1, tid_2;
-
-  tid_1 = kb->io_curr_tid;
-  tid_2 = (tid_1 + 1) % kb->num_threads;
-
-  if(kb->pv[tid_2].delta_len < kb->pv[tid_1].delta_len)
-    kb->io_curr_tid = tid_2;
-
-  return tid_1;
-}
-
 /******** Input/Output ********/
 
 bool input_f(k_base *kb, stream *ios)
@@ -603,32 +588,31 @@ bool input_f(k_base *kb, stream *ios)
       return FALSE;
     }
 
-  switch(c)
+  switch(strchr(kb->alpha, c) - kb->alpha)
     {
-    case EOF:
+    case eof_symbol:
       reset_file(ios->fp);
       return FALSE;
     break;
 
-    case UNKNOWN_CHAR:
-    case '\0':
+    case unknown_symbol:
       return TRUE;
     break;
 
-    case LO_CHAR:
+    case false_symbol:
       s.e = ios->ne;
     break;
 
-    case HI_CHAR:
+    case true_symbol:
       s.e = ios->e;
     break;
 
-    case END_CHAR:
+    case end_symbol:
       ios->open = FALSE;
       return FALSE;
     break;
 
-    case TERM_CHAR:
+    case term_symbol:
       irq = TRUE;
       return FALSE;
     break;
@@ -642,7 +626,7 @@ bool input_f(k_base *kb, stream *ios)
 
   if(valid(s))
     {
-      safe_state(kb, s, get_tid_io(kb));
+      safe_state(kb, s);
 
       return TRUE;
     }
@@ -671,31 +655,30 @@ bool input_m(k_base *kb, stream *ios)
   else
     kb->io_err = FALSE;
 
-  switch(c)
+  switch(strchr(kb->alpha, c) - kb->alpha)
     {
-    case EOF:
+    case eof_symbol:
       return FALSE;
     break;
 
-    case UNKNOWN_CHAR:
-    case '\0':
+    case unknown_symbol:
       return TRUE;
     break;
 
-    case LO_CHAR:
+    case false_symbol:
       s.e = ios->ne;
     break;
 
-    case HI_CHAR:
+    case true_symbol:
       s.e = ios->e;
     break;
 
-    case END_CHAR:
+    case end_symbol:
       ios->open = FALSE;
       return FALSE;
     break;
 
-    case TERM_CHAR:
+    case term_symbol:
       irq = TRUE;
       return FALSE;
     break;
@@ -709,7 +692,7 @@ bool input_m(k_base *kb, stream *ios)
 
   if(valid(s))
     {
-      safe_state(kb, s, get_tid_io(kb));
+      safe_state(kb, s);
 
       return TRUE;
     }
@@ -726,17 +709,17 @@ bool output_f(k_base *kb, stream *ios)
   s.e = ios->ne;
 
   if(is_stated(kb, s))
-    c = LO_CHAR;
+    c = kb->alpha[false_symbol];
   else
     {
       s.e = ios->e;
 
       if(is_stated(kb, s))
-        c = HI_CHAR;
+        c = kb->alpha[true_symbol];
       else
         {
           if(kb->io_num[input_stream] && kb->last_far == kb->curr_time)
-            c = UNKNOWN_CHAR;
+            c = kb->alpha[unknown_symbol];
           else
             return FALSE;
         }
@@ -768,17 +751,17 @@ bool output_m(k_base *kb, stream *ios)
   s.e = ios->ne;
 
   if(is_stated(kb, s))
-    c = LO_CHAR;
+    c = kb->alpha[false_symbol];
   else
     {
       s.e = ios->e;
 
       if(is_stated(kb, s))
-        c = HI_CHAR;
+        c = kb->alpha[true_symbol];
       else
         {
           if(kb->io_num[input_stream] && kb->last_far == kb->curr_time)
-            c = UNKNOWN_CHAR;
+            c = kb->alpha[unknown_symbol];
           else
             return FALSE;
         }
@@ -880,7 +863,7 @@ void trace(k_base *kb, event s, int tid)
       }
 }
 
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io)
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, char *prefix, char *path)
 {
   stream *ios;
   linkage *pin;
@@ -900,12 +883,26 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   ios->e = e;
   ios->ne = pin->e;
 
+  if(sclass == input_stream)
+    {
+      pin->shared = TRUE;
+      link_of(pin->e).shared = TRUE;
+    }
+
   pin->io_stream[sclass] = ios;
   link_of(pin->e).io_stream[sclass] = ios;
 
   if(file_io)
     {
-      strcpy(ios->file_name, name);
+      if(*path)
+        {
+          strcpy(ios->file_name, path);
+          strcat(ios->file_name, "/");
+        }
+      else
+        *(ios->file_name) = '\0';
+
+      strcat(ios->file_name, name);
       strcat(ios->file_name, STREAM_EXT);
 
       if(sclass == input_stream)
@@ -925,7 +922,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
     }
   else
     {
-      strcpy(ios->chan_name, MAGIC_PREFIX);
+      strcpy(ios->chan_name, prefix);
       strcat(ios->chan_name, name);
 
       ios->chan = add_queue(ios->chan_name, sclass);
@@ -944,18 +941,14 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   return ios;
 }
 
-void close_stream(stream *ios)
+void close_stream(stream *ios, char *alpha)
 {
-  char c;
-
   link_of(ios->e).io_stream[ios->sclass] = NULL;
   link_of(ios->ne).io_stream[ios->sclass] = NULL;
 
-  c = END_CHAR;
-
   if(ios->file_io)
     {
-      if(ios->sclass == output_stream && put_file(ios->fp, &c))
+      if(ios->sclass == output_stream && put_file(ios->fp, &alpha[end_symbol]))
         {
           perror(ios->file_name);
           exit(EXIT_FAILURE);
@@ -970,7 +963,7 @@ void close_stream(stream *ios)
   else
     {
       if(ios->sclass == output_stream)
-        send_message(ios->chan, &c);
+        send_message(ios->chan, &alpha[end_symbol]);
 
       if(commit_queue(ios->chan))
         {
@@ -996,8 +989,6 @@ void remove_stream(stream **handle)
 
   next_ios->prev_ios = (*handle)->prev_ios;
   (*handle)->prev_ios->next_ios = next_ios;
-
-  close_stream(*handle);
 
   if(*handle == next_ios)
     (*handle) = NULL;
@@ -1028,6 +1019,8 @@ node *alloc_node(k_base *kb, char *name)
       vp->pin[lc].e.vp = NULL;
       vp->pin[lc].e.lc = no_link;
 
+      vp->pin[lc].shared = FALSE;
+
       vp->pin[lc].history = malloc(sizeof(record) * (kb->bsm1 + 1));
       if(!vp->pin[lc].history)
         {
@@ -1051,6 +1044,7 @@ node *alloc_node(k_base *kb, char *name)
     }
 
   vp->debug = NULL;
+  vp->def_proc = NO_THREAD;
 
   return vp;
 }
@@ -1074,7 +1068,7 @@ void free_node(k_base *kb, node *vp)
   free(vp);
 }
 
-node *name2node(k_base *kb, char *name)
+node *name2node(k_base *kb, char *name, bool create)
 {
   node *vp;
   int h, i;
@@ -1086,34 +1080,39 @@ node *name2node(k_base *kb, char *name)
 
       while((vp = kb->table[h][i]))
         {
-        if(strcmp(vp->name, name))
-          {
-            i++;
+          if(strcmp(vp->name, name))
+            {
+              i++;
 
-            if(i == HASH_DEPTH)
-              {
-                fprintf(stderr, "%s, %s: Node names generate duplicate hashes\n",
-                    vp->name, name);
+              if(i == HASH_DEPTH)
+                {
+                  fprintf(stderr, "%s, %s: Node names generate duplicate hashes\n",
+                      vp->name, name);
 
-                exit(EXIT_FAILURE);
-              }
-          }
-        else
-          return vp;
+                  exit(EXIT_FAILURE);
+                }
+            }
+          else
+            return vp;
         }
 
-      vp = alloc_node(kb, name);
-      assert(vp);
+      if(create)
+        {
+          vp = alloc_node(kb, name);
+          assert(vp);
 
-      vp->vp = kb->network;
-      kb->network = vp;
+          vp->vp = kb->network;
+          kb->network = vp;
 
-      kb->table[h][i] = vp;
+          kb->table[h][i] = vp;
 
 #if !defined NDEBUG
-      printf("%s -> "HASH_FMT"\n", name, h);
+          printf("%s -> "HASH_FMT"\n", name, h);
 #endif
-      return vp;
+          return vp;
+        }
+      else
+        return NULL;
     }
   else
     return NULL;
@@ -1203,8 +1202,111 @@ void thread_network(node *network)
     }
 }
 
+void assign_threads(k_base *kb)
+{
+  node *vp;
+  link_code lc;
+  int nodes, n, tid, tid_2, to_go;
+
+  nodes = kb->perf.nodes;
+
+  while(nodes)
+    {
+      n = 0;
+      to_go = 0;
+      tid_2 = NO_THREAD;
+
+      for(vp = kb->network; vp; vp = vp->vp)
+        {
+          tid = kb->num_threads * n / kb->perf.nodes;
+          n++;
+
+          if(tid_2 != tid && vp->def_proc == NO_THREAD)
+            {
+              kb->fifo[tid][kb->fifo_end[tid]] = vp;
+              inc_idx(kb->fifo_end[tid]);
+
+              if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                {
+                  fprintf(stderr, "Breadth-first queue full\n");
+                  exit(EXIT_FAILURE);
+                }
+
+              to_go++;
+              tid_2 = tid;
+            }
+        }
+
+      tid = 0;
+
+      while(to_go)
+        {
+          if(kb->fifo_start[tid] != kb->fifo_end[tid])
+            {
+              vp = kb->fifo[tid][kb->fifo_start[tid]];
+              inc_idx(kb->fifo_start[tid]);
+
+              if(vp->def_proc == NO_THREAD)
+                {
+                  vp->def_proc = tid;
+                  nodes--;
+
+                  kb->fifo[tid][kb->fifo_end[tid]] = vp->pin[parent].e.vp;
+                  inc_idx(kb->fifo_end[tid]);
+
+                  if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                    {
+                      fprintf(stderr, "Breadth-first queue full\n");
+                      exit(EXIT_FAILURE);
+                    }
+
+                  kb->fifo[tid][kb->fifo_end[tid]] = vp->pin[left_son].e.vp;
+                  inc_idx(kb->fifo_end[tid]);
+
+                  if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                    {
+                      fprintf(stderr, "Breadth-first queue full\n");
+                      exit(EXIT_FAILURE);
+                    }
+
+                  if(vp->pin[right_son].e.vp)
+                    {
+                      kb->fifo[tid][kb->fifo_end[tid]] = vp->pin[right_son].e.vp;
+                      inc_idx(kb->fifo_end[tid]);
+
+                      if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                        {
+                          fprintf(stderr, "Breadth-first queue full\n");
+                          exit(EXIT_FAILURE);
+                        }
+                    }
+                }
+              else
+                if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                  to_go--;
+            }
+
+          tid = (tid + 1) % kb->num_threads;
+        }
+    }
+
+  kb->perf.shared = 0;
+
+  for(vp = kb->network; vp; vp = vp->vp)
+    for(lc = 0; lc < LINK_CODES_NUMBER && vp->pin[lc].e.vp; lc++)
+      {
+        if(vp->def_proc != vp->pin[lc].e.vp->def_proc)
+          vp->pin[lc].shared = TRUE;
+
+        if(vp->pin[lc].shared == TRUE)
+          kb->perf.shared++;
+      }
+
+  kb->perf.shared /= 2;
+}
+
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sturdy,
-                  int bufexp, d_time max_time, m_time step, int num_threads)
+                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads)
 {
   k_base *kb;
   FILE *fp;
@@ -1237,7 +1339,6 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
     {
       kb->pv[tid].focus = null_event;
       kb->pv[tid].last_input = null_event;
-      kb->pv[tid].curr_tid = tid;
       kb->pv[tid].delta_len = 0;
       kb->pv[tid].dstate = normal;
       kb->pv[tid].passed = FALSE;
@@ -1247,6 +1348,9 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       kb->pv[tid].halts = 0;
 
       pthread_mutex_init(&kb->pv[tid].mutex, NULL);
+
+      kb->fifo_start[tid] = 0;
+      kb->fifo_end[tid] = 0;
 
       kb->done[tid] = FALSE;
       pthread_cond_init(&kb->cond_done[tid], NULL);
@@ -1264,6 +1368,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
   memset(kb->table, 0, sizeof(node *) * HASH_SIZE * HASH_DEPTH);
   memset(kb->io_stream, 0, sizeof(stream *) * STREAM_CLASSES_NUMBER);
+  memset(kb->fifo, 0, sizeof(node *) * MAX_THREADS * FIFO_SIZE);
 
   strcpy(file_name, base_name);
   strcat(file_name, NETWORK_EXT);
@@ -1307,7 +1412,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      vp = name2node(kb, name);
+      vp = name2node(kb, name, TRUE);
       if(vp->nclass >= 0)
         {
           fprintf(stderr, "%s, %s: Duplicate node\n", file_name, name);
@@ -1317,9 +1422,9 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       vp->nclass = nclass;
       vp->k = k;
 
-      vp->pin[parent].e.vp = name2node(kb, up);
-      vp->pin[left_son].e.vp = name2node(kb, left);
-      vp->pin[right_son].e.vp = name2node(kb, right);
+      vp->pin[parent].e.vp = name2node(kb, up, TRUE);
+      vp->pin[left_son].e.vp = name2node(kb, left, TRUE);
+      vp->pin[right_son].e.vp = name2node(kb, right, TRUE);
 
       num_nodes[nclass]++;
 
@@ -1332,6 +1437,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       exit(EXIT_FAILURE);
     }
 
+  kb->perf.nodes = num_nodes[gate] + num_nodes[joint] + num_nodes[delay];
   kb->perf.edges = (3 * (num_nodes[gate] + num_nodes[joint]) + 2 * num_nodes[delay]) / 2;
 
   thread_network(kb->network);
@@ -1358,6 +1464,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->io_num[output_stream] = 0;
   kb->io_open = 0;
 
+  strcpy(kb->alpha, alpha);
+
   offset = NULL_TIME;
   ios = NULL;
   k = 0;
@@ -1373,8 +1481,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      vp = name2node(kb, name_v);
-      wp = name2node(kb, name_w);
+      vp = name2node(kb, name_v, FALSE);
+      wp = name2node(kb, name_w, FALSE);
 
       if(!vp || !wp)
         {
@@ -1437,7 +1545,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
       if(!quiet)
         {
-          ios = open_stream(name, sclass, e, kb->offset, file_io);
+          ios = open_stream(name, sclass, e, kb->offset, file_io, prefix, path);
 
           kb->io_num[sclass]++;
           kb->io_open++;
@@ -1506,7 +1614,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
               exit(EXIT_FAILURE);
             }
 
-          vp = name2node(kb, name);
+          vp = name2node(kb, name, FALSE);
 
           if(!vp)
             {
@@ -1572,8 +1680,6 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->io_slice = p * q / gcd(p, q);
   kb->io_togo = kb->io_slice;
 
-  kb->io_curr_tid = 0;
-
   kb->barrier_count = 0;
 
   kb->curr_time = kb->offset;
@@ -1594,6 +1700,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->perf.count = 0;
   kb->perf.depth = 0;
   kb->perf.halts = 0;
+
+  assign_threads(kb);
 
   pthread_mutex_init(&kb->mutex_barrier, NULL);
 
@@ -1633,7 +1741,7 @@ void close_base(k_base *kb)
             {
               next_ios = ios->next_ios;
 
-              close_stream(ios);
+              close_stream(ios, kb->alpha);
 
               ios = next_ios;
             }
@@ -1657,7 +1765,6 @@ void init_state(k_base *kb, char *state_name)
   char file_name[MAX_STRLEN], name_v[MAX_NAMEBUF], name_w[MAX_NAMEBUF];
   node *vp, *wp;
   event s;
-  int tid;
 
   strcpy(file_name, state_name);
   strcat(file_name, EVENT_LIST_EXT);
@@ -1668,12 +1775,11 @@ void init_state(k_base *kb, char *state_name)
       exit(EXIT_FAILURE);
     }
 
-  tid = 0;
   while(fscanf(fp, " ( "NAME_FMT" , "NAME_FMT" ) @ "TIME_FMT" : %*[^\n]\n",
                name_v, name_w, &s.t) >= 3)
     {
-      vp = name2node(kb, name_v);
-      wp = name2node(kb, name_w);
+      vp = name2node(kb, name_v, FALSE);
+      wp = name2node(kb, name_w, FALSE);
 
       if(!vp || !wp)
         {
@@ -1697,9 +1803,7 @@ void init_state(k_base *kb, char *state_name)
           exit(EXIT_FAILURE);
         }
 
-      safe_state(kb, s, tid);
-
-      tid = (tid + 1) % kb->num_threads;
+      safe_state(kb, s);
     }
 
   if(ferror(fp))
@@ -1788,7 +1892,7 @@ void loops_io(thread_arg *tp)
 
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sturdy,
-         int bufexp, d_time max_time, m_time step, m_time origin, int num_threads)
+         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha, int num_threads)
 {
   k_base *kb;
   info perf;
@@ -1802,7 +1906,7 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
   int i;
 
   kb = open_base(base_name, logfile_name, xref_name,
-                 strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, sturdy, bufexp, max_time, step, num_threads);
+                 strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, sturdy, bufexp, max_time, step, prefix, path, alpha, num_threads);
   if(state_name)
     init_state(kb, state_name);
 
@@ -1914,10 +2018,10 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
 
 int main(int argc, char **argv)
 {
-  char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext;
-  char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN];
+  char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path;
+  char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
   bool strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sturdy;
-  int i;
+  int i, k, n;
   info perf;
   d_time max_time;
   m_time step, default_step, origin;
@@ -1930,6 +2034,9 @@ int main(int argc, char **argv)
   max_time = 0;
   origin = 0;
   default_step = -1;
+  prefix = MAGIC_PREFIX;
+  path = "";
+  strcpy(alpha, IO_SYMBOLS);
   num_threads = DEFAULT_THREADS;
 
   for(i = 1; i < argc; i++)
@@ -1940,9 +2047,62 @@ int main(int argc, char **argv)
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-cdDfilqsvxy] [-I state] [-L log] [-X symbols] [-n processes] [-r core] [-t step] [-g origin] [-z horizon] [base]\n",
+              fprintf(stderr, "Usage: %s [-cdDfilqsvxy] [-a alphabet] [-e prefix] [-g origin] [-I state] [-L log] [-n processes] [-p path] [-r core] [-t step] [-X symbols] [-z horizon] [base]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
+            break;
+
+            case 'a':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                {
+                  n = strlen(argv[i]);
+                  if(n >= SYMBOL_NUMBER)
+                    {
+                      fprintf(stderr, "%s: Argument too long\n", argv[i]);
+                      exit(EXIT_FAILURE);
+                    }
+
+                  for(k = 0; k < n; k++)
+                    alpha[k] = argv[i][k];
+                } 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
+            break;
+
+            case 'e':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                {
+                  prefix = argv[i];
+                  if(prefix[0] != '/')
+                    {
+                      fprintf(stderr, "%s: Invalid argument\n", prefix);
+                      exit(EXIT_FAILURE);
+                    }
+                } 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
             break;
 
             case 'g':
@@ -2044,6 +2204,24 @@ int main(int argc, char **argv)
                       exit(EXIT_FAILURE);
                     }
                 } 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
+            break;
+
+            case 'p':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                path = argv[i]; 
               else
                 {
                   fprintf(stderr, "%s: Missing argument\n", argv[--i]);
@@ -2260,9 +2438,9 @@ int main(int argc, char **argv)
   fflush(stdout);
 
   perf = run(base_name, state_name, logfile_name, xref_name,
-      strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sturdy, bufexp, max_time, step, origin, num_threads);
+      strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sturdy, bufexp, max_time, step, origin, prefix, path, alpha, num_threads);
 
-  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.3f seconds, %.3f KLIPS, %lu depth (avg %.3f), %lu halts (%.3f %%)\n",
+  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.3f seconds, %.3f KLIPS, %lu depth (avg %.3f), %d shared edges (%.3f %%), %lu halts (%.3f %%)\n",
 	irq? "Execution interrupted" : "End of execution",
 	perf.count,
 	perf.horizon && perf.edges? 100.0 * perf.count / (perf.horizon * perf.edges) : 0,
@@ -2272,6 +2450,8 @@ int main(int argc, char **argv)
 	perf.ticks? perf.count / (1000 * perf.ticks) : 0,
 	perf.depth,
 	perf.count? (float)perf.depth / perf.count : 0,
+        perf.shared,
+        perf.edges? 100.0 * perf.shared / perf.edges : 0,
 	perf.halts,
         perf.count? 100.0 * perf.halts / perf.count : 0);
 

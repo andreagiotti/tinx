@@ -57,6 +57,7 @@ typedef float m_time;
 
 #define MAX_THREADS 256
 #define DEFAULT_THREADS 7    /* +1 */
+#define NO_THREAD -1
 
 typedef enum link_code
 {
@@ -114,6 +115,7 @@ typedef struct stream stream;
 typedef struct linkage
 {
   arc e;
+  bool shared;
   /* Attributes of arc_neg(e) */
   record *history;
   stream *io_stream[STREAM_CLASSES_NUMBER];
@@ -247,6 +249,7 @@ struct node
   node_class nclass;
   d_time k;
   char *debug;
+  int def_proc;
   linkage pin[LINK_CODES_NUMBER];
   node *vp;
 };
@@ -256,6 +259,7 @@ struct node
 #define phase_of(KB, S) ((S).t >> (KB)->bsbt)
 #define index_of(KB, S) ((S).t & (KB)->bsm1)
 #define record_of(KB, S) (link_of((S).e).history[index_of(KB, S)])
+#define shared(S) (link_of((S).e).shared)
 
 #define is_stated(KB, S) (record_of(KB, S).stated == phase_of(KB, S))
 #define is_chosen(KB, S) (record_of(KB, S).chosen == phase_of(KB, S))
@@ -269,7 +273,7 @@ struct node
 
 #define lock_record_of(KB, S) pthread_mutex_lock(&record_of(KB, S).mutex)
 #define unlock_record_of(KB, S) pthread_mutex_unlock(&record_of(KB, S).mutex)
-#define safe_state(KB, S, TID) { lock_record_of(KB, S); if(!is_stated(KB, S)) state(KB, S, TID); unlock_record_of(KB, S); }
+#define safe_state(KB, S) { if(!shared(S)) { if(!is_stated(KB, S)) state(KB, S); } else { lock_record_of(KB, S); if(!is_stated(KB, S)) state(KB, S); unlock_record_of(KB, S); } }
 
 #define lock_delta(KB, TID) pthread_mutex_lock(&(KB)->pv[TID].mutex)
 #define unlock_delta(KB, TID) pthread_mutex_unlock(&(KB)->pv[TID].mutex)
@@ -284,6 +288,9 @@ struct node
 #define HASH_SIZE 8191    /* Prime number */
 #define HASH_DEPTH 64
 #define HASH_FMT "%X"
+
+#define FIFO_SIZE 32768
+#define inc_idx(I) ((I) = ((I) + 1) % FIFO_SIZE)
 
 #define set_fields(F, TID) ((F) |= 1 << (TID))
 #define reset_fields(F, TID) ((F) &= ~ (1 << (TID)))
@@ -301,7 +308,6 @@ typedef struct priv_vars
 {
   event focus;
   event last_input;
-  int curr_tid;
   int delta_len;
   deadline_state dstate;
   bool passed;
@@ -314,13 +320,26 @@ typedef struct priv_vars
 
 typedef struct info
 {
+  int nodes;
   int edges;
+  int shared;
   d_time horizon;
   unsigned long int count;
   unsigned long int depth;
   unsigned long int halts;
   m_time ticks;
 } info;
+
+typedef enum symbol
+{
+  false_symbol,
+  true_symbol,
+  unknown_symbol,
+  end_symbol,
+  term_symbol,
+  eof_symbol,
+  SYMBOL_NUMBER
+} symbol;
 
 typedef struct k_base k_base;
 
@@ -340,9 +359,9 @@ typedef struct k_base
   int io_open;
   int io_togo;
   int io_slice;
-  int io_curr_tid;
   int fails;
   int errors;
+  char alpha[SYMBOL_NUMBER + 1];
   d_time curr_time;
   d_time max_time;
   d_time offset;
@@ -368,6 +387,9 @@ typedef struct k_base
   pthread_mutex_t mutex_barrier;
   pthread_cond_t cond_done[MAX_THREADS + 1];
   node *table[HASH_SIZE][HASH_DEPTH];
+  node *fifo[MAX_THREADS][FIFO_SIZE];
+  int fifo_start[MAX_THREADS];
+  int fifo_end[MAX_THREADS];
 } k_base;
 
 typedef struct thread_arg
@@ -392,11 +414,7 @@ typedef struct thread_arg
 #define STREAM_EXT ".io"
 #define XREF_EXT ".sym"
 
-#define LO_CHAR '0'
-#define HI_CHAR '1'
-#define UNKNOWN_CHAR '?'
-#define END_CHAR '.'
-#define TERM_CHAR '\x1b' /* Escape */
+#define IO_SYMBOLS "01?.\x1b\xff"
 
 /* Protos */
 
@@ -406,15 +424,13 @@ INLINE m_time get_time(void);
 unsigned long int hashnode(char *name);
 int gcd(int p, int q);
 
-INLINE void state(k_base *kb, event s, int tid);
+INLINE void state(k_base *kb, event s);
 INLINE event choose(k_base *kb, int tid);
-INLINE void process(k_base *kb, event s, int tid);
+INLINE void process(k_base *kb, event s);
 INLINE void scan_inputs(k_base *kb);
 INLINE void scan_outputs(k_base *kb);
 INLINE bool loop(k_base *kb, int tid);
 INLINE bool loop_io(k_base *kb, int tid);
-INLINE int get_tid(k_base *kb, int tid);
-INLINE int get_tid_io(k_base *kb);
 INLINE void barrier(k_base *kb, int tid);
 
 bool input_f(k_base *kb, stream *ios);
@@ -422,17 +438,18 @@ bool input_m(k_base *kb, stream *ios);
 bool output_f(k_base *kb, stream *ios);
 bool output_m(k_base *kb, stream *ios);
 void trace(k_base *kb, event s, int tid);
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io);
-void close_stream(stream *ios);
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, char *prefix, char *path);
+void close_stream(stream *ios, char *alpha);
 void remove_stream(stream **handle);
 
 node *alloc_node(k_base *kb, char *name);
 void free_node(k_base *kb, node *vp);
-node *name2node(k_base *kb, char *name);
+node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
+void assign_threads(k_base *kb);
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
                   bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sturdy,
-                  int bufexp, d_time max_time, m_time step, int num_threads);
+                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads);
 void close_base(k_base *kb);
 void init_state(k_base *kb, char *state_name);
 
@@ -441,7 +458,7 @@ void loops(thread_arg *tp);
 void loops_io(thread_arg *tp);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sturdy,
-         int bufexp, d_time max_time, m_time step, m_time origin, int num_threads);
+         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha, int num_threads);
 
 /* End of protos */
 

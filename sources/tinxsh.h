@@ -36,6 +36,12 @@
 
 #define SKIP_FMT "%*[^?!]"
 
+#define LO_CHAR '0'
+#define HI_CHAR '1'
+#define UNKNOWN_CHAR '?'
+#define END_CHAR '.'
+#define TERM_CHAR '\x1b' /* Escape */
+
 #define DISPLAY_LO_CHAR '-'
 #define DISPLAY_HI_CHAR '#'
 #define DISPLAY_UNKNOWN_CHAR ' '

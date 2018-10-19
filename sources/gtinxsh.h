@@ -65,6 +65,12 @@
 #define round(x) floor((x) + 0.5)
 #define print_error(SB, A) print(SB, "%s: %s\n", A, strerror(errno))
 
+#define LO_CHAR '0'
+#define HI_CHAR '1'
+#define UNKNOWN_CHAR '?'
+#define END_CHAR '.'
+#define TERM_CHAR '\x1b' /* Escape */
+
 typedef enum runstate
   {
     stopped,

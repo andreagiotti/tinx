@@ -3,10 +3,15 @@
 #include "ting_core.h"
 #include "ting_parser.h"
 
-#define YY_USER_ACTION yylloc->first_line = yylloc->last_line = yylineno + 1; \
-                       yylloc->first_column = yycolumn; \
-                       yylloc->last_column = yycolumn + yyleng - 1; \
+#define YY_USER_ACTION tr.token[tr.idx] = strdup(yytext); \
+                       tr.line[tr.idx] = yylineno; \
+                       tr.column[tr.idx] = yycolumn; \
+                       tr.length[tr.idx] = yyleng; \
+                       yyset_extra(tr, yyg); \
+                       tr.idx = (tr.idx + 1) % NUM_TOKENS; \
                        yycolumn += yyleng;
+
+tracker tr;
 
 int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, const char *msg);
 
@@ -17,6 +22,7 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
  
 %option reentrant noyywrap never-interactive nounistd
 %option bison-bridge
+%option extra-type = "tracker"
 
 %option yylineno bison-locations noinput nounput
 
@@ -42,8 +48,8 @@ EQV         "=="
 
 LPAREN      "("
 RPAREN      ")"
-LSQUAR      "["
-RSQUAR      "]"
+LSQUARED    "["
+RSQUARED    "]"
 COMMA       ","
 
 INPUT       "input"
@@ -53,8 +59,8 @@ INIT        "init"
 DEFINE      "define"
 ITER        "iter"
 
-LBRA        "{"
-RBRA        "}"
+LBRACKET    "{"
+RBRACKET    "}"
 SEMICOLON   ";"
 
 NAME        [a-zA-Z][a-zA-Z0-9_]*
@@ -95,18 +101,18 @@ BLANKS      [ \r\n\t]*
 {COMMA}         { return TOKEN_COMMA; }
 {LPAREN}        { return TOKEN_LPAREN; }
 {RPAREN}        { return TOKEN_RPAREN; }
-{LSQUAR}        { return TOKEN_LSQUAR; }
-{RSQUAR}        { return TOKEN_RSQUAR; }
+{LSQUARED}      { return TOKEN_LSQUARED; }
+{RSQUARED}      { return TOKEN_RSQUARED; }
 {SEMICOLON}     { return TOKEN_SEMICOLON; }
-{LBRA}          { return TOKEN_LBRA; }
-{RBRA}          { return TOKEN_RBRA; }
+{LBRACKET}      { return TOKEN_LBRACKET; }
+{RBRACKET}      { return TOKEN_RBRACKET; }
 
 {NAME}          { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_NAME; }
 {ITERATOR}      { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_ITERATOR; }
 {NUMBER}        { sscanf(yytext, TIME_FMT, &yylval->value); return TOKEN_NUMBER; }
 {BLANKS}        {  }
 
-.               { yyerror(yylloc, NULL, NULL, "unknown keyword"); exit(EXIT_FAILURE); }
+.               { yyerror(yylloc, NULL, yyg, "unknown keyword"); exit(EXIT_FAILURE); }
 
 %%
 

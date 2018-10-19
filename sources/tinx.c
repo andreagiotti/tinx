@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "4.3.1 (single core)"
+#define VER "5.0.0 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -307,6 +307,8 @@ INLINE void process(k_base *kb, event s)
 
 INLINE void scan_inputs(k_base *kb)
 {
+  stream *ios;
+
   assert(kb);
 
   if(kb->io_stream[input_stream])
@@ -326,7 +328,9 @@ INLINE void scan_inputs(k_base *kb)
             kb->io_stream[input_stream] = kb->io_stream[input_stream]->next_ios;
           else
             {
+              ios = kb->io_stream[input_stream];
               remove_stream(&kb->io_stream[input_stream]);
+              close_stream(ios, kb->alpha);
 
               kb->io_num[input_stream]--;
               kb->io_count[input_stream]--;
@@ -340,6 +344,8 @@ INLINE void scan_inputs(k_base *kb)
 
 INLINE void scan_outputs(k_base *kb)
 {
+  stream *ios;
+
   assert(kb);
 
   if(kb->io_stream[output_stream])
@@ -369,7 +375,9 @@ INLINE void scan_outputs(k_base *kb)
               kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
             else
               {
+                ios = kb->io_stream[output_stream];
                 remove_stream(&kb->io_stream[output_stream]);
+                close_stream(ios, kb->alpha);
 
                 kb->io_num[output_stream]--;
                 kb->io_count[output_stream]--;
@@ -445,32 +453,31 @@ bool input_f(k_base *kb, stream *ios)
       exit(EXIT_FAILURE);
     }
 
-  switch(c)
+  switch(strchr(kb->alpha, c) - kb->alpha)
     {
-    case EOF:
+    case eof_symbol:
       reset_file(ios->fp);
       return FALSE;
     break;
 
-    case UNKNOWN_CHAR:
-    case '\0':
+    case unknown_symbol:
       return TRUE;
     break;
 
-    case LO_CHAR:
+    case false_symbol:
       s.e = ios->ne;
     break;
 
-    case HI_CHAR:
+    case true_symbol:
       s.e = ios->e;
     break;
 
-    case END_CHAR:
+    case end_symbol:
       ios->open = FALSE;
       return FALSE;
     break;
 
-    case TERM_CHAR:
+    case term_symbol:
       irq = TRUE;
       return FALSE;
     break;
@@ -512,31 +519,30 @@ bool input_m(k_base *kb, stream *ios)
   else
     kb->io_err = FALSE;
 
-  switch(c)
+  switch(strchr(kb->alpha, c) - kb->alpha)
     {
-    case EOF:
+    case eof_symbol:
       return FALSE;
     break;
 
-    case UNKNOWN_CHAR:
-    case '\0':
+    case unknown_symbol:
       return TRUE;
     break;
 
-    case LO_CHAR:
+    case false_symbol:
       s.e = ios->ne;
     break;
 
-    case HI_CHAR:
+    case true_symbol:
       s.e = ios->e;
     break;
 
-    case END_CHAR:
+    case end_symbol:
       ios->open = FALSE;
       return FALSE;
     break;
 
-    case TERM_CHAR:
+    case term_symbol:
       irq = TRUE;
       return FALSE;
     break;
@@ -567,17 +573,17 @@ bool output_f(k_base *kb, stream *ios)
   s.e = ios->ne;
 
   if(is_stated(kb, s))
-    c = LO_CHAR;
+    c = kb->alpha[false_symbol];
   else
     {
       s.e = ios->e;
 
       if(is_stated(kb, s))
-        c = HI_CHAR;
+        c = kb->alpha[true_symbol];
       else
         {
           if(kb->io_num[input_stream] && !kb->io_count[input_stream] && kb->far)
-            c = UNKNOWN_CHAR;
+            c = kb->alpha[unknown_symbol];
           else
             return FALSE;
         }
@@ -607,17 +613,17 @@ bool output_m(k_base *kb, stream *ios)
   s.e = ios->ne;
 
   if(is_stated(kb, s))
-    c = LO_CHAR;
+    c = kb->alpha[false_symbol];
   else
     {
       s.e = ios->e;
 
       if(is_stated(kb, s))
-        c = HI_CHAR;
+        c = kb->alpha[true_symbol];
       else
         {
           if(kb->io_num[input_stream] && !kb->io_count[input_stream] && kb->far)
-            c = UNKNOWN_CHAR;
+            c = kb->alpha[unknown_symbol];
           else
             return FALSE;
         }
@@ -693,7 +699,7 @@ void trace(k_base *kb, event s)
       }
 }
 
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io)
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, char *prefix, char *path)
 {
   stream *ios;
   linkage *pin;
@@ -718,7 +724,15 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 
   if(file_io)
     {
-      strcpy(ios->file_name, name);
+      if(*path)
+        {
+          strcpy(ios->file_name, path);
+          strcat(ios->file_name, "/");
+        }
+      else
+        *(ios->file_name) = '\0';
+
+      strcat(ios->file_name, name);
       strcat(ios->file_name, STREAM_EXT);
 
       if(sclass == input_stream)
@@ -738,7 +752,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
     }
   else
     {
-      strcpy(ios->chan_name, MAGIC_PREFIX);
+      strcpy(ios->chan_name, prefix);
       strcat(ios->chan_name, name);
 
       ios->chan = add_queue(ios->chan_name, sclass);
@@ -757,18 +771,14 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   return ios;
 }
 
-void close_stream(stream *ios)
+void close_stream(stream *ios, char *alpha)
 {
-  char c;
-
   link_of(ios->e).io_stream[ios->sclass] = NULL;
   link_of(ios->ne).io_stream[ios->sclass] = NULL;
 
-  c = END_CHAR;
-
   if(ios->file_io)
     {
-      if(ios->sclass == output_stream && put_file(ios->fp, &c))
+      if(ios->sclass == output_stream && put_file(ios->fp, &alpha[end_symbol]))
         {
           perror(ios->file_name);
           exit(EXIT_FAILURE);
@@ -783,7 +793,7 @@ void close_stream(stream *ios)
   else
     {
       if(ios->sclass == output_stream)
-        send_message(ios->chan, &c);
+        send_message(ios->chan, &alpha[end_symbol]);
 
       if(commit_queue(ios->chan))
         {
@@ -809,8 +819,6 @@ void remove_stream(stream **handle)
 
   next_ios->prev_ios = (*handle)->prev_ios;
   (*handle)->prev_ios->next_ios = next_ios;
-
-  close_stream(*handle);
 
   if(*handle == next_ios)
     (*handle) = NULL;
@@ -879,7 +887,7 @@ void free_node(k_base *kb, node *vp)
   free(vp);
 }
 
-node *name2node(k_base *kb, char *name)
+node *name2node(k_base *kb, char *name, bool create)
 {
   node *vp;
   int h, i;
@@ -891,34 +899,39 @@ node *name2node(k_base *kb, char *name)
 
       while((vp = kb->table[h][i]))
         {
-        if(strcmp(vp->name, name))
-          {
-            i++;
+          if(strcmp(vp->name, name))
+            {
+              i++;
 
-            if(i == HASH_DEPTH)
-              {
-                fprintf(stderr, "%s, %s: Node names generate duplicate hashes\n",
-                    vp->name, name);
+              if(i == HASH_DEPTH)
+                {
+                  fprintf(stderr, "%s, %s: Node names generate duplicate hashes\n",
+                      vp->name, name);
 
-                exit(EXIT_FAILURE);
-              }
-          }
-        else
-          return vp;
+                  exit(EXIT_FAILURE);
+                }
+            }
+          else
+            return vp;
         }
 
-      vp = alloc_node(kb, name);
-      assert(vp);
+      if(create)
+        {
+          vp = alloc_node(kb, name);
+          assert(vp);
 
-      vp->vp = kb->network;
-      kb->network = vp;
+          vp->vp = kb->network;
+          kb->network = vp;
 
-      kb->table[h][i] = vp;
+          kb->table[h][i] = vp;
 
 #if !defined NDEBUG
-      printf("%s -> "HASH_FMT"\n", name, h);
+          printf("%s -> "HASH_FMT"\n", name, h);
 #endif
-      return vp;
+          return vp;
+        }
+      else
+        return NULL;
     }
   else
     return NULL;
@@ -1009,7 +1022,7 @@ void thread_network(node *network)
 }
 
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sturdy,
-                  int bufexp, d_time max_time, m_time step)
+                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha)
 {
   k_base *kb;
   FILE *fp;
@@ -1089,7 +1102,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      vp = name2node(kb, name);
+      vp = name2node(kb, name, TRUE);
       if(vp->nclass >= 0)
         {
           fprintf(stderr, "%s, %s: Duplicate node\n", file_name, name);
@@ -1099,9 +1112,9 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       vp->nclass = nclass;
       vp->k = k;
 
-      vp->pin[parent].e.vp = name2node(kb, up);
-      vp->pin[left_son].e.vp = name2node(kb, left);
-      vp->pin[right_son].e.vp = name2node(kb, right);
+      vp->pin[parent].e.vp = name2node(kb, up, TRUE);
+      vp->pin[left_son].e.vp = name2node(kb, left, TRUE);
+      vp->pin[right_son].e.vp = name2node(kb, right, TRUE);
 
       num_nodes[nclass]++;
 
@@ -1140,6 +1153,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->io_num[output_stream] = 0;
   kb->io_open = 0;
 
+  strcpy(kb->alpha, alpha);
+
   offset = NULL_TIME;
   ios = NULL;
   k = 0;
@@ -1155,8 +1170,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      vp = name2node(kb, name_v);
-      wp = name2node(kb, name_w);
+      vp = name2node(kb, name_v, FALSE);
+      wp = name2node(kb, name_w, FALSE);
 
       if(!vp || !wp)
         {
@@ -1219,7 +1234,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
       if(!quiet)
         {
-          ios = open_stream(name, sclass, e, kb->offset, file_io);
+          ios = open_stream(name, sclass, e, kb->offset, file_io, prefix, path);
 
           kb->io_num[sclass]++;
           kb->io_open++;
@@ -1288,7 +1303,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
               exit(EXIT_FAILURE);
             }
 
-          vp = name2node(kb, name);
+          vp = name2node(kb, name, FALSE);
 
           if(!vp)
             {
@@ -1390,7 +1405,7 @@ void close_base(k_base *kb)
             {
               next_ios = ios->next_ios;
 
-              close_stream(ios);
+              close_stream(ios, kb->alpha);
 
               ios = next_ios;
             }
@@ -1427,8 +1442,8 @@ void init_state(k_base *kb, char *state_name)
   while(fscanf(fp, " ( "NAME_FMT" , "NAME_FMT" ) @ "TIME_FMT" : %*[^\n]\n",
                name_v, name_w, &s.t) >= 3)
     {
-      vp = name2node(kb, name_v);
-      wp = name2node(kb, name_w);
+      vp = name2node(kb, name_v, FALSE);
+      wp = name2node(kb, name_w, FALSE);
 
       if(!vp || !wp)
         {
@@ -1484,14 +1499,14 @@ void trap()
 
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy,
-         int bufexp, d_time max_time, m_time step, m_time origin)
+         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha)
 {
   k_base *kb;
   info perf;
   struct sched_param spar;
 
   kb = open_base(base_name, logfile_name, xref_name,
-                 strictly_causal, soundness_check, echo_stdout, file_io, quiet, sturdy, bufexp, max_time, step);
+                 strictly_causal, soundness_check, echo_stdout, file_io, quiet, sturdy, bufexp, max_time, step, prefix, path, alpha);
   if(state_name)
     init_state(kb, state_name);
 
@@ -1529,10 +1544,10 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
 
 int main(int argc, char **argv)
 {
-  char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext;
-  char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN];
+  char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path;
+  char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
   bool strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy;
-  int i;
+  int i, k, n;
   info perf;
   d_time max_time;
   m_time step, default_step, origin;
@@ -1544,6 +1559,9 @@ int main(int argc, char **argv)
   max_time = 0;
   origin = 0;
   default_step = -1;
+  prefix = MAGIC_PREFIX;
+  path = "";
+  strcpy(alpha, IO_SYMBOLS);
 
   for(i = 1; i < argc; i++)
     {
@@ -1553,9 +1571,62 @@ int main(int argc, char **argv)
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-cdfilqsvxy] [-I state] [-L log] [-X symbols] [-r core] [-t step] [-g origin] [-z horizon] [base]\n",
+              fprintf(stderr, "Usage: %s [-cdfilqsvxy] [-a alphabet] [-e prefix] [-g origin] [-I state] [-L log] [-p path] [-r core] [-t step] [-X symbols] [-z horizon] [base]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
+            break;
+
+            case 'a':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                {
+                  n = strlen(argv[i]);
+                  if(n >= SYMBOL_NUMBER)
+                    {
+                      fprintf(stderr, "%s: Argument too long\n", argv[i]);
+                      exit(EXIT_FAILURE);
+                    }
+
+                  for(k = 0; k < n; k++)
+                    alpha[k] = argv[i][k];
+                } 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
+            break;
+
+            case 'e':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                {
+                  prefix = argv[i];
+                  if(prefix[0] != '/')
+                    {
+                      fprintf(stderr, "%s: Invalid argument\n", prefix);
+                      exit(EXIT_FAILURE);
+                    }
+                } 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
             break;
 
             case 'g':
@@ -1653,6 +1724,24 @@ int main(int argc, char **argv)
                   if(atoi(argv[i]) != 1)
                     fprintf(stderr, "Monothread version, ignoring switch -n\n");
                 } 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
+            break;
+
+            case 'p':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                path = argv[i]; 
               else
                 {
                   fprintf(stderr, "%s: Missing argument\n", argv[--i]);
@@ -1865,7 +1954,7 @@ int main(int argc, char **argv)
   fflush(stdout);
 
   perf = run(base_name, state_name, logfile_name, xref_name,
-      strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, bufexp, max_time, step, origin);
+      strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, bufexp, max_time, step, origin, prefix, path, alpha);
 
   printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.3f seconds, %.3f KLIPS, %lu depth (avg %.3f)\n",
 	irq? "Execution interrupted" : "End of execution",

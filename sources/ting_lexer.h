@@ -228,9 +228,7 @@ void yyfree (void * ,yyscan_t yyscanner );
 #include <unistd.h>
 #endif
 
-#ifndef YY_EXTRA_TYPE
-#define YY_EXTRA_TYPE void *
-#endif
+#define YY_EXTRA_TYPE tracker
 
 int yylex_init (yyscan_t* scanner);
 
@@ -343,9 +341,9 @@ extern int yylex \
 #undef YY_DECL
 #endif
 
-#line 111 "ting.l"
+#line 117 "ting.l"
 
 
-#line 350 "ting_lexer.h"
+#line 348 "ting_lexer.h"
 #undef yyIN_HEADER
 #endif /* yyHEADER_H */

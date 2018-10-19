@@ -1,7 +1,7 @@
 [Desktop Entry]
 Encoding=UTF-8
 Name=TINX
-Version=4.9.4
+Version=5.0.1
 Comment=Real time inference engine for temporal logic specifications
 Exec=/usr/bin/gtinxsh
 Path=/usr/bin/

@@ -6,7 +6,24 @@
 
 int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, const char *msg)
   {
-    fprintf(stderr, "%s: Error, line %d, column %d-%d\n", msg, yylloc->first_line, yylloc->first_column, yylloc->last_column);
+    tracker tr;
+    int i, k, col, len;
+    char buffer[MAX_STRLEN];
+
+    tr = yyget_extra(scanner);
+
+    *buffer = '\0';
+    len = 0;
+    for(i = 1; i <= NUM_TOKENS; i++)
+      {
+        k = (tr.idx + i) % NUM_TOKENS;
+        strcat(buffer, tr.token[k]);
+        len += tr.length[k];
+      }
+
+    col = tr.column[(tr.idx + 1) % NUM_TOKENS];
+
+    fprintf(stderr, "%s: Error, line %d, column %d-%d, \"%s\"\n", msg, tr.line[tr.idx] + 1, col, col + len - 1, buffer);
 
     return 0;
   }
@@ -19,12 +36,24 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
 #define YY_TYPEDEF_YY_SCANNER_T
   typedef void *yyscan_t;
 #endif
+
+#define NUM_TOKENS 3
+
+typedef struct tracker
+  {
+    char *token[NUM_TOKENS];
+    int line[NUM_TOKENS];
+    int column[NUM_TOKENS];
+    int length[NUM_TOKENS];
+    int idx;
+  } tracker;
 }
 
 %output  "ting_parser.c"
 %defines "ting_parser.h"
  
 %define api.pure
+%define parse.error verbose
 %lex-param   { yyscan_t scanner }
 %parse-param { btl_specification **spec_handle }
 %parse-param { yyscan_t scanner }
@@ -72,13 +101,13 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
 %left TOKEN_MUL
 %left TOKEN_DIV
 
-%token TOKEN_LBRA
-%token TOKEN_RBRA
+%token TOKEN_LBRACKET
+%token TOKEN_RBRACKET
 %token TOKEN_SEMICOLON
 %token TOKEN_LPAREN
 %token TOKEN_RPAREN
-%token TOKEN_LSQUAR
-%token TOKEN_RSQUAR
+%token TOKEN_LSQUARED
+%token TOKEN_RSQUARED
 %token TOKEN_COMMA
 %token TOKEN_ITER
 %token TOKEN_DEFINE
@@ -156,12 +185,12 @@ xdecl
     ;
 
 fblock
-    : TOKEN_LBRA xform[B] TOKEN_RBRA { $$ = $B; }
+    : TOKEN_LBRACKET xform[B] TOKEN_RBRACKET { $$ = $B; }
     | form[F] TOKEN_SEMICOLON { $$ = $F; }
     ;
 
 dblock
-    : TOKEN_LBRA xdecl[B] TOKEN_RBRA { $$ = $B; }
+    : TOKEN_LBRACKET xdecl[B] TOKEN_RBRACKET { $$ = $B; }
     | decl[D] TOKEN_SEMICOLON { $$ = $D; }
     ;
 
@@ -186,9 +215,9 @@ form
     ;
 
 inter
-    : TOKEN_LSQUAR expr[L] TOKEN_COMMA expr[R] TOKEN_RSQUAR { $$ = create_operation(op_interval_1, $L, $R, "[%s , %s]"); }
-    | TOKEN_LPAREN expr[L] TOKEN_COMMA expr[R] TOKEN_RSQUAR { $$ = create_operation(op_interval_2, $L, $R, "(%s , %s]"); }
-    | TOKEN_LSQUAR expr[L] TOKEN_COMMA expr[R] TOKEN_RPAREN { $$ = create_operation(op_interval_3, $L, $R, "[%s , %s)"); }
+    : TOKEN_LSQUARED expr[L] TOKEN_COMMA expr[R] TOKEN_RSQUARED { $$ = create_operation(op_interval_1, $L, $R, "[%s , %s]"); }
+    | TOKEN_LPAREN expr[L] TOKEN_COMMA expr[R] TOKEN_RSQUARED { $$ = create_operation(op_interval_2, $L, $R, "(%s , %s]"); }
+    | TOKEN_LSQUARED expr[L] TOKEN_COMMA expr[R] TOKEN_RPAREN { $$ = create_operation(op_interval_3, $L, $R, "[%s , %s)"); }
     | TOKEN_LPAREN expr[L] TOKEN_COMMA expr[R] TOKEN_RPAREN { $$ = create_operation(op_interval_4, $L, $R, "(%s , %s)"); }
     ;
 
