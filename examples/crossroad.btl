@@ -13,11 +13,11 @@ aux blinking2,
     up_green2, up_yellow2, up_red2,
     blink_tick2;
 
-init blinking @ 0, ~ blinking @ 1, red @ 0, green @ 1, ~ blink_tick @ 0, blink_tick @ 1;
+init blinking @ [-144, 0), red @ [-24, 0), ~ blink_tick @ [-4, 0);
 
 /* Traffic light 1 */
 
-blinking == since(~ blinking @ [-192, 0), ~ blinking ? [-120, 0));
+blinking == since(~ blinking @ [-192, 0), ~ blinking ? [-144, 0));
 
 green | yellow | red;
 ~ (green & yellow) & ~ (yellow & red) & ~ (red & green);
@@ -38,7 +38,7 @@ red_light == ~ blinking & red;
 
 /* Traffic light 2 */
 
-blinking2 == since(~ blinking2 @ [-192, 0), ~ blinking2 ? [-120, 0));
+blinking2 == since(~ blinking2 @ [-192, 0), ~ blinking2 ? [-144, 0));
 
 green2 | yellow2 | red2;
 ~ (green2 & yellow2) & ~ (yellow2 & red2) & ~ (red2 & green2);

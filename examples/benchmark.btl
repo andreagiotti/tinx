@@ -4,7 +4,7 @@
 output green, yellow, red;
 aux up_green, up_yellow, up_red;
 
-init red @ -1, green @ 0;
+init red @ [-24, 0);
 
 green | yellow | red;
 ~ (green & yellow) & ~ (yellow & red) & ~ (red & green);

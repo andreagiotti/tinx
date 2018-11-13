@@ -108,6 +108,7 @@ typedef struct io_signal
   char name[MAX_NAMELEN];
   smallnode *from;
   smallnode *to;
+  link_code occurr;
   io_class sclass;
   int signal_id;
 } io_signal;
@@ -155,6 +156,10 @@ typedef struct c_base
   int iterator[NUM_LEVELS];
   int num_nodes[NODE_CLASSES_NUMBER];
   int num_vargen;
+  bool seplit;
+  bool merge;
+  bool outaux;
+  bool outint;
   smallnode *network;
 } c_base;
 
@@ -174,6 +179,13 @@ typedef enum direction
   dir_left,
   dir_right
 } direction;
+
+typedef enum litval
+{
+  negated,
+  asserted,
+  undefined
+} litval;
 
 #define genup(VP) ((VP)->up? &((VP)->up) : &((VP)->up_2))
 
@@ -196,11 +208,11 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create);
 io_signal *name2signal(c_base *cb, char *name, bool create);
 constant *name2constant(c_base *cb, char *name, bool create);
 void add_ic(c_base *cb, char *name, bool neg, d_time t);
-void gensym(c_base *cb, char *symbol);
+void gensym(c_base *cb, char *symbol, char *type, litval val, bool incr);
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param);
 subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, d_time t);
-void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, bool swap);
-void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp1, smallnode *bp2);
+void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp);
+void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp);
 void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp);
 void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp);
 smallnode *gendir(smallnode *vp, smallnode *bp, direction dir);
@@ -214,6 +226,6 @@ void raise_signals(c_base *cb, smallnode *vp);
 smallnode *build_smalltree(c_base *cb, int i, bool neg);
 smallnode *build_twotrees(c_base *cb, int i);
 smallnode *build_cotree(c_base *cb);
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name);
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, bool seplit, bool merge, bool outaux, bool outint);
 char *opname(op_type ot);
 

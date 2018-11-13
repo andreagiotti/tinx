@@ -1,6 +1,6 @@
 /*
   Mutual exclusion system by Andrea Giotti, 2017-2018
-  Release 2
+  Release 2.1
 
   Four competitors gain exclusive access to one
   resource, which is granted to the one which
@@ -17,7 +17,8 @@ iter(number)
 input req(^), rel(^);
 output gnt(^);
 aux beg(^), end(^), thr(^), sat(^);
-init ~ end(^) @ -1;
+
+init rel(^) @ -1, gnt(^) @ [- mintime, 0);
 
 beg(^) == since(free @ -1 & ~ gnt(^) & one(req(^), ^, number), ~ gnt(^) & ~ rel(^));
 end(^) == since(gnt(^) & rel(^), gnt(^) & ~ req(^));
@@ -27,7 +28,6 @@ sat(^) == exists(thr(^^) @ - ^ * mintime, maxtime / mintime);
 }
 
 aux free, deny;
-init free @ -1, deny @ -1;
 
 free == ~ exists(beg(^), number);
 deny == ~ exists(gnt(^), number);

@@ -1,6 +1,6 @@
 # Makefile
 
-PROGS	= tinx tinx_mt ting tinxsh gtinxsh
+PROGS	= tinx tinx_mt ting gtinxsh
 XFILES	= tinx.c ipc.c
 XDEPS	= $(XFILES) tinx.h
 XFLAGS	= -pipe -Ofast -Wall -lrt
@@ -10,9 +10,6 @@ MFLAGS	= -pipe -Ofast -Wall -lrt -pthread
 GFILES	= ting_lexer.c ting_parser.c ting_core.c
 GDEPS	= $(GFILES) ting_lexer.h ting_parser.h ting_core.h
 GFLAGS	= -pipe -Ofast -Wall
-SFILES	= tinxsh.c ipc.c
-SDEPS	= $(SFILES) tinxsh.h tinx_mt.h
-SFLAGS	= -pipe -Ofast -Wall -lrt
 UFILES	= gtinxsh.c ipc.c
 UDEPS	= $(UFILES) gtinxsh.h tinx_mt.h ting_core.h
 UFLAGS	= -pipe -Ofast -Wall -lrt -pthread `pkg-config gtk+-3.0 --cflags` `pkg-config gtk+-3.0 --libs`
@@ -34,9 +31,6 @@ tinx:		$(XDEPS)
 
 tinx_mt:	$(MDEPS)
 		$(CC) $(MFILES) -o tinx_mt $(MFLAGS)
-
-tinxsh:		$(SDEPS)
-		$(CC) $(SFILES) -o tinxsh $(SFLAGS)
 
 gtinxsh:	$(UDEPS)
 		$(CC) $(UFILES) -o gtinxsh $(UFLAGS)

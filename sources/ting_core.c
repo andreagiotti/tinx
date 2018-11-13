@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "1.7.0"
+#define VER "2.0.1"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -297,45 +297,45 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
 
       while((vp = cb->symptr[h][i]))
         {
-        if(strcmp(vp->name, name))
-          {
-            i++;
+          if(strcmp(vp->name, name))
+            {
+              i++;
 
-            if(i == SYMTAB_DEPTH)
-              {
-                fprintf(stderr, "%s, %s: Error, node names generate duplicate hashes\n", vp->name, name);
-                exit(EXIT_FAILURE);
-              }
-          }
-        else
-          {
-            if(create)
-              {
-                wp = create_smallnode(cb, literal);
-                if(!wp)
-                 {
-                   perror(NULL);
-                   exit(EXIT_FAILURE);
-                 }
+              if(i == SYMTAB_DEPTH)
+                {
+                  fprintf(stderr, "%s, %s: Error, node names generate duplicate hashes\n", vp->name, name);
+                  exit(EXIT_FAILURE);
+                }
+            }
+          else
+            {
+              if(create)
+                {
+                  wp = create_smallnode(cb, literal);
+                  if(!wp)
+                   {
+                     perror(NULL);
+                     exit(EXIT_FAILURE);
+                   }
 
-                cb->symtab[vp->literal_id][cb->symcount[vp->literal_id]] = wp;
+                  cb->symtab[vp->literal_id][cb->symcount[vp->literal_id]] = wp;
 
-                strcpy(wp->name, name);
-                wp->literal_id = vp->literal_id;
+                  strcpy(wp->name, name);
+                  wp->literal_id = vp->literal_id;
 
-                cb->symcount[vp->literal_id]++;
+                  cb->symcount[vp->literal_id]++;
 
-                if(cb->symcount[vp->literal_id] >= NUM_OCCURRENCES)
-                  {
-                    fprintf(stderr, "%s: Error, too many occurrences for literal\n", name);
-                    exit(EXIT_FAILURE);
-                  }
-              }
-            else
-              wp = cb->symtab[vp->literal_id][0];
+                  if(cb->symcount[vp->literal_id] >= NUM_OCCURRENCES)
+                    {
+                      fprintf(stderr, "%s: Error, too many occurrences for literal\n", name);
+                      exit(EXIT_FAILURE);
+                    }
+                }
+              else
+                wp = cb->symtab[vp->literal_id][0];
 
-            return wp;
-          }
+              return wp;
+            }
         }
 
       if(create)
@@ -384,19 +384,19 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
 
       while((sp = cb->sigptr[h][i]))
         {
-        if(strcmp(sp->name, name))
-          {
-            i++;
+          if(strcmp(sp->name, name))
+            {
+              i++;
 
-            if(i == SYMTAB_DEPTH)
-              {
-                fprintf(stderr, "%s, %s: Error, signal names generate duplicate hashes\n",
-                    sp->name, name);
-                exit(EXIT_FAILURE);
-              }
-          }
-        else
-          return &cb->sigtab[sp->signal_id];
+              if(i == SYMTAB_DEPTH)
+                {
+                  fprintf(stderr, "%s, %s: Error, signal names generate duplicate hashes\n",
+                      sp->name, name);
+                  exit(EXIT_FAILURE);
+                }
+            }
+          else
+            return &cb->sigtab[sp->signal_id];
         }
 
       if(create)
@@ -437,19 +437,19 @@ constant *name2constant(c_base *cb, char *name, bool create)
 
       while((tp = cb->intptr[h][i]))
         {
-        if(strcmp(tp->name, name))
-          {
-            i++;
+          if(strcmp(tp->name, name))
+            {
+              i++;
 
-            if(i == SYMTAB_DEPTH)
-              {
-                fprintf(stderr, "%s, %s: Error, constant names generate duplicate hashes\n",
-                    tp->name, name);
-                exit(EXIT_FAILURE);
-              }
-          }
-        else
-          return &cb->inttab[tp->integer_id];
+              if(i == SYMTAB_DEPTH)
+                {
+                  fprintf(stderr, "%s, %s: Error, constant names generate duplicate hashes\n",
+                      tp->name, name);
+                  exit(EXIT_FAILURE);
+                }
+            }
+          else
+            return &cb->inttab[tp->integer_id];
         }
 
       if(create)
@@ -493,12 +493,13 @@ void add_ic(c_base *cb, char *name, bool neg, d_time t)
     }
 }
 
-void gensym(c_base *cb, char *symbol)
+void gensym(c_base *cb, char *symbol, char *type, litval val, bool incr)
 {
-  sprintf(symbol, "#%d", cb->num_vargen);
+  sprintf(symbol, "%c%s%d", val == negated? '-' : (val == asserted? '+' : '_'), type, cb->num_vargen);
   assert(strlen(symbol) <= MAX_NAMELEN);
 
-  cb->num_vargen++;
+  if(incr)
+    cb->num_vargen++;
 }
 
 char *opname(op_type ot)
@@ -552,9 +553,9 @@ char *opname(op_type ot)
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 {
   subtreeval stv, stv_2;
-  char symbol[MAX_NAMELEN];
+  char symbol[MAX_NAMELEN], symbol1[MAX_NAMELEN], symbol2[MAX_NAMELEN];
   char debug[MAX_STRLEN];
-  btl_specification *newbtl, *p, *q, *r;
+  btl_specification *newbtl, *p, *q, *p1, *q1, *r;
   constant *tp;
   d_time val;
   int h, k, l;
@@ -847,20 +848,44 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
             exit(EXIT_FAILURE);
           }
 
-        gensym(cb, symbol);
+        if(cb->seplit)
+          {
+            gensym(cb, symbol, "AT", asserted, FALSE);
+            gensym(cb, symbol1, "AT", negated, FALSE);
 
-        p = create_ground(op_name, symbol, 0);
+            p = create_ground(op_name, symbol, 0);
+            p1 = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
 
-        newbtl = CREATE_EQV(p, stv.btl);
+            newbtl = create_operation(op_and, CREATE_IMPLY(p, stv.btl), CREATE_IMPLY(copy_specification(stv.btl), p1), "%s & %s");
 
-        q = create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                       create_ground(op_number, "", stv_2.a), "%s @ %s");
+            gensym(cb, symbol2, "AT", undefined, TRUE);
 
-        for(k = stv_2.a + 1; k <= stv_2.b; k++)
-            q = create_operation(op_and, q,
-                                         create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                                                    create_ground(op_number, "", k), "%s @ %s"), "%s & %s");
-        stv.btl = q;
+            q = create_operation(op_delay, create_ground(op_name, symbol2, 0),
+                                           create_ground(op_number, "", stv_2.a), "%s @ %s");
+
+            for(k = stv_2.a + 1; k <= stv_2.b; k++)
+              q = create_operation(op_and, q,
+                                           create_operation(op_delay, create_ground(op_name, symbol2, 0),
+                                                                        create_ground(op_number, "", k), "%s @ %s"), "%s & %s");
+            stv.btl = q;
+          }
+        else
+          {
+            gensym(cb, symbol, "AT", asserted, TRUE);
+
+            p = create_ground(op_name, symbol, 0);
+
+            newbtl = CREATE_EQV(p, stv.btl);
+
+            q = create_operation(op_delay, create_ground(op_name, symbol, 0),
+                                           create_ground(op_number, "", stv_2.a), "%s @ %s");
+
+            for(k = stv_2.a + 1; k <= stv_2.b; k++)
+              q = create_operation(op_and, q,
+                                           create_operation(op_delay, create_ground(op_name, symbol, 0),
+                                                                        create_ground(op_number, "", k), "%s @ %s"), "%s & %s");
+            stv.btl = q;
+          }
 
         if(stv.btldef)
           stv.btldef = create_operation(op_and, newbtl, stv.btldef, "%s ; %s");
@@ -880,20 +905,44 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
             exit(EXIT_FAILURE);
           }
 
-        gensym(cb, symbol);
+        if(cb->seplit)
+          {
+            gensym(cb, symbol, "HP", asserted, FALSE);
+            gensym(cb, symbol1, "HP", negated, FALSE);
 
-        p = create_ground(op_name, symbol, 0);
+            p = create_ground(op_name, symbol, 0);
+            p1 = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
 
-        newbtl = CREATE_EQV(p, stv.btl);
+            newbtl = create_operation(op_and, CREATE_IMPLY(p, stv.btl), CREATE_IMPLY(copy_specification(stv.btl), p1), "%s & %s");
 
-        q = create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                       create_ground(op_number, "", stv_2.a), "%s @ %s");
+            gensym(cb, symbol2, "HP", undefined, TRUE);
 
-        for(k = stv_2.a + 1; k <= stv_2.b; k++)
-            q = create_operation(op_or, q,
-                                         create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                                                    create_ground(op_number, "", k), "%s @ %s"), "%s | %s");
-        stv.btl = q;
+            q = create_operation(op_delay, create_ground(op_name, symbol2, 0),
+                                           create_ground(op_number, "", stv_2.a), "%s @ %s");
+
+            for(k = stv_2.a + 1; k <= stv_2.b; k++)
+              q = create_operation(op_or, q,
+                                          create_operation(op_delay, create_ground(op_name, symbol2, 0),
+                                                                        create_ground(op_number, "", k), "%s @ %s"), "%s | %s");
+            stv.btl = q;
+          }
+        else
+          {
+            gensym(cb, symbol, "HP", asserted, TRUE);
+
+            p = create_ground(op_name, symbol, 0);
+
+            newbtl = CREATE_EQV(p, stv.btl);
+
+            q = create_operation(op_delay, create_ground(op_name, symbol, 0),
+                                           create_ground(op_number, "", stv_2.a), "%s @ %s");
+
+            for(k = stv_2.a + 1; k <= stv_2.b; k++)
+              q = create_operation(op_or, q,
+                                          create_operation(op_delay, create_ground(op_name, symbol, 0),
+                                                                        create_ground(op_number, "", k), "%s @ %s"), "%s | %s");
+            stv.btl = q;
+          }
 
         if(stv.btldef)
           stv.btldef = create_operation(op_and, newbtl, stv.btldef, "%s ; %s");
@@ -907,16 +956,42 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv = preval(cb, spec->left, level, param);
         stv_2 = preval(cb, spec->right, level, param);
 
-        gensym(cb, symbol);
+        if(cb->seplit)
+          {
+            gensym(cb, symbol, "SN", asserted, FALSE);
+            gensym(cb, symbol1, "SN", negated, FALSE);
 
-        p = create_ground(op_name, symbol, 0);
-        q = create_operation(op_or, stv.btl,
-                                    create_operation(op_and, stv_2.btl,
-                                                             create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                                                                        create_ground(op_number, "", -1), "%s @ %s"), "%s & %s"), "%s | %s");
-        newbtl = CREATE_EQV(p, q);
+            p = create_ground(op_name, symbol, 0);
+            p1 = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
 
-        stv.btl = create_ground(op_name, symbol, 0);
+            q = create_operation(op_or, stv.btl,
+                                        create_operation(op_and, stv_2.btl,
+                                                                 create_operation(op_delay, copy_specification(p),
+                                                                                            create_ground(op_number, "", -1), "%s @ %s"), "%s & %s"), "%s | %s");
+            q1 = create_operation(op_or, copy_specification(stv.btl),
+                                         create_operation(op_and, copy_specification(stv_2.btl),
+                                                                  create_operation(op_delay, copy_specification(p1),
+                                                                                             create_ground(op_number, "", -1), "%s @ %s"), "%s & %s"), "%s | %s");
+
+            newbtl = create_operation(op_and, CREATE_IMPLY(p, q), CREATE_IMPLY(q1, p1), "%s & %s");
+
+            gensym(cb, symbol2, "SN", undefined, TRUE);
+
+            stv.btl = create_ground(op_name, symbol2, 0);
+          }
+        else
+          {
+            gensym(cb, symbol, "SN", asserted, TRUE);
+
+            p = create_ground(op_name, symbol, 0);
+            q = create_operation(op_or, stv.btl,
+                                        create_operation(op_and, stv_2.btl,
+                                                                 create_operation(op_delay, create_ground(op_name, symbol, 0),
+                                                                                            create_ground(op_number, "", -1), "%s @ %s"), "%s & %s"), "%s | %s");
+            newbtl = CREATE_EQV(p, q);
+
+            stv.btl = create_ground(op_name, symbol, 0);
+          }
 
         if(stv.btldef)
           {
@@ -938,16 +1013,42 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv = preval(cb, spec->left, level, param);
         stv_2 = preval(cb, spec->right, level, param);
 
-        gensym(cb, symbol);
+        if(cb->seplit)
+          {
+            gensym(cb, symbol, "UT", asserted, FALSE);
+            gensym(cb, symbol1, "UT", negated, FALSE);
 
-        p = create_ground(op_name, symbol, 0);
-        q = create_operation(op_or, stv.btl,
-                                    create_operation(op_and, stv_2.btl,
-                                                             create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                                                                        create_ground(op_number, "", 1), "%s @ %s"), "%s & %s"), "%s | %s");
-        newbtl = CREATE_EQV(p, q);
+            p = create_ground(op_name, symbol, 0);
+            p1 = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
 
-        stv.btl = create_ground(op_name, symbol, 0);
+            q = create_operation(op_or, stv.btl,
+                                        create_operation(op_and, stv_2.btl,
+                                                                 create_operation(op_delay, copy_specification(p),
+                                                                                            create_ground(op_number, "", 1), "%s @ %s"), "%s & %s"), "%s | %s");
+            q1 = create_operation(op_or, copy_specification(stv.btl),
+                                         create_operation(op_and, copy_specification(stv_2.btl),
+                                                                  create_operation(op_delay, copy_specification(p1),
+                                                                                             create_ground(op_number, "", 1), "%s @ %s"), "%s & %s"), "%s | %s");
+
+            newbtl = create_operation(op_and, CREATE_IMPLY(p, q), CREATE_IMPLY(q1, p1), "%s & %s");
+
+            gensym(cb, symbol2, "UT", undefined, TRUE);
+
+            stv.btl = create_ground(op_name, symbol2, 0);
+          }
+        else
+          {
+            gensym(cb, symbol, "UT", asserted, TRUE);
+
+            p = create_ground(op_name, symbol, 0);
+            q = create_operation(op_or, stv.btl,
+                                        create_operation(op_and, stv_2.btl,
+                                                                 create_operation(op_delay, create_ground(op_name, symbol, 0),
+                                                                                            create_ground(op_number, "", 1), "%s @ %s"), "%s & %s"), "%s | %s");
+            newbtl = CREATE_EQV(p, q);
+
+            stv.btl = create_ground(op_name, symbol, 0);
+          }
 
         if(stv.btldef)
           {
@@ -1207,7 +1308,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
 subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, d_time t)
 {
-  subtreeval stv;
+  subtreeval stv, stv_2;
   smallnode *wp;
   io_signal *sp;
 
@@ -1220,7 +1321,18 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
   switch(spec->ot)
     {
       case op_name:
-        sp = name2signal(cb, spec->symbol, spec->symbol[0] == '#');
+        if(spec->symbol[0] == '_')
+          {
+            if(neg)
+              {
+                neg = FALSE;
+                spec->symbol[0] = '-';
+              }
+            else
+              spec->symbol[0] = '+';
+          }
+
+        sp = name2signal(cb, spec->symbol, spec->symbol[0] == '+' || spec->symbol[0] == '-');
         if(sp)
           {
             wp = name2smallnode(cb, spec->symbol, TRUE);
@@ -1260,7 +1372,6 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
 
       case op_number:
         stv.a = spec->value;
-        stv.b = spec->value;
       break;
 
       case op_join:
@@ -1288,7 +1399,10 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
         wp->left = eval(cb, spec->left, wp, neg, sclass, t).vp;
         wp->right = eval(cb, spec->right, wp, neg, sclass, t).vp;
 
-        strcpy(wp->debug, spec->debug);
+        if(neg)
+          sprintf(wp->debug, "~ (%s)", spec->debug);
+        else
+          strcpy(wp->debug, spec->debug);
 
         stv.vp = wp;
       break;
@@ -1305,26 +1419,49 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
         wp->left = eval(cb, spec->left, wp, neg, sclass, t).vp;
         wp->right = eval(cb, spec->right, wp, neg, sclass, t).vp;
 
-        strcpy(wp->debug, spec->debug);
+        if(neg)
+          sprintf(wp->debug, "~ (%s)", spec->debug);
+        else
+          strcpy(wp->debug, spec->debug);
 
         stv.vp = wp;
       break;
 
       case op_delay:
-        wp = create_smallnode(cb, delay);
-        if(!wp)
+        if(cb->merge && vp && vp->nclass == delay)
           {
-            perror(NULL);
-            exit(EXIT_FAILURE);
+            stv = eval(cb, spec->left, vp, neg, sclass, t);
+            stv.a += eval(cb, spec->right, vp, neg, sclass, t).a;
           }
+        else
+          {
+            wp = create_smallnode(cb, delay);
+            if(!wp)
+              {
+                perror(NULL);
+                exit(EXIT_FAILURE);
+              }
 
-        wp->up = vp;
-        wp->left = eval(cb, spec->left, wp, neg, sclass, t).vp;
-        wp->k = - eval(cb, spec->right, wp, neg, sclass, t).a;
+            stv_2 = eval(cb, spec->left, wp, neg, sclass, t);
 
-        strcpy(wp->debug, spec->debug);
+            wp->up = vp;
+            wp->left = stv_2.vp;
+            wp->k = - (stv_2.a + eval(cb, spec->right, wp, neg, sclass, t).a);
 
-        stv.vp = wp;
+            if(cb->merge && !wp->k)
+              {
+                stv.vp = stv_2.vp;
+                stv.vp->up = vp;
+
+                purge_smallnode(cb, wp, vp);
+              }
+            else
+              {
+                strcpy(wp->debug, spec->debug);
+
+                stv.vp = wp;
+              }
+          }
       break;
 
       case op_var_at:
@@ -1353,65 +1490,6 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
     }
 
   return stv;
-}
-
-void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, bool swap)
-{
-  io_signal *sp;
-  smallnode *lp, *rp, *wfp, *wtp;
-  int i;
-
-  assert(vp);
-  assert(!vp->zombie);
-
-  lp = gendir(vp, bp, dir_left);
-  rp = gendir(vp, bp, dir_right);
-
-  for(i = 0; i < cb->num_signals; i++)
-    {
-      sp = &cb->sigtab[i];
-      assert(sp);
-
-      if(sp->from == vp || sp->to == vp)
-        {
-          if(sp->from == vp)
-            {
-              if(sp->to == lp)
-                sp->from = rp;
-              else
-                if(sp->to == rp)
-                  sp->from = lp;
-            }
-
-          if(sp->to == vp)
-            {
-              if(sp->from == lp)
-                sp->to = rp;
-              else
-                if(sp->from == rp)
-                  sp->to = lp;
-            }
-
-          if(!sp->from || !sp->to || sp->from == vp || sp->to == vp)
-            {
-              sp->from = NULL;
-              sp->to = NULL;
-
-              fprintf(stderr, "%s: Warning, signal removed\n", sp->name);
-            }
-          else
-            if(swap)
-              {
-                wfp = sp->from;
-                wtp = sp->to;
-
-                sp->from = wtp;
-                sp->to = wfp;
-              }
-        }
-    }
-
-  vp->zombie = TRUE;
 }
 
 smallnode **get_neighbor_handle(smallnode *vp, smallnode *wp)
@@ -1487,85 +1565,108 @@ smallnode *gendir(smallnode *vp, smallnode *bp, direction dir)
     return zp;
 }
 
-void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp1, smallnode *bp2)
+link_code occurrence(smallnode *from, smallnode *to)
 {
-  smallnode *xxp, *xyp, *yxp, *yyp, *lp, *rp;
+  if(!from || !to)
+    return no_link;
+  else
+    {
+      if(from == *genup(to))
+        return parent;
+      else
+        if(from == to->left)
+          return left_son;
+        else
+          if(from == to->right)
+            return right_son;
+          else
+            return no_link;
+    }
+}
+
+void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp)
+{
+  io_signal *sp;
+  smallnode *lp, *rp;
+  int i;
+
+  assert(vp);
+  assert(!vp->zombie);
+
+  lp = gendir(vp, bp, dir_left);
+  rp = gendir(vp, bp, dir_right);
+
+  for(i = 0; i < cb->num_signals; i++)
+    {
+      sp = &cb->sigtab[i];
+      assert(sp);
+
+      if(sp->from == vp || sp->to == vp)
+        {
+          if(sp->from == vp)
+            {
+              if(sp->to == lp)
+                {
+                  sp->from = rp;
+                  sp->occurr = occurrence(vp, lp);
+                }
+              else
+                if(sp->to == rp)
+                  {
+                    sp->from = lp;
+                    sp->occurr = occurrence(vp, rp);
+                  }
+            }
+
+          if(sp->to == vp)
+            {
+              if(sp->from == lp)
+                {
+                  sp->to = rp;
+                  sp->occurr = occurrence(vp, rp);
+                }
+              else
+                if(sp->from == rp)
+                  {
+                    sp->to = lp;
+                    sp->occurr = occurrence(vp, lp);
+                  }
+            }
+
+          if(!sp->from || !sp->to || sp->from == vp || sp->to == vp)
+            {
+              sp->from = NULL;
+              sp->to = NULL;
+
+              fprintf(stderr, "%s: Warning, signal removed\n", sp->name);
+            }
+        }
+    }
+
+  vp->zombie = TRUE;
+}
+
+void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp)
+{
   smallnode **left, **right;
-  bool loop;
 
   if(!xp || xp->zombie)
     {
-      erase_smalltree(cb, yp, bp2);
+      erase_smalltree(cb, yp, bp);
       return;
     }
   else
     if(!yp || yp->zombie)
       {
-        erase_smalltree(cb, xp, bp1);
+        erase_smalltree(cb, xp, bp);
         return;
       }
 
-  loop = FALSE;
+  left = get_neighbor_handle(bp, xp);
+  right = get_neighbor_handle(bp, yp);
 
-  lp = NULL;
-  rp = NULL;
-
-  xxp = gendir(xp, bp1, dir_left);
-  xyp = gendir(xp, bp1, dir_right);
-
-  if(yp == xyp)
-    {
-      loop = TRUE;
-      lp = xxp;
-    }
-  else
-    if(yp == xxp)
-      {
-        loop = TRUE;
-        lp = xyp;
-      }
-
-  yxp = gendir(yp, bp2, dir_left);
-  yyp = gendir(yp, bp2, dir_right);
-
-  if(xp == yxp)
-    {
-      loop = TRUE;
-      rp = yyp;
-    }
-  else
-    if(xp == yyp)
-      {
-        loop = TRUE;
-        rp = yxp;
-      }
-
-  if(!loop)
-    {
-      left = get_neighbor_handle(bp1, xp);
-      right = get_neighbor_handle(bp2, yp);
-
-      *left = yp;
-      *right = xp;
-    }
-  else
-    {
-      fprintf(stderr, "%s, %s: Warning, pruning abnormal loop on nodes: { %s ; } -- { %s ; }\n", xp? xp->name : "*", yp? yp->name : "*", xp? xp->debug : "*", yp? yp->debug : "*");
-
-      right = get_neighbor_handle(xp, yp);
-
-      purge_smallnode(cb, xp, bp1, TRUE);
-
-      if(xp != yp)
-        {
-          if(right)
-            *right = lp;
-
-          purge_smallnode(cb, yp, bp2, FALSE);
-        }
-
-      close_smallbranches(cb, lp, rp, xp, yp);
-    }
+  *left = yp;
+  *right = xp;
 }
 
 void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
@@ -1581,7 +1682,7 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         lp = gendir(vp, bp, dir_left);
         rp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
+        purge_smallnode(cb, vp, bp);
 
         erase_smalltree(cb, lp, vp);
         erase_smalltree(cb, rp, vp);
@@ -1591,7 +1692,7 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         lp = gendir(vp, bp, dir_left);
         rp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
+        purge_smallnode(cb, vp, bp);
 
         if(bp == *genup(vp))
           {
@@ -1599,7 +1700,7 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
             erase_smalltree(cb, rp, vp);
           }
         else
-          close_smallbranches(cb, lp, rp, vp, vp);
+          close_smallbranches(cb, lp, rp, vp);
       break;
 
       case delay:
@@ -1607,7 +1708,7 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         if(!lp)
           lp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
+        purge_smallnode(cb, vp, bp);
 
         erase_smalltree(cb, lp, vp);
       break;
@@ -1631,16 +1732,16 @@ void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         lp = gendir(vp, bp, dir_left);
         rp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
+        purge_smallnode(cb, vp, bp);
 
-        close_smallbranches(cb, lp, rp, vp, vp);
+        close_smallbranches(cb, lp, rp, vp);
       break;
 
       case joint:
         lp = gendir(vp, bp, dir_left);
         rp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
+        purge_smallnode(cb, vp, bp);
 
         if(bp == *genup(vp))
           {
@@ -1666,7 +1767,7 @@ void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         if(!lp)
           lp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
+        purge_smallnode(cb, vp, bp);
 
         purge_smalltree(cb, lp, vp);
       break;
@@ -1694,8 +1795,8 @@ int save_smalltree(c_base *cb, FILE *fp)
       if(!up || !vp->left || (!vp->right && vp->nclass != delay))
         fprintf(stderr, "%s: Warning, network not closed: { %s ; }\n", vp->name, vp->debug);
 
-      if(vp == up || vp == vp->left || vp == vp->right || up == vp->left || up == vp->right || vp->left == vp->right)
-        fprintf(stderr, "%s: Warning, abnormal loop on node: { %s ; }\n", vp->name, vp->debug);
+      if(vp == up || vp == vp->left || vp == vp->right)
+        fprintf(stderr, "%s: Warning, tight loop on node: { %s ; }\n", vp->name, vp->debug);
 
       switch(vp->nclass)
         {
@@ -1737,17 +1838,26 @@ int save_signals(c_base *cb, FILE *fp)
         {
           switch(sp->sclass)
             {
-              case internal_class:
-              case aux_class:
-                rv = 0;
-              break;
-
               case input_class:
-                rv = fprintf(fp, "! %s (%s, %s)\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*");
+                rv = fprintf(fp, "! %s (%s, %s) # %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr);
               break;
 
               case output_class:
-                rv = fprintf(fp, "? %s (%s, %s)\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*");
+                rv = fprintf(fp, "? %s (%s, %s) # %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr);
+              break;
+
+              case aux_class:
+                if(cb->outaux)
+                  rv = fprintf(fp, ". %s (%s, %s) # %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr);
+                else
+                  rv = 0;
+              break;
+
+              case internal_class:
+                if(cb->outint)
+                  rv = fprintf(fp, ". %s (%s, %s) # %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr);
+                else
+                  rv = 0;
               break;
 
               default:
@@ -1781,9 +1891,9 @@ int save_ics(c_base *cb, FILE *fp)
       if(sp && sp->from && sp->to)
         {
           if(!icp->neg)
-            rv = fprintf(fp, "(%s, %s) @ "TIME_FMT"\n", sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", icp->t);
+            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, icp->t);
           else
-            rv = fprintf(fp, "(%s, %s) @ "TIME_FMT"\n", sp->to? sp->to->name : "*", sp->from? sp->from->name : "*", icp->t);
+            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->to? sp->to->name : "*", sp->from? sp->from->name : "*", sp->occurr, icp->t);
         }
       else
         {
@@ -1808,7 +1918,7 @@ int save_xref(c_base *cb, FILE *fp)
       assert(!vp->zombie);
       assert(strlen(vp->debug) <= DEBUG_STRLEN);
 
-      rv = fprintf(fp, "%s: { %s ; }\n", vp->name, vp->debug);
+      rv = fprintf(fp, "%s: %s\n", vp->name, vp->debug);
 
       vp = vp->vp;
     }
@@ -1916,8 +2026,8 @@ void raise_signals(c_base *cb, smallnode *vp)
                   else
                     if(sp->to == wp)
                       {
-                        sp->from = wp;
-                        sp->to = vp;
+                         sp->from = wp;
+                         sp->to = vp;
                       }
                 }
             }
@@ -2071,7 +2181,7 @@ smallnode *build_cotree(c_base *cb)
   return xp;
 }
 
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name)
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, bool seplit, bool merge, bool outaux, bool outint)
 {
   c_base *cb;
   btl_specification *e, *f;
@@ -2123,6 +2233,11 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
       free(cb);
       return cperf;
     }
+
+  cb->seplit = seplit;
+  cb->merge = merge;
+  cb->outaux = outaux;
+  cb->outint = outint;
 
   stv = preval(cb, e, 0, 0);
 
@@ -2214,10 +2329,12 @@ int main(int argc, char *argv[])
 {
   char *source_name, *base_name, *state_name, *xref_name, *option, *ext;
   char default_state_name[MAX_STRLEN], default_xref_name[MAX_STRLEN];
+  bool seplit, merge, outaux, outint;
   compinfo cperf;
   int i;
 
   source_name = base_name = state_name = xref_name = NULL;
+  seplit = merge = outaux = outint = FALSE;
 
   for(i = 1; i < argc; i++)
     {
@@ -2227,7 +2344,7 @@ int main(int argc, char *argv[])
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-x] [-o base] [-I state] [-X symbols] [source]\n",
+              fprintf(stderr, "Usage: %s [-bBuwx] [-I state] [-o base] [-X symbols] [source]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -2321,21 +2438,33 @@ int main(int argc, char *argv[])
                 {
                   switch(*option)
                     {
-/*
-                    case 'c':
-                      strictly_causal = TRUE;
-                    break;
-*/
-                    case 'x':
-                      if(!xref_name)
-                        xref_name = default_xref_name;
-                    break;
+                      case 'b':
+                        outaux = TRUE;
+                      break;
 
-                    default:
-                      fprintf(stderr, "%s, %c: Invalid command line option"
-                                      " (%s -h for help)\n",
-                              argv[i], *option, argv[0]);
-                      exit(EXIT_FAILURE);
+                      case 'B':
+                        outaux = TRUE;
+                        outint = TRUE;
+                      break;
+
+                      case 'u':
+                        merge = TRUE;
+                      break;
+
+                      case 'w':
+                        seplit = TRUE;
+                      break;
+
+                      case 'x':
+                        if(!xref_name)
+                          xref_name = default_xref_name;
+                      break;
+
+                      default:
+                        fprintf(stderr, "%s, %c: Invalid command line option"
+                                        " (%s -h for help)\n",
+                                argv[i], *option, argv[0]);
+                        exit(EXIT_FAILURE);
                     }
                 }
               while(*(++option));
@@ -2376,7 +2505,7 @@ int main(int argc, char *argv[])
   printf("\nTING "VER" - Temporal Inference Network Generator\n"
          "Design & coding by Andrea Giotti, 2017-2018\n\n");
 
-  cperf = compile(source_name, base_name, state_name, xref_name);
+  cperf = compile(source_name, base_name, state_name, xref_name, seplit, merge, outaux, outint);
 
   if(cperf.ok)
     printf("Network generated -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d signals, %d initial conditions\n",

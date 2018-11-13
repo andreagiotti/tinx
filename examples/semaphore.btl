@@ -7,9 +7,9 @@ aux blinking,
     up_green, up_yellow, up_red,
     blink_tick;
 
-init blinking @ 0, ~ blinking @ 1, red @ 0, green @ 1, ~ blink_tick @ 0, blink_tick @ 1;
+init blinking @ [-144, 0), red @ [-24, 0), ~ blink_tick @ [-4, 0);
 
-blinking == since(~ blinking @ [-192, 0), ~ blinking ? [-128, 0));
+blinking == since(~ blinking @ [-192, 0), ~ blinking ? [-144, 0));
 
 green | yellow | red;
 ~ (green & yellow) & ~ (yellow & red) & ~ (red & green);

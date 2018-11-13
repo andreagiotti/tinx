@@ -8,7 +8,7 @@ define green_time = 2, yellow_time = 1, red_time = green_time + yellow_time;
 output green, yellow, red;
 aux up_green, up_yellow, up_red;
 
-init red @ -1, green @ 0;
+init red @ [- red_time, 0);
 
 green | yellow | red;
 ~ (green & yellow) & ~ (yellow & red) & ~ (red & green);

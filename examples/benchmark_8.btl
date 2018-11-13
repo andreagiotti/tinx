@@ -6,7 +6,7 @@
 output green_0, yellow_0, red_0;
 aux up_green_0, up_yellow_0, up_red_0;
 
-init red_0 @ -1, green_0 @ 0;
+init red_0 @ [-24, 0);
 
 green_0 | yellow_0 | red_0;
 ~ (green_0 & yellow_0) & ~ (yellow_0 & red_0) & ~ (red_0 & green_0);

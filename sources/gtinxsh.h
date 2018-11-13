@@ -12,25 +12,30 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 #define CMD_PATH ""
+#define CONFIG_FILENAME ".gtinxshrc"
 
 #define MAX_STRLEN_IF 512
 #define MAX_STRLEN_IF_C "511"
 
 #define MAX_FILES 256
-#define HORIZON_SIZE 81
+#define DEFAULT_HORIZON_SIZE (100 + 1)
+#define MAX_HORIZON_SIZE (255 + 1)
 #define MAX_RUN_LEN 1000000
 #define MIN_BSBT 2
 #define MAX_BSBT 30
 
-#define SKIP_FMT "%*[^?!]"
+#define SKIP_FMT "%*[^.?!]"
 
 #define DISPLAY_LO_CHAR '-'
 #define DISPLAY_HI_CHAR '#'
 #define DISPLAY_UNKNOWN_CHAR ' '
 
+#define DISPLAY_ROWS 24
+
 #define DEFAULT_PROB ((float) 0.5)
 
 #define TITLE "Temporal Inference Network eXecutor Suite"
+#define CONFIG_TITLE "Configuration"
 #define BANNER "Temporal Inference Network eXecutor Suite "PACK_VER", graphical shell "VER"\n" \
                "Design & coding by Andrea Giotti, 1998-1999, 2016-2018\n\n" \
                "A real time inference engine for temporal logic specifications, which is able to process and generate any binary signal through POSIX IPC or files.\n" \
@@ -43,17 +48,19 @@
 
 #define XBUFSIZE 262144
 
-#define WINDOW_WIDTH 1000
-#define WINDOW_HEIGHT 750
-#define GRAPHICS_HEIGHT (WINDOW_HEIGHT / 3)
-#define TEXT_HEIGHT (WINDOW_HEIGHT / 5)
-#define BAR_WIDTH (WINDOW_WIDTH / 6)
+#define WINDOW_WIDTH 1024
+#define WINDOW_HEIGHT 640
+#define CONFIG_WINDOW_WIDTH 512
+#define CONFIG_WINDOW_HEIGHT 512
+
+#define GRAPHICS_HEIGHT (WINDOW_HEIGHT / 2)
+#define TEXT_HEIGHT (WINDOW_HEIGHT / 3)
+#define BAR_WIDTH (WINDOW_WIDTH / 5)
 
 #define BORDER_TRUE 0.2
 #define BORDER_FALSE 0.4
 #define FONT_SIZE 0.8
-#define BALL_RATIO 0.5
-#define LABEL_LEN 24
+#define BALL_RATIO 0.6
 #define ASPECT 0.6
 #define MAX_FONT_PIXELS 16
 
@@ -65,12 +72,6 @@
 #define round(x) floor((x) + 0.5)
 #define print_error(SB, A) print(SB, "%s: %s\n", A, strerror(errno))
 
-#define LO_CHAR '0'
-#define HI_CHAR '1'
-#define UNKNOWN_CHAR '?'
-#define END_CHAR '.'
-#define TERM_CHAR '\x1b' /* Escape */
-
 typedef enum runstate
   {
     stopped,
@@ -81,15 +82,17 @@ typedef enum runstate
 
 typedef struct s_base
   {
-    char memory_f[MAX_FILES][HORIZON_SIZE];
-    char memory_g[MAX_FILES][HORIZON_SIZE];
+    char memory_f[MAX_FILES][MAX_HORIZON_SIZE];
+    char memory_g[MAX_FILES][MAX_HORIZON_SIZE];
     int fn;
     int gn;
+    int pos;
     d_time t;
     m_time time;
     m_time time_base;
     char fnames[MAX_FILES][MAX_STRLEN];
     char gnames[MAX_FILES][MAX_STRLEN];
+    bool gaux[MAX_FILES];
     int maxlen;
     file fp[MAX_FILES];
     file gp[MAX_FILES];
@@ -114,6 +117,9 @@ typedef struct s_base
     int num_threads;
     float prob;
     float correction;
+    char prefix[MAX_STRLEN];
+    char path[MAX_STRLEN];
+    char alpha[SYMBOL_NUMBER + 1];
     bool load_state;
     bool strictly_causal;
     bool soundness_check;
@@ -127,23 +133,45 @@ typedef struct s_base
     bool hard;
     bool sturdy;
     bool use_xref;
-    bool batch;
+    bool seplit;
+    bool merge;
+    bool outaux;
+    bool outint;
+    bool batch_in;
+    bool cp_batch_in;
+    bool batch_out;
+    bool cp_batch_out;
+    bool draw_undef;
+    int horizon_size;
+    int cp_horizon_size;
     runstate rs;
     bool term;
+    bool regenerate;
+    bool changed;
+    bool configured;
     pthread_t tintloop;
     pthread_t tinxpipe;
     pthread_mutex_t mutex;
     GtkWindow *window;
+    GtkWindow *config_window;
     GtkDrawingArea *drawingarea;
     GtkTextView *textarea;
     GtkButton *run_button;
+    GtkButton *save_button;
+    GtkButton *erase_button;
+    GtkMenuItem *run_menu;
+    GtkMenuItem *save_menu;
+    GtkMenuItem *erase_menu;
+    GtkScale *areascale;
     GtkLabel *timer;
+    GtkLabel *reg_warning;
+    GtkImage *reg_warning_icon;
   } s_base;
 
 /* Protos */
 
 INLINE m_time get_time();
-void plot(GtkWidget *widget, cairo_t *cr, s_base *sb, int x, int y, char truth);
+void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int width, int height, char truth);
 gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb);
 gboolean tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, s_base *sb);
 void tintloop(s_base *sb);
@@ -188,6 +216,7 @@ void print(s_base *sb, char *string, ...);
 void print_add(s_base *sb, char *string, ...);
 pid_t pidof(s_base *sb, char *name);
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
-    bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, int bufexp, int max_time, m_time step, int num_threads, float prob, bool batch);
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool seplit, bool merge, bool outaux, bool outint,
+         int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads, float prob, bool batch_in, bool batch_out, bool draw_undef);
 
 

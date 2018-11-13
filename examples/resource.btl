@@ -1,7 +1,7 @@
 /*
 	Name:	Resource management
 	Author:	Andrea Giotti, 2018
-	Release: 1.1
+	Release: 1.2
 
 	Description:
 	A mutually exclusive resource is granted to one task on <numtasks> while following requests
@@ -36,6 +36,8 @@ iter(numtasks)
 
 			aux queued(i, j), begin(i, j), end(i, j), up(i, j), down(i, j);
 
+                        init ~ up(i, j) @ 0, down(i, j) @ 0;
+
 			queued(i, j) == since(up(i, j), ~ down(i, j));
 
 			begin(i, j) == (free(j) & one(req(^) & ~ rel(^), i, numtasks)) @ -1;
@@ -55,8 +57,6 @@ iter(numtasks)
 iter(numpos)
 {
 	define	j = ^;
-
-	init free(j) @ 0;
 
 	free(j) == ~ exists(queued(^, j), numtasks);
 }

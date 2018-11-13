@@ -12,7 +12,7 @@ output green_light_2, yellow_light_2, red_light_2;
 aux green_2, yellow_2, red_2,
     up_green_2, up_yellow_2, up_red_2;
 
-init ~ blinking @ 0, ~ up_switch @ 0, up_green @ 0, ~ blink_tick @ -1, blink_tick @ 0;
+init blinking @ -2, up_set @ -1, yellow_2 @ [-8, 0), ~ blink_tick @ [-4, 0);
 
 up_set == ~ set_blinking @ -1 & set_blinking;
 up_switch == ~ switch_lights @ -1 & switch_lights;

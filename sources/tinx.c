@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "5.0.0 (single core)"
+#define VER "6.0.0 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -35,22 +35,18 @@ INLINE event ev_neg(event s)
   return r;
 }
 
-arc arc_between(node *vp, node *wp)
+arc arc_between(node *vp, node *wp, link_code lc)
 {
   arc e;
-  link_code lc;
 
   assert(vp && wp);
 
   e.vp = wp;
-  e.lc = no_link;
 
-  for(lc = parent; lc < LINK_CODES_NUMBER; lc++)
-    if(vp == wp->pin[lc].e.vp)
-      {
-        e.lc = lc;
-        break;
-      }
+  if(vp == wp->pin[lc].e.vp)
+    e.lc = lc;
+  else
+    e.lc = no_link;
 
   return e;
 }
@@ -112,7 +108,7 @@ INLINE void state(k_base *kb, event s)
 
   set_stated(kb, s);
 
-  assert(!valid(kb->last_input) || !is_chosen(kb->last_input));
+  assert(!valid(kb->last_input) || !is_chosen(kb, kb->last_input));
 
   if(kb->last_input.t < s.t)
     {
@@ -549,7 +545,7 @@ bool input_m(k_base *kb, stream *ios)
 
     default:
       fprintf(stderr, "%s, %c (dec %d): Invalid character in stream\n",
-              ios->file_name, c, c);
+              ios->chan_name, c, c);
       exit(EXIT_FAILURE);
     }
 
@@ -649,7 +645,7 @@ bool output_m(k_base *kb, stream *ios)
 
 void trace(k_base *kb, event s)
 {
-  char debug[2 * DEBUG_STRLEN + 8];
+  char debug[2 * DEBUG_STRLEN + 16];
   arc e1, e2;
 
   if(valid(s))
@@ -661,19 +657,19 @@ void trace(k_base *kb, event s)
 
       *debug = '\0';
       if(e1.vp->debug && e2.vp->debug)
-        sprintf(debug, ": %s -- %s", e1.vp->debug, e2.vp->debug);
+        sprintf(debug, ": %s(%s) --> %s(%s)", e1.lc? "" : "~ ", e1.vp->debug, e2.lc? "~ " : "", e2.vp->debug);
 
       if(kb->echo_stdout)
         {
-          printf(" > "TIME_FMT": (%s, %s) @ "TIME_FMT"%s        \r",
-                 kb->curr_time, e1.vp->name, e2.vp->name, s.t, debug);
+          printf(" > "TIME_FMT": (%s, %s) # %d @ "TIME_FMT"%s        \r",
+                 kb->curr_time, e1.vp->name, e2.vp->name, e2.lc, s.t, debug);
           fflush(stdout);
         }
 
       if(kb->logfp)
         {
-          if(fprintf(kb->logfp, "(%s, %s) @ "TIME_FMT"%s\n",
-                 e1.vp->name, e2.vp->name, s.t, debug) < 0)
+          if(fprintf(kb->logfp, "(%s, %s) # %d @ "TIME_FMT"%s\n",
+                 e1.vp->name, e2.vp->name, e2.lc, s.t, debug) < 0)
             {
               perror(NULL);
               exit(EXIT_FAILURE);
@@ -718,9 +714,6 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 
   ios->e = e;
   ios->ne = pin->e;
-
-  pin->io_stream[sclass] = ios;
-  link_of(pin->e).io_stream[sclass] = ios;
 
   if(file_io)
     {
@@ -773,9 +766,6 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 
 void close_stream(stream *ios, char *alpha)
 {
-  link_of(ios->e).io_stream[ios->sclass] = NULL;
-  link_of(ios->ne).io_stream[ios->sclass] = NULL;
-
   if(ios->file_io)
     {
       if(ios->sclass == output_stream && put_file(ios->fp, &alpha[end_symbol]))
@@ -864,9 +854,6 @@ node *alloc_node(k_base *kb, char *name)
           vp->pin[lc].history[t].other = null_event;
           vp->pin[lc].history[t].next = null_event;
         }
-
-      vp->pin[lc].io_stream[input_stream] = NULL;
-      vp->pin[lc].io_stream[output_stream] = NULL;
     }
 
   vp->debug = NULL;
@@ -1039,6 +1026,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   stream_class sclass;
   arc e;
   int bufsiz;
+  link_code lc;
 
   kb = malloc(sizeof(k_base));
   if(!kb)
@@ -1159,9 +1147,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   ios = NULL;
   k = 0;
 
-  while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) @ "
-                   TIME_FMT" ",
-               &c, name, name_v, name_w, &k) >= 4)
+  while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) # %d @ "TIME_FMT" ",
+               &c, name, name_v, name_w, &lc, &k) >= 5)
     {
       if(strlen(name) > MAX_NAMELEN)
         {
@@ -1180,7 +1167,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      e = arc_between(vp, wp);
+      e = arc_between(vp, wp, lc);
       if(e.lc < 0)
         {
           fprintf(stderr, "%s, (%s, %s): Undefined edge\n",
@@ -1214,18 +1201,12 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
         break;
 
         case '?':
+        case '.':
           sclass = output_stream;
         break;
 
         default:
           fprintf(stderr, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
-          exit(EXIT_FAILURE);
-        }
-
-      if(link_of(e).io_stream[sclass])
-        {
-          fprintf(stderr, "%s, "OP_FMT"%s (%s, %s): Duplicate stream\n",
-                  file_name, c, name, name_v, name_w);
           exit(EXIT_FAILURE);
         }
 
@@ -1359,7 +1340,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
         }
     }
 
-  kb->max_slice = kb->perf.edges / (IO_INFERENCE_RATIO * max(1, max(kb->io_num[input_stream], kb->io_num[output_stream])));
+  kb->max_slice = max(1, kb->perf.edges / (IO_INFERENCE_RATIO * max(1, max(kb->io_num[input_stream], kb->io_num[output_stream]))));
   kb->slice = kb->max_slice;
 
   kb->io_count[input_stream] = kb->io_num[input_stream];
@@ -1429,6 +1410,7 @@ void init_state(k_base *kb, char *state_name)
   char file_name[MAX_STRLEN], name_v[MAX_NAMEBUF], name_w[MAX_NAMEBUF];
   node *vp, *wp;
   event s;
+  link_code lc;
 
   strcpy(file_name, state_name);
   strcat(file_name, EVENT_LIST_EXT);
@@ -1439,8 +1421,8 @@ void init_state(k_base *kb, char *state_name)
       exit(EXIT_FAILURE);
     }
 
-  while(fscanf(fp, " ( "NAME_FMT" , "NAME_FMT" ) @ "TIME_FMT" : %*[^\n]\n",
-               name_v, name_w, &s.t) >= 3)
+  while(fscanf(fp, " ( "NAME_FMT" , "NAME_FMT" ) # %d @ "TIME_FMT" : %*[^\n]\n",
+               name_v, name_w, &lc, &s.t) >= 4)
     {
       vp = name2node(kb, name_v, FALSE);
       wp = name2node(kb, name_w, FALSE);
@@ -1452,7 +1434,7 @@ void init_state(k_base *kb, char *state_name)
           exit(EXIT_FAILURE);
         }
 
-      s.e = arc_between(vp, wp);
+      s.e = arc_between(vp, wp, lc);
       if(s.e.lc < 0)
         {
           fprintf(stderr, "%s, (%s, %s): Undefined edge\n",
