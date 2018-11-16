@@ -30,7 +30,8 @@
 #define DISPLAY_HI_CHAR '#'
 #define DISPLAY_UNKNOWN_CHAR ' '
 
-#define DISPLAY_ROWS 24
+#define DEFAULT_DISPLAY_ROWS 24
+#define MAX_DISPLAY_ROWS 255
 
 #define DEFAULT_PROB ((float) 0.5)
 
@@ -144,6 +145,8 @@ typedef struct s_base
     bool draw_undef;
     int horizon_size;
     int cp_horizon_size;
+    int display_rows;
+    int cp_display_rows;
     runstate rs;
     bool term;
     bool regenerate;

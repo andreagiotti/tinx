@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "6.1.1"
-#define VER "2.1.1"
+#define PACK_VER "6.2.0"
+#define VER "2.2.0"
 
 INLINE m_time get_time()
 {
@@ -30,7 +30,7 @@ void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int
 {
   float rectw, recth;
 
-  recth = (float)height / min(sb->fn + sb->gn, DISPLAY_ROWS);
+  recth = (float)height / min(sb->fn + sb->gn, sb->cp_display_rows);
   rectw = (float)width / (sb->cp_horizon_size - 1);
 
   switch(truth)
@@ -74,10 +74,10 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
   if(sb->fn || sb->gn)
     {
       fn0 = max(0, sb->fn - fpos);
-      fn1 = min(fn0, DISPLAY_ROWS);
+      fn1 = min(fn0, sb->cp_display_rows);
 
       gn0 = max(0, sb->gn - gpos);
-      gn1 = min(gn0, DISPLAY_ROWS - fn1);
+      gn1 = min(gn0, sb->cp_display_rows - fn1);
 
       offset = min(FONT_SIZE * (float)height / (fn1 + gn1), MAX_FONT_PIXELS);
 
@@ -381,6 +381,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
         sb->cp_batch_in = sb->batch_in;
         sb->cp_batch_out = sb->batch_out;
         sb->cp_horizon_size = sb->horizon_size;
+        sb->cp_display_rows = sb->display_rows;
 
         if(!sb->cp_quiet)
           {
@@ -422,7 +423,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                         {
                           if(sb->fn >= MAX_FILES)
                             {
-                              print(sb, "%s: Too many input files\n", file_name);
+                              print(sb, "%s: Too many input signals\n", file_name);
                               sb->rs = stopped;
                               return;
                             }
@@ -478,7 +479,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                         {
                           if(sb->gn >= MAX_FILES)
                             {
-                              print(sb, "%s: Too many output files\n", file_name);
+                              print(sb, "%s: Too many output signals\n", file_name);
                               sb->rs = stopped;
                               return;
                             }
@@ -1139,7 +1140,7 @@ void use_xref_box(GtkWidget *widget, s_base *sb)
         {
           sb->regenerate = TRUE;
           gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
-          gtk_label_set_markup(sb->reg_warning, "<i>Please regenerate network</i>");
+          gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
         }
     }
   else
@@ -1166,7 +1167,7 @@ void seplit_box(GtkWidget *widget, s_base *sb)
     {
       sb->regenerate = TRUE;
       gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
-      gtk_label_set_markup(sb->reg_warning, "<i>Please regenerate network</i>");
+      gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
     }
 
   if(!sb->changed)
@@ -1190,7 +1191,7 @@ void merge_box(GtkWidget *widget, s_base *sb)
     {
       sb->regenerate = TRUE;
       gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
-      gtk_label_set_markup(sb->reg_warning, "<i>Please regenerate network</i>");
+      gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
     }
 
   if(!sb->changed)
@@ -1214,7 +1215,7 @@ void outaux_box(GtkWidget *widget, s_base *sb)
     {
       sb->regenerate = TRUE;
       gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
-      gtk_label_set_markup(sb->reg_warning, "<i>Please regenerate network</i>");
+      gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
     }
 
   if(!sb->changed)
@@ -1238,7 +1239,7 @@ void outint_box(GtkWidget *widget, s_base *sb)
     {
       sb->regenerate = TRUE;
       gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
-      gtk_label_set_markup(sb->reg_warning, "<i>Please regenerate network</i>");
+      gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
     }
 
   if(!sb->changed)
@@ -1322,7 +1323,7 @@ void source_fname(GtkWidget *widget, s_base *sb)
     {
       sb->regenerate = TRUE;
       gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
-      gtk_label_set_markup(sb->reg_warning, "<i>Please regenerate network</i>");
+      gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
     }
 
   if(!sb->changed)
@@ -1755,7 +1756,7 @@ void pos_value(GtkWidget *widget, s_base *sb)
 {
   int amount;
 
-  amount = max(0, sb->fn + sb->gn - DISPLAY_ROWS);
+  amount = max(0, sb->fn + sb->gn - sb->cp_display_rows);
 
   sb->pos = round(amount * gtk_range_get_value(GTK_RANGE(widget)));
 
@@ -1794,6 +1795,20 @@ void correction_value(GtkWidget *widget, s_base *sb)
 void horizon_value(GtkWidget *widget, s_base *sb)
 {
   sb->horizon_size = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget)) + 1;
+
+  if(!sb->changed)
+    {
+      sb->changed = TRUE;
+
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+      if(sb->save_button)
+        gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+    }
+}
+
+void rows_value(GtkWidget *widget, s_base *sb)
+{
+  sb->display_rows = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
 
   if(!sb->changed)
     {
@@ -1962,7 +1977,7 @@ void configure(GtkWidget *widget, s_base *sb)
   GtkWidget *tabf, *tabk, *tabh, *tabg, *tabs, *tabw;
   GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15;
   GtkWidget *lbl2, *ent2, *lbl3, *ent3, *lbl4, *ent4, *lbl7, *ent7, *lbl10, *ent10, *lbl11, *ent11, *lbl12, *ent12, *lbl13, *ent13, *lbl14, *ent14, *lbl15, *ent15, *lbl16, *ent16,
-            *lbl17, *ent17, *lbl18, *ent18;
+            *lbl17, *ent17, *lbl18, *ent18, *lbl19, *ent19;
   GtkWidget *fr1, *fr2, *fr3, *fr4;
   GtkWidget *vbox1, *vbox2, *vbox3, *vbox6, *vbox7, *vbox8, *hbox1, *hbox2, *hbox4, *extbox;
   char buf[2];
@@ -2182,7 +2197,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_container_set_border_width(GTK_CONTAINER(fr2), 5);
   gtk_container_set_border_width(GTK_CONTAINER(vbox2), 5);
 
-  tabk = gtk_table_new(2, 3, FALSE);
+  tabk = gtk_table_new(2, 4, FALSE);
 
   lbl7 = gtk_label_new("Number of processes ");
   gtk_misc_set_alignment(GTK_MISC(lbl7), 1, 0.5);
@@ -2200,13 +2215,21 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_table_attach_defaults(GTK_TABLE(tabk), ent11, 1, 2, 1, 2);
   g_signal_connect(G_OBJECT(ent11), "value-changed", G_CALLBACK(bsbt_value), (gpointer)sb);
 
-  lbl18 = gtk_label_new("History window size ");
+  lbl18 = gtk_label_new("History window columns ");
   gtk_misc_set_alignment(GTK_MISC(lbl18), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabk), lbl18, 0, 1, 2, 3);
   ent18 = gtk_spin_button_new_with_range(1, MAX_HORIZON_SIZE - 1, 1);
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent18), sb->horizon_size - 1);
   gtk_table_attach_defaults(GTK_TABLE(tabk), ent18, 1, 2, 2, 3);
   g_signal_connect(G_OBJECT(ent18), "value-changed", G_CALLBACK(horizon_value), (gpointer)sb);
+
+  lbl19 = gtk_label_new("History window max rows ");
+  gtk_misc_set_alignment(GTK_MISC(lbl19), 1, 0.5);
+  gtk_table_attach_defaults(GTK_TABLE(tabk), lbl19, 0, 1, 3, 4);
+  ent19 = gtk_spin_button_new_with_range(1, MAX_DISPLAY_ROWS, 1);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent19), sb->display_rows);
+  gtk_table_attach_defaults(GTK_TABLE(tabk), ent19, 1, 2, 3, 4);
+  g_signal_connect(G_OBJECT(ent19), "value-changed", G_CALLBACK(rows_value), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox2), tabk);
   gtk_container_add(GTK_CONTAINER(fr2), vbox2);
@@ -2279,7 +2302,7 @@ void configure(GtkWidget *widget, s_base *sb)
 
   gtk_box_pack_end(GTK_BOX(vbox6), hbox2, FALSE, FALSE, 0);
 
-  gtk_box_pack_end(GTK_BOX(extbox), vbox6, TRUE, TRUE, 0);
+  gtk_box_pack_end(GTK_BOX(extbox), vbox6, FALSE, FALSE, 0);
 
   gtk_container_add(GTK_CONTAINER(window), extbox);
 
@@ -2309,16 +2332,19 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   fp = fopen(CONFIG_FILENAME, "r");
   if(fp)
     {
-      fread(&sbs, sizeof(sbs), 1, fp);
-      fclose(fp);
+      if(fread(&sbs, sizeof(sbs), 1, fp) == 1)
+        sbs.configured = TRUE;
+      else
+        sbs.configured = FALSE;
 
-      sbs.configured = TRUE;
+      fclose(fp);
     }
   else
+    sbs.configured = FALSE;
+
+  if(!sbs.configured)
     {
       memset(&sbs, 0, sizeof(s_base));
-
-      sbs.configured = FALSE;
 
       strcpy(sbs.source_name, source_name);
 
@@ -2386,6 +2412,9 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
       sbs.batch_out = batch_out;
       sbs.draw_undef = draw_undef;
       sbs.horizon_size = DEFAULT_HORIZON_SIZE;
+      sbs.display_rows = DEFAULT_DISPLAY_ROWS;
+
+      sbs.configured = FALSE;
     }
 
   sbs.cp_step = step;
@@ -2396,6 +2425,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   sbs.cp_batch_in = batch_in;
   sbs.cp_batch_out = batch_out;
   sbs.cp_horizon_size = DEFAULT_HORIZON_SIZE;
+  sbs.cp_display_rows = DEFAULT_DISPLAY_ROWS;
 
   sbs.fn = 0;
   sbs.gn = 0;
@@ -2504,7 +2534,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
   sbs.drawingarea = GTK_DRAWING_AREA(drawingarea);
 
-  ent0 = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL, 0, 1, 1.0 / DISPLAY_ROWS);
+  ent0 = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL, 0, 1, 1.0 / sbs.display_rows);
   gtk_range_set_value(GTK_RANGE(ent0), 0);
   gtk_scale_set_draw_value(GTK_SCALE(ent0), FALSE);
   g_object_set(G_OBJECT(ent0), "height-request", GRAPHICS_HEIGHT, NULL);
@@ -2513,7 +2543,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   sbs.areascale = GTK_SCALE(ent0);
 
   gtk_box_pack_start(GTK_BOX(hboxgfx), drawingarea, TRUE, TRUE, 5);
-  gtk_box_pack_end(GTK_BOX(hboxgfx), ent0, TRUE, TRUE, 5);
+  gtk_box_pack_end(GTK_BOX(hboxgfx), ent0, FALSE, FALSE, 5);
   gtk_container_add(GTK_CONTAINER(frgfx), hboxgfx);
 
   frtxt = gtk_frame_new("Diagnostic output messages");
@@ -2567,8 +2597,8 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   hbox3 = gtk_hbox_new(FALSE, 0);
   gtk_box_pack_start(GTK_BOX(hbox3), icng, TRUE, TRUE, 0);
   gtk_box_pack_end(GTK_BOX(hbox3), lblg, TRUE, TRUE, 0);
+  gtk_misc_set_alignment(GTK_MISC(icng), 1, 0.5);
   gtk_misc_set_alignment(GTK_MISC(lblg), 0, 0.5);
-  gtk_misc_set_alignment(GTK_MISC(icng), 0.5, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabf), hbox3, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(ent1), "changed", G_CALLBACK(source_fname), (gpointer)&sbs);
   g_signal_connect(G_OBJECT(ent1), "draw", G_CALLBACK(source_default), (gpointer)&sbs);
@@ -2754,12 +2784,12 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
   gtk_box_pack_end(GTK_BOX(vbox5), hbox5, FALSE, FALSE, 0);
 
-  gtk_box_pack_start(GTK_BOX(extbox), menubar, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(extbox), menubar, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(extbox), frgfx, TRUE, TRUE, 0);
   gtk_box_pack_start(GTK_BOX(extbox), frtxt, TRUE, TRUE, 0);
-  gtk_box_pack_start(GTK_BOX(extbox), hboxctl1, TRUE, TRUE, 0);
-  gtk_box_pack_start(GTK_BOX(extbox), hboxctl2, TRUE, TRUE, 0);
-  gtk_box_pack_end(GTK_BOX(extbox), vbox5, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(extbox), hboxctl1, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(extbox), hboxctl2, FALSE, FALSE, 0);
+  gtk_box_pack_end(GTK_BOX(extbox), vbox5, FALSE, FALSE, 0);
 
   gtk_container_add(GTK_CONTAINER(window), extbox);
 
