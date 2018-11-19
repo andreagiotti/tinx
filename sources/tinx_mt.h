@@ -224,6 +224,8 @@ struct stream
   char chan_name[MAX_STRLEN];
   file fp;
   channel chan;
+  int fails;
+  int errors;
   stream *next_ios;
   stream *prev_ios;
   bool file_io;
@@ -358,8 +360,6 @@ typedef struct k_base
   int io_open;
   int io_togo;
   int io_slice;
-  int fails;
-  int errors;
   char alpha[SYMBOL_NUMBER + 1];
   d_time curr_time;
   d_time max_time;
@@ -368,7 +368,6 @@ typedef struct k_base
   d_time min_sigma;
   d_time last_empty;
   d_time last_far;
-  bool io_err;
   bool strictly_causal;
   bool soundness_check;
   bool trace_focus;
@@ -386,9 +385,6 @@ typedef struct k_base
   pthread_mutex_t mutex_barrier;
   pthread_cond_t cond_done[MAX_THREADS + 1];
   node *table[HASH_SIZE][HASH_DEPTH];
-  node *fifo[MAX_THREADS][FIFO_SIZE];
-  int fifo_start[MAX_THREADS];
-  int fifo_end[MAX_THREADS];
 } k_base;
 
 typedef struct thread_arg

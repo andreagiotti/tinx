@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "6.2.0"
-#define VER "2.2.0"
+#define PACK_VER "6.3.0"
+#define VER "2.2.1"
 
 INLINE m_time get_time()
 {
@@ -363,7 +363,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
   char cmd[MAX_STRLEN_IF], arg[MAX_STRLEN_IF];
   pthread_attr_t attributes;
-  int i, k, len, count;
+  int i, k, len, count, tot_rows, page_rows;
   char c, ic, oc;
   pid_t pid;
   m_time halt;
@@ -411,8 +411,6 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
             sb->fn = sb->gn = 0;
             sb->pos = 0;
             sb->maxlen = 0;
-
-            gtk_range_set_value(GTK_RANGE(sb->areascale), 0);
 
             while(fscanf(bp, SKIP_FMT" "OP_FMT" "FUN_FMT, &c, name) == 2)
               {
@@ -538,6 +536,10 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                 return;
               }
           }
+
+        tot_rows = max(1, sb->fn + sb->gn);
+        page_rows = min(tot_rows, sb->display_rows);
+        gtk_adjustment_configure(sb->area_adj, 0, 0, tot_rows, 1, page_rows, page_rows);
 
         sb->time_base = get_time();
         sb->mt = (sb->num_threads > 1);
@@ -1754,11 +1756,7 @@ void bsbt_value(GtkWidget *widget, s_base *sb)
 
 void pos_value(GtkWidget *widget, s_base *sb)
 {
-  int amount;
-
-  amount = max(0, sb->fn + sb->gn - sb->cp_display_rows);
-
-  sb->pos = round(amount * gtk_range_get_value(GTK_RANGE(widget)));
+  sb->pos = gtk_adjustment_get_value(sb->area_adj);
 
   if(sb->rs == stopped)
     update_drawing(sb);
@@ -2327,6 +2325,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   GtkWidget *menubar, *menu_items, *project_menu, *open_menu, *gen_menu, *run_menu, *config_menu, *save_menu, *erase_menu, *about_menu, *quit_menu, *sep1, *sep2, *sep3;
   GtkTextBuffer *textbuffer;
   GtkTextIter iter;
+  GtkAdjustment *adj;
   FILE *fp;
 
   fp = fopen(CONFIG_FILENAME, "r");
@@ -2534,16 +2533,14 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
   sbs.drawingarea = GTK_DRAWING_AREA(drawingarea);
 
-  ent0 = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL, 0, 1, 1.0 / sbs.display_rows);
-  gtk_range_set_value(GTK_RANGE(ent0), 0);
-  gtk_scale_set_draw_value(GTK_SCALE(ent0), FALSE);
-  g_object_set(G_OBJECT(ent0), "height-request", GRAPHICS_HEIGHT, NULL);
+  adj = gtk_adjustment_new(0, 0, 1, 1, 1, 1);
+  ent0 = gtk_scrollbar_new(GTK_ORIENTATION_VERTICAL, adj);
   g_signal_connect(G_OBJECT(ent0), "value-changed", G_CALLBACK(pos_value), (gpointer)&sbs);
 
-  sbs.areascale = GTK_SCALE(ent0);
+  sbs.area_adj = adj;
 
-  gtk_box_pack_start(GTK_BOX(hboxgfx), drawingarea, TRUE, TRUE, 5);
-  gtk_box_pack_end(GTK_BOX(hboxgfx), ent0, FALSE, FALSE, 5);
+  gtk_box_pack_start(GTK_BOX(hboxgfx), drawingarea, TRUE, TRUE, 0);
+  gtk_box_pack_end(GTK_BOX(hboxgfx), ent0, FALSE, FALSE, 0);
   gtk_container_add(GTK_CONTAINER(frgfx), hboxgfx);
 
   frtxt = gtk_frame_new("Diagnostic output messages");
@@ -2729,7 +2726,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_scale_add_mark(GTK_SCALE(ent8), 0.5,  GTK_POS_BOTTOM, NULL);
   gtk_range_set_value(GTK_RANGE(ent8), sbs.prob);
   gtk_table_attach_defaults(GTK_TABLE(tabx), ent8, 1, 2, 0, 1);
-  g_object_set(G_OBJECT(ent8), "width-request", BAR_WIDTH, NULL); 
+  g_object_set(G_OBJECT(ent8), "width-request", BAR_WIDTH, NULL);
   g_signal_connect(G_OBJECT(ent8), "value-changed", G_CALLBACK(prob_value), (gpointer)&sbs);
 
   lbl9 = gtk_label_new("Time correction ");
@@ -2741,7 +2738,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_scale_add_mark(GTK_SCALE(ent9), 0,  GTK_POS_BOTTOM, NULL);
   gtk_range_set_value(GTK_RANGE(ent9), sbs.correction);
   gtk_table_attach_defaults(GTK_TABLE(tabx), ent9, 1, 2, 1, 2);
-  g_object_set(G_OBJECT(ent9), "width-request", BAR_WIDTH, NULL); 
+  g_object_set(G_OBJECT(ent9), "width-request", BAR_WIDTH, NULL);
   g_signal_connect(G_OBJECT(ent9), "value-changed", G_CALLBACK(correction_value), (gpointer)&sbs);
 
   lbl0 = gtk_label_new("Elapsed time ");

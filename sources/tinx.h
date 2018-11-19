@@ -217,6 +217,8 @@ struct stream
   char chan_name[MAX_STRLEN];
   file fp;
   channel chan;
+  int fails;
+  int errors;
   stream *next_ios;
   stream *prev_ios;
   bool file_io;
@@ -299,8 +301,6 @@ typedef struct k_base
   int io_num[STREAM_CLASSES_NUMBER];
   int io_count[STREAM_CLASSES_NUMBER];
   int io_open;
-  int fails;
-  int errors;
   int slice;
   int max_slice;
   char alpha[SYMBOL_NUMBER + 1];
@@ -308,7 +308,6 @@ typedef struct k_base
   d_time max_time;
   d_time offset;
   bool far;
-  bool io_err;
   bool strictly_causal;
   bool soundness_check;
   bool trace_focus;

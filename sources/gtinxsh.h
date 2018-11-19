@@ -165,7 +165,7 @@ typedef struct s_base
     GtkMenuItem *run_menu;
     GtkMenuItem *save_menu;
     GtkMenuItem *erase_menu;
-    GtkScale *areascale;
+    GtkAdjustment *area_adj;
     GtkLabel *timer;
     GtkLabel *reg_warning;
     GtkImage *reg_warning_icon;

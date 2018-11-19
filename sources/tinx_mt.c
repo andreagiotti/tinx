@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "6.0.0 MT (multiple cores)"
+#define VER "6.1.0 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -398,34 +398,23 @@ INLINE void scan_outputs(k_base *kb)
             kb->io_count[output_stream]--;
 
             kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-
-            kb->fails = 0;
-            kb->errors = 0;
           }
         else
-          {
-            if(kb->io_err)
-              kb->errors++;
-            else
-              if(kb->last_far == kb->curr_time)
-                kb->fails++;
+          if(kb->io_stream[output_stream]->open)
+            kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
+          else
+            {
+              ios = kb->io_stream[output_stream];
+              remove_stream(&kb->io_stream[output_stream]);
+              close_stream(ios, kb->alpha);
 
-            if(kb->io_num[input_stream] || (kb->fails <= kb->io_count[output_stream] && (kb->sturdy || kb->errors <= IO_ERR_LIMIT)))
-              kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-            else
-              {
-                ios = kb->io_stream[output_stream];
-                remove_stream(&kb->io_stream[output_stream]);
-                close_stream(ios, kb->alpha);
+              kb->io_num[output_stream]--;
+              kb->io_count[output_stream]--;
+              kb->io_open--;
 
-                kb->io_num[output_stream]--;
-                kb->io_count[output_stream]--;
-                kb->io_open--;
-
-                if(!kb->io_open)
-                  kb->quiet = TRUE;
-              }
-          }
+              if(!kb->io_open)
+                kb->quiet = TRUE;
+            }
     }
 }
 
@@ -646,10 +635,10 @@ bool input_m(k_base *kb, stream *ios)
           return FALSE;
         }
 
-      kb->io_err = TRUE;
+      ios->errors++;
     }
   else
-    kb->io_err = FALSE;
+    ios->errors = 0;
 
   switch(strchr(kb->alpha, c) - kb->alpha)
     {
@@ -705,19 +694,35 @@ bool output_f(k_base *kb, stream *ios)
   s.e = ios->ne;
 
   if(is_stated(kb, s))
-    c = kb->alpha[false_symbol];
+    {
+      ios->fails = 0;
+      c = kb->alpha[false_symbol];
+    }
   else
     {
       s.e = ios->e;
 
       if(is_stated(kb, s))
-        c = kb->alpha[true_symbol];
+        {
+          ios->fails = 0;
+          c = kb->alpha[true_symbol];
+        }
       else
         {
-          if(kb->io_num[input_stream] && kb->last_far == kb->curr_time)
-            c = kb->alpha[unknown_symbol];
-          else
+          if(kb->last_far != kb->curr_time)
             return FALSE;
+          else
+            {
+              ios->fails++;
+
+              if(ios->fails > kb->bsd4)
+                {
+                  ios->open = FALSE;
+                  return FALSE;
+                }
+
+              c = kb->alpha[unknown_symbol];
+            }
         }
     }
 
@@ -747,19 +752,35 @@ bool output_m(k_base *kb, stream *ios)
   s.e = ios->ne;
 
   if(is_stated(kb, s))
-    c = kb->alpha[false_symbol];
+    {
+      ios->fails = 0;
+      c = kb->alpha[false_symbol];
+    }
   else
     {
       s.e = ios->e;
 
       if(is_stated(kb, s))
-        c = kb->alpha[true_symbol];
+        {
+          ios->fails = 0;
+          c = kb->alpha[true_symbol];
+        }
       else
         {
-          if(kb->io_num[input_stream] && kb->last_far == kb->curr_time)
-            c = kb->alpha[unknown_symbol];
-          else
+          if(kb->last_far != kb->curr_time)
             return FALSE;
+          else
+            {
+              ios->fails++;
+
+              if(ios->fails > kb->bsd4)
+                {
+                  ios->open = FALSE;
+                  return FALSE;
+                }
+
+              c = kb->alpha[unknown_symbol];
+            }
         }
     }
 
@@ -772,12 +793,15 @@ bool output_m(k_base *kb, stream *ios)
           return FALSE;
         }
 
-      kb->io_err = TRUE;
+      ios->errors++;
+
+      if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+        ios->open = FALSE;
 
       return FALSE;
     }
   else
-    kb->io_err = FALSE;
+    ios->errors = 0;
 
   return TRUE;
 }
@@ -929,6 +953,8 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 
   ios->deadline = offset;
   ios->file_io = file_io;
+  ios->fails = 0;
+  ios->errors = 0;
   ios->open = TRUE;
 
   return ios;
@@ -1191,9 +1217,21 @@ void thread_network(node *network)
 
 void assign_threads(k_base *kb)
 {
+  node *(*fifo)[MAX_THREADS][FIFO_SIZE];
+  int fifo_start[MAX_THREADS];
+  int fifo_end[MAX_THREADS];
   node *vp;
   link_code lc;
   int nodes, n, tid, tid_2, to_go;
+
+  fifo = malloc(sizeof(node *) * MAX_THREADS * FIFO_SIZE);
+  memset(fifo, 0, sizeof(node *) * MAX_THREADS * FIFO_SIZE);
+
+  for(tid = 0; tid < kb->num_threads; tid++)
+    {
+      fifo_start[tid] = 0;
+      fifo_end[tid] = 0;
+    }
 
   nodes = kb->perf.nodes;
 
@@ -1210,10 +1248,10 @@ void assign_threads(k_base *kb)
 
           if(tid_2 != tid && vp->def_proc == NO_THREAD)
             {
-              kb->fifo[tid][kb->fifo_end[tid]] = vp;
-              inc_idx(kb->fifo_end[tid]);
+              (*fifo)[tid][fifo_end[tid]] = vp;
+              inc_idx(fifo_end[tid]);
 
-              if(kb->fifo_start[tid] == kb->fifo_end[tid])
+              if(fifo_start[tid] == fifo_end[tid])
                 {
                   fprintf(stderr, "Breadth-first queue full\n");
                   exit(EXIT_FAILURE);
@@ -1228,29 +1266,29 @@ void assign_threads(k_base *kb)
 
       while(to_go)
         {
-          if(kb->fifo_start[tid] != kb->fifo_end[tid])
+          if(fifo_start[tid] != fifo_end[tid])
             {
-              vp = kb->fifo[tid][kb->fifo_start[tid]];
-              inc_idx(kb->fifo_start[tid]);
+              vp = (*fifo)[tid][fifo_start[tid]];
+              inc_idx(fifo_start[tid]);
 
               if(vp->def_proc == NO_THREAD)
                 {
                   vp->def_proc = tid;
                   nodes--;
 
-                  kb->fifo[tid][kb->fifo_end[tid]] = vp->pin[parent].e.vp;
-                  inc_idx(kb->fifo_end[tid]);
+                  (*fifo)[tid][fifo_end[tid]] = vp->pin[parent].e.vp;
+                  inc_idx(fifo_end[tid]);
 
-                  if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                  if(fifo_start[tid] == fifo_end[tid])
                     {
                       fprintf(stderr, "Breadth-first queue full\n");
                       exit(EXIT_FAILURE);
                     }
 
-                  kb->fifo[tid][kb->fifo_end[tid]] = vp->pin[left_son].e.vp;
-                  inc_idx(kb->fifo_end[tid]);
+                  (*fifo)[tid][fifo_end[tid]] = vp->pin[left_son].e.vp;
+                  inc_idx(fifo_end[tid]);
 
-                  if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                  if(fifo_start[tid] == fifo_end[tid])
                     {
                       fprintf(stderr, "Breadth-first queue full\n");
                       exit(EXIT_FAILURE);
@@ -1258,10 +1296,10 @@ void assign_threads(k_base *kb)
 
                   if(vp->pin[right_son].e.vp)
                     {
-                      kb->fifo[tid][kb->fifo_end[tid]] = vp->pin[right_son].e.vp;
-                      inc_idx(kb->fifo_end[tid]);
+                      (*fifo)[tid][fifo_end[tid]] = vp->pin[right_son].e.vp;
+                      inc_idx(fifo_end[tid]);
 
-                      if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                      if(fifo_start[tid] == fifo_end[tid])
                         {
                           fprintf(stderr, "Breadth-first queue full\n");
                           exit(EXIT_FAILURE);
@@ -1269,13 +1307,15 @@ void assign_threads(k_base *kb)
                     }
                 }
               else
-                if(kb->fifo_start[tid] == kb->fifo_end[tid])
+                if(fifo_start[tid] == fifo_end[tid])
                   to_go--;
             }
 
           tid = (tid + 1) % kb->num_threads;
         }
     }
+
+  free(fifo);
 
   kb->perf.shared = 0;
 
@@ -1337,9 +1377,6 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
       pthread_mutex_init(&kb->pv[tid].mutex, NULL);
 
-      kb->fifo_start[tid] = 0;
-      kb->fifo_end[tid] = 0;
-
       kb->done[tid] = FALSE;
       pthread_cond_init(&kb->cond_done[tid], NULL);
     }
@@ -1356,7 +1393,6 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
   memset(kb->table, 0, sizeof(node *) * HASH_SIZE * HASH_DEPTH);
   memset(kb->io_stream, 0, sizeof(stream *) * STREAM_CLASSES_NUMBER);
-  memset(kb->fifo, 0, sizeof(node *) * MAX_THREADS * FIFO_SIZE);
 
   strcpy(file_name, base_name);
   strcat(file_name, NETWORK_EXT);
@@ -1667,14 +1703,10 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->max_time = kb->offset + max_time;
   kb->anchor_time = kb->offset;
   kb->min_sigma = kb->offset;
+
   kb->last_empty = NULL_TIME;
   kb->last_far = NULL_TIME;
-
-  kb->io_err = FALSE;
   kb->exiting = FALSE;
-
-  kb->fails = 0;
-  kb->errors = 0;
 
   kb->step = step;
 

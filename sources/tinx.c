@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "6.0.0 (single core)"
+#define VER "6.1.0 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -355,34 +355,23 @@ INLINE void scan_outputs(k_base *kb)
             kb->io_count[output_stream]--;
 
             kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-
-            kb->fails = 0;
-            kb->errors = 0;
           }
         else
-          {
-            if(kb->io_err)
-              kb->errors++;
-            else
-              if(!kb->io_count[input_stream] && kb->far)
-                kb->fails++;
+          if(kb->io_stream[output_stream]->open)
+            kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
+          else
+            {
+              ios = kb->io_stream[output_stream];
+              remove_stream(&kb->io_stream[output_stream]);
+              close_stream(ios, kb->alpha);
 
-            if(kb->io_num[input_stream] || (kb->fails <= kb->io_count[output_stream] && (kb->sturdy || kb->errors <= IO_ERR_LIMIT)))
-              kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-            else
-              {
-                ios = kb->io_stream[output_stream];
-                remove_stream(&kb->io_stream[output_stream]);
-                close_stream(ios, kb->alpha);
+              kb->io_num[output_stream]--;
+              kb->io_count[output_stream]--;
+              kb->io_open--;
 
-                kb->io_num[output_stream]--;
-                kb->io_count[output_stream]--;
-                kb->io_open--;
-
-                if(!kb->io_open)
-                  kb->quiet = TRUE;
-              }
-          }
+              if(!kb->io_open)
+                kb->quiet = TRUE;
+            }
     }
 }
 
@@ -510,10 +499,10 @@ bool input_m(k_base *kb, stream *ios)
           exit(EXIT_FAILURE);
         }
 
-      kb->io_err = TRUE;
+      ios->errors++;
     }
   else
-    kb->io_err = FALSE;
+    ios->errors = 0;
 
   switch(strchr(kb->alpha, c) - kb->alpha)
     {
@@ -569,19 +558,35 @@ bool output_f(k_base *kb, stream *ios)
   s.e = ios->ne;
 
   if(is_stated(kb, s))
-    c = kb->alpha[false_symbol];
+    {
+      ios->fails = 0;
+      c = kb->alpha[false_symbol];
+    }
   else
     {
       s.e = ios->e;
 
       if(is_stated(kb, s))
-        c = kb->alpha[true_symbol];
+        {
+          ios->fails = 0;
+          c = kb->alpha[true_symbol];
+        }
       else
         {
-          if(kb->io_num[input_stream] && !kb->io_count[input_stream] && kb->far)
-            c = kb->alpha[unknown_symbol];
-          else
+          if(kb->io_count[input_stream] || !kb->far)
             return FALSE;
+          else
+            {
+              ios->fails++;
+
+              if(ios->fails > kb->bsd4)
+                {
+                  ios->open = FALSE;
+                  return FALSE;
+                }
+
+              c = kb->alpha[unknown_symbol];
+            }
         }
     }
 
@@ -609,19 +614,35 @@ bool output_m(k_base *kb, stream *ios)
   s.e = ios->ne;
 
   if(is_stated(kb, s))
-    c = kb->alpha[false_symbol];
+    {
+      ios->fails = 0;
+      c = kb->alpha[false_symbol];
+    }
   else
     {
       s.e = ios->e;
 
       if(is_stated(kb, s))
-        c = kb->alpha[true_symbol];
+        {
+          ios->fails = 0;
+          c = kb->alpha[true_symbol];
+        }
       else
         {
-          if(kb->io_num[input_stream] && !kb->io_count[input_stream] && kb->far)
-            c = kb->alpha[unknown_symbol];
-          else
+          if(kb->io_count[input_stream] || !kb->far)
             return FALSE;
+          else
+            {
+              ios->fails++;
+
+              if(ios->fails > kb->bsd4)
+                {
+                  ios->open = FALSE;
+                  return FALSE;
+                }
+
+              c = kb->alpha[unknown_symbol];
+            }
         }
     }
 
@@ -633,12 +654,15 @@ bool output_m(k_base *kb, stream *ios)
           exit(EXIT_FAILURE);
         }
 
-      kb->io_err = TRUE;
+      ios->errors++;
+
+      if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+        ios->open = FALSE;
 
       return FALSE;
     }
   else
-    kb->io_err = FALSE;
+    ios->errors = 0;
 
   return TRUE;
 }
@@ -759,6 +783,8 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 
   ios->deadline = offset;
   ios->file_io = file_io;
+  ios->fails = 0;
+  ios->errors = 0;
   ios->open = TRUE;
 
   return ios;
@@ -1350,12 +1376,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->max_time = kb->offset + max_time;
 
   kb->far = TRUE;
-  kb->io_err = FALSE;
   kb->io_busy = FALSE;
   kb->exiting = FALSE;
-
-  kb->fails = 0;
-  kb->errors = 0;
 
   kb->step = step;
 
