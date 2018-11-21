@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "6.3.0"
-#define VER "2.2.1"
+#define PACK_VER "6.4.0"
+#define VER "2.3.0"
 
 INLINE m_time get_time()
 {
@@ -47,6 +47,9 @@ void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int
        if(sb->draw_undef)
          cairo_rectangle(cr, round(offset_x + (x + 0.5) * rectw - 0.5), round(offset_y + (y + 0.5) * recth - 0.5), 1, 1);
      break;
+
+     case DISPLAY_EMPTY_CHAR:
+     break;
    }
 
   cairo_fill(cr);
@@ -60,6 +63,7 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
   int width, height;
   float offset, offset_x1, offset_x2, recth, fonth, fontw;
   d_time t;
+  char c;
 
   t = sb->t;        /* mt cache */
   fpos = sb->pos;
@@ -136,12 +140,22 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
       cairo_move_to(dr, round(offset_x2), round(offset + (row + 0.5) * recth + fonth / 4));
       cairo_show_text(dr, sb->gnames[gpos + i]);
 
-      if(sb->memory_g[gpos + i][(t + (sb->cp_horizon_size - 2)) % sb->cp_horizon_size] == DISPLAY_UNKNOWN_CHAR)
+      c = sb->memory_g[gpos + i][(t + (sb->cp_horizon_size - 2)) % sb->cp_horizon_size];
+
+      if(c == DISPLAY_EMPTY_CHAR || c == DISPLAY_UNKNOWN_CHAR)
         {
           cairo_set_source_rgb(dr, 1, 1, 0);
 
           cairo_arc(dr, round((offset_x1 + offset_x2) / 2), round(offset + (row + 0.5) * recth), round(BALL_RATIO * fonth / 2), 0, 2 * G_PI);
           cairo_fill(dr);
+
+          if(c == DISPLAY_UNKNOWN_CHAR)
+            {
+              cairo_set_source_rgb(dr, 0, 0, 0);
+
+              cairo_arc(dr, round((offset_x1 + offset_x2) / 2), round(offset + (row + 0.5) * recth), round(RING_RATIO * fonth / 2), 0, 2 * G_PI);
+              cairo_fill(dr);
+            }
         }
 
       row++;
@@ -195,6 +209,7 @@ void tintloop(s_base *sb)
   d_time tau[MAX_FILES];
   char ic, oc;
   int i;
+  bool emit;
 
   for(i = 0; i < sb->gn; i++)
     tau[i] = 0;
@@ -249,7 +264,7 @@ void tintloop(s_base *sb)
                           break;
 
                           case end_symbol:
-                            sb->memory_g[i][tau[i] % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CHAR;
+                            sb->memory_g[i][tau[i] % sb->cp_horizon_size] = DISPLAY_EMPTY_CHAR;
                           break;
 
                           default:
@@ -294,7 +309,7 @@ void tintloop(s_base *sb)
             }
 
           for(i = 0; i < sb->gn; i++)
-            sb->memory_g[i][sb->t % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CHAR;
+            sb->memory_g[i][sb->t % sb->cp_horizon_size] = DISPLAY_EMPTY_CHAR;
 
           sb->t++;
         }
@@ -303,7 +318,19 @@ void tintloop(s_base *sb)
   while(sb->rs == starting)
     usleep(DELAY);
 
-  if(sb->rs == started)
+  pthread_mutex_lock(&sb->mutex_exec);
+
+  if(sb->rs == started && !sb->sent)
+    {
+      sb->sent = TRUE;
+      emit = TRUE;
+    }
+  else
+    emit = FALSE;
+
+  pthread_mutex_unlock(&sb->mutex_exec);
+
+  if(emit)
     g_signal_emit_by_name(sb->run_button, "clicked");
 
   pthread_exit(NULL);
@@ -313,7 +340,7 @@ void tinxpipe(s_base *sb)
 {
   FILE *fp;
   char ch[2];
-  bool got;
+  bool got, emit;
 
   print(sb, "%s\n", sb->cmd);
 
@@ -351,7 +378,19 @@ void tinxpipe(s_base *sb)
   while(sb->rs == starting)
     usleep(DELAY);
 
-  if(sb->rs == started)
+  pthread_mutex_lock(&sb->mutex_exec);
+
+  if(sb->rs == started && !sb->sent)
+    {
+      sb->sent = TRUE;
+      emit = TRUE;
+    }
+  else
+    emit = FALSE;
+
+  pthread_mutex_unlock(&sb->mutex_exec);
+
+  if(emit)
     g_signal_emit_by_name(sb->run_button, "clicked");
 
   pthread_exit(NULL);
@@ -371,7 +410,11 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
   switch(sb->rs)
     {
       case stopped:
+        pthread_mutex_lock(&sb->mutex_exec);
+
         sb->rs = starting;
+
+        pthread_mutex_unlock(&sb->mutex_exec);
 
         sb->cp_step = sb->step;
         sb->cp_max_time = sb->max_time;
@@ -642,13 +685,13 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
             if(!sb->cp_batch_in)
               for(i = 0; i < sb->fn; i++)
                 for(k = 0; k < sb->cp_horizon_size; k++)
-                  sb->memory_f[i][k] = DISPLAY_UNKNOWN_CHAR;
+                  sb->memory_f[i][k] = DISPLAY_EMPTY_CHAR;
 
             if(!sb->cp_batch_out)
               {
                 for(i = 0; i < sb->gn; i++)
                   for(k = 0; k < sb->cp_horizon_size; k++)
-                    sb->memory_g[i][k] = DISPLAY_UNKNOWN_CHAR;
+                    sb->memory_g[i][k] = DISPLAY_EMPTY_CHAR;
 
                 for(i = 0; i < sb->gn; i++)
                   {
@@ -680,11 +723,20 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
         gtk_button_set_label(sb->run_button, "Stop execution");
         gtk_menu_item_set_label(sb->run_menu, "Stop execution");
 
+        pthread_mutex_lock(&sb->mutex_exec);
+
         sb->rs = started;
+
+        pthread_mutex_unlock(&sb->mutex_exec);
       break;
 
       case started:
+        pthread_mutex_lock(&sb->mutex_exec);
+
         sb->rs = stopping;
+        sb->sent = TRUE;
+
+        pthread_mutex_unlock(&sb->mutex_exec);
 
         if(!sb->cp_quiet)
           {
@@ -807,7 +859,12 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
         gtk_button_set_label(sb->run_button, "Execute network");
         gtk_menu_item_set_label(sb->run_menu, "Execute network");
 
+        pthread_mutex_lock(&sb->mutex_exec);
+
         sb->rs = stopped;
+        sb->sent = FALSE;
+
+        pthread_mutex_unlock(&sb->mutex_exec);
       break;
 
       default:
@@ -931,10 +988,24 @@ gboolean exit_button_clicked_if(GtkWidget *widget, GdkEvent *event, s_base *sb)
 
 void exit_button_clicked(GtkWidget *widget, s_base *sb)
 {
+  bool emit;
+
   while(sb->rs == starting || sb->rs == stopping)
     usleep(DELAY);
 
-  if(sb->rs == started)
+  pthread_mutex_lock(&sb->mutex_exec);
+
+  if(sb->rs == started && !sb->sent)
+    {
+      sb->sent = TRUE;
+      emit = TRUE;
+    }
+  else
+    emit = FALSE;
+
+  pthread_mutex_unlock(&sb->mutex_exec);
+
+  if(emit)
     run_button_clicked(GTK_WIDGET(sb->run_button), sb);
 
   gtk_main_quit();
@@ -1828,7 +1899,7 @@ gboolean update_view(s_base *sb)
   GtkTextMark *mark;
   GtkTextIter iter;
 
-  pthread_mutex_lock(&sb->mutex);
+  pthread_mutex_lock(&sb->mutex_xbuffer);
 
   n = (sb->xend - sb->xstart + XBUFSIZE) % XBUFSIZE;
 
@@ -1843,7 +1914,7 @@ gboolean update_view(s_base *sb)
   if(!xcat)
     sb->xcat = TRUE;
 
-  pthread_mutex_unlock(&sb->mutex);
+  pthread_mutex_unlock(&sb->mutex_xbuffer);
 
   textbuffer = gtk_text_view_get_buffer(sb->textarea);
   mark = gtk_text_buffer_get_mark(textbuffer, "end");
@@ -1881,7 +1952,7 @@ void print(s_base *sb, char *string, ...)
   vsnprintf(buffer, XBUFSIZE, string, arglist);
   va_end(arglist);
 
-  pthread_mutex_lock(&sb->mutex);
+  pthread_mutex_lock(&sb->mutex_xbuffer);
 
   sb->xstart = 0;
   sb->xend = 0;
@@ -1912,7 +1983,7 @@ void print(s_base *sb, char *string, ...)
 
   sb->xcat = FALSE;
 
-  pthread_mutex_unlock(&sb->mutex);
+  pthread_mutex_unlock(&sb->mutex_xbuffer);
 
   if(!sb->cp_echo_stdout && flush)
     g_idle_add((gboolean (*)(gpointer))update_view, sb);
@@ -1929,7 +2000,7 @@ void print_add(s_base *sb, char *string, ...)
   vsnprintf(buffer, XBUFSIZE, string, arglist);
   va_end(arglist);
 
-  pthread_mutex_lock(&sb->mutex);
+  pthread_mutex_lock(&sb->mutex_xbuffer);
 
   flush = FALSE;
   n = strlen(buffer);
@@ -1955,7 +2026,7 @@ void print_add(s_base *sb, char *string, ...)
       sb->xend = strlen(sb->xbuffer);
     }
 
-  pthread_mutex_unlock(&sb->mutex);
+  pthread_mutex_unlock(&sb->mutex_xbuffer);
 
   if(!sb->cp_echo_stdout && flush)
     g_idle_add((gboolean (*)(gpointer))update_view, sb);
@@ -2438,6 +2509,8 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   sbs.xcat = FALSE;
   sbs.mt = FALSE;
   sbs.rs = stopped;
+  sbs.term = FALSE;
+  sbs.sent = FALSE;
   sbs.regenerate = FALSE;
   sbs.changed = FALSE;
 

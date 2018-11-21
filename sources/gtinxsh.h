@@ -26,11 +26,12 @@
 
 #define SKIP_FMT "%*[^.?!]"
 
-#define DISPLAY_LO_CHAR '-'
-#define DISPLAY_HI_CHAR '#'
-#define DISPLAY_UNKNOWN_CHAR ' '
+#define DISPLAY_LO_CHAR '0'
+#define DISPLAY_HI_CHAR '1'
+#define DISPLAY_UNKNOWN_CHAR '?'
+#define DISPLAY_EMPTY_CHAR ' '
 
-#define DEFAULT_DISPLAY_ROWS 24
+#define DEFAULT_DISPLAY_ROWS 20
 #define MAX_DISPLAY_ROWS 255
 
 #define DEFAULT_PROB ((float) 0.5)
@@ -61,13 +62,14 @@
 #define BORDER_TRUE 0.2
 #define BORDER_FALSE 0.4
 #define FONT_SIZE 0.8
-#define BALL_RATIO 0.6
+#define BALL_RATIO 0.7
+#define RING_RATIO 0.5
 #define ASPECT 0.6
 #define MAX_FONT_PIXELS 16
 
-#define MAX_SEC_HALT 0.5
+#define MAX_SEC_HALT 0.25
 #define DELAY 10000
-#define MAX_WAIT 10
+#define MAX_WAIT 25
 #define TAIL_LEN 8
 
 #define round(x) floor((x) + 0.5)
@@ -149,12 +151,14 @@ typedef struct s_base
     int cp_display_rows;
     runstate rs;
     bool term;
+    bool sent;
     bool regenerate;
     bool changed;
     bool configured;
     pthread_t tintloop;
     pthread_t tinxpipe;
-    pthread_mutex_t mutex;
+    pthread_mutex_t mutex_xbuffer;
+    pthread_mutex_t mutex_exec;
     GtkWindow *window;
     GtkWindow *config_window;
     GtkDrawingArea *drawingarea;

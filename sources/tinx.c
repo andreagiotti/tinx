@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "6.1.0 (single core)"
+#define VER "6.1.1 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -413,7 +413,7 @@ INLINE bool loop(k_base *kb)
       kb->curr_time++;
       kb->far = FALSE;
 
-      if(kb->max_time > 0 && kb->curr_time >= kb->max_time)
+      if(kb->max_time && kb->curr_time >= kb->max_time)
         kb->exiting = TRUE;
     }
 
@@ -579,7 +579,7 @@ bool output_f(k_base *kb, stream *ios)
             {
               ios->fails++;
 
-              if(ios->fails > kb->bsd4)
+              if(!kb->max_time && ios->fails > kb->bsd4)
                 {
                   ios->open = FALSE;
                   return FALSE;
@@ -635,7 +635,7 @@ bool output_m(k_base *kb, stream *ios)
             {
               ios->fails++;
 
-              if(ios->fails > kb->bsd4)
+              if(!kb->max_time && ios->fails > kb->bsd4)
                 {
                   ios->open = FALSE;
                   return FALSE;
