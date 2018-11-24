@@ -1,0 +1,44 @@
+/*
+
+  Washing machine simulator by Andrea Giotti
+
+*/
+
+define FILL = 3, HEAT_1 = 5, WASH = 45, HEAT_2 = 4, RINSE = 20, DOUBLERINSE = 40, DRAIN = 3, SPIN = 20, TRIPLESPIN = 60;
+
+input start_button, halt_button, rinsing_button, spinning_button;
+output close_lock, filling, heating, washing, rinsing, draining, spinning, open_lock, beep;
+aux idle, heating_1, heating_2, start_idle, start_filling, start_heating_1, start_washing, start_heating_2, start_rinsing, start_draining, start_spinning, up_rinsing, up_spinning, double_rinsing, triple_spinning;
+
+init halt_button @ -1, ~ double_rinsing @ 0, ~ triple_spinning @ 0;
+
+filling == since(start_filling, ~ (start_heating_1 | start_idle));
+heating_1 == since(start_heating_1, ~ (start_washing | start_idle));
+washing == since(start_washing, ~ (start_heating_2 | start_idle));
+heating_2 == since(start_heating_2, ~ (start_rinsing | start_idle));
+rinsing == since(start_rinsing, ~ (start_draining | start_idle));
+draining == since(start_draining, ~ (start_spinning | start_idle));
+spinning == since(start_spinning, ~ start_idle);
+idle == since(start_idle, ~ start_filling);
+
+start_filling == idle @ -1 & ~ halt_button & start_button;
+start_heating_1 == filling @ [-FILL, 0) & ~ halt_button;
+start_washing == heating_1 @ [-HEAT_1, 0) & ~ halt_button;
+start_heating_2 == washing @ [-WASH, 0) & ~ halt_button;
+start_rinsing == heating_2 @ [-HEAT_2, 0) & ~ halt_button;
+start_draining == (~ double_rinsing | (double_rinsing & rinsing @ [-DOUBLERINSE, -RINSE))) & rinsing @ [-RINSE, 0) & ~ halt_button;
+start_spinning == draining @ [-DRAIN, 0) & ~ halt_button;
+beep == (~ triple_spinning | (triple_spinning & spinning @ [-TRIPLESPIN, -SPIN))) & spinning @ [-SPIN, 0);
+start_idle == beep | halt_button;
+
+up_rinsing == ~ rinsing_button @ -1 & rinsing_button;
+up_spinning == ~ spinning_button @ -1 & spinning_button;
+
+double_rinsing == (up_rinsing & ~ double_rinsing @ -1) | (~ up_rinsing & double_rinsing @ -1);
+triple_spinning == (up_spinning & ~ triple_spinning @ -1) | (~ up_spinning & triple_spinning @ -1);
+
+heating == heating_1 | heating_2;
+close_lock == idle @ -1 & ~ idle;
+open_lock == ~ idle @ -1 & idle;
+
+

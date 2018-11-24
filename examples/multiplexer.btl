@@ -1,0 +1,41 @@
+
+/* Multiplexer by Andrea Giotti, 2018 */
+
+define n = 8;
+define quantum = 4;
+define ratio = 4;
+
+iter(n)
+{
+define i = ^;
+
+input toggle(i);
+output state(i);
+aux shortstate(i), longstate(i), start(i), keep(i);
+}
+
+iter(n)
+{
+define i = ^;
+
+init ~ state(i) @ (- quantum, 0];
+
+shortstate(i) == state(i) @ (- quantum, 0];
+
+longstate(i) == forall(shortstate(i) @ - quantum * ^, ratio);
+
+keep(i) == state(i) & (~ toggle(i) | ~ shortstate(i)) & ~ longstate(i);
+
+state(i) @ 1 == (~ exists(state(^), n) & start(i)) | keep(i);
+}
+
+start(0) == toggle(0);
+
+iter(n - 1)
+{
+define i = ^ + 1;
+
+start(i) == ~ exists(toggle(^), i) & toggle(i);
+}
+
+

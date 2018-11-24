@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "6.1.1 MT (multiple cores)"
+#define VER "6.1.2 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -1225,6 +1225,12 @@ void assign_threads(k_base *kb)
   int nodes, n, tid, tid_2, to_go;
 
   fifo = malloc(sizeof(node *) * MAX_THREADS * FIFO_SIZE);
+  if(!fifo)
+    {
+      perror(NULL);
+      exit(EXIT_FAILURE);
+    }
+
   memset(fifo, 0, sizeof(node *) * MAX_THREADS * FIFO_SIZE);
 
   for(tid = 0; tid < kb->num_threads; tid++)
@@ -1517,8 +1523,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       e = arc_between(vp, wp, lc);
       if(e.lc < 0)
         {
-          fprintf(stderr, "%s, (%s, %s): Undefined edge\n",
-                  file_name, name_v, name_w);
+          fprintf(stderr, "%s, (%s, %s) # %d: Undefined edge\n",
+                  file_name, name_v, name_w, lc);
           exit(EXIT_FAILURE);
         }
 
@@ -1805,8 +1811,8 @@ void init_state(k_base *kb, char *state_name)
       s.e = arc_between(vp, wp, lc);
       if(s.e.lc < 0)
         {
-          fprintf(stderr, "%s, (%s, %s): Undefined edge\n",
-                  file_name, name_v, name_w);
+          fprintf(stderr, "%s, (%s, %s) # %d: Undefined edge\n",
+                  file_name, name_v, name_w, lc);
           exit(EXIT_FAILURE);
         }
 

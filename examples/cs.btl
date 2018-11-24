@@ -1,0 +1,41 @@
+
+input switchon, sensefield, senseoverheat, sensereaction, acknowledge;
+output engineon, feedfield, coolfield, feedreaction, ignitereaction, extinguishreaction, alert;
+aux enginehalt, fieldon, fieldfault, fieldnominal, fieldoverheat, reactionoff, reactionon,
+    reactionpersistence, reactionfault, warning, danger, emergency, generalfault;
+
+// Control system
+
+engineon == switchon & (~ switchon @ -1 | switchon) @ [-10, -1] & ~ enginehalt;
+enginehalt == since(fieldfault | reactionfault | generalfault, switchon);
+
+// State estimator
+
+fieldon == sensefield @ [-3, 0];
+fieldfault == feedfield @ [-12, -1] & ~ fieldon;
+fieldnominal == ~ senseoverheat @ [-3, 0];
+fieldoverheat == senseoverheat @ [-3, 0];
+
+reactionoff == ~ sensereaction @ [-2, 0];
+reactionon == sensereaction @ [-2, 0];
+reactionfault == feedreaction @ [-9, -1] & ~ reactionon;
+reactionpersistence == ~ feedreaction @ [-9, -1] & ~ reactionoff;
+
+// Feedback generator
+
+feedfield == engineon | ~ reactionoff;
+coolfield == since((~ fieldoverheat @ -1 & fieldoverheat) ? [-20, 0], ~ fieldnominal);
+
+feedreaction == engineon & fieldon & ~ warning;
+ignitereaction == feedreaction & since(reactionoff, ~ reactionon);
+extinguishreaction == since(~ engineon & reactionpersistence, ~ reactionoff);
+
+// Diagnostic system
+
+warning == ~ fieldnominal | reactionpersistence | danger ? [-15, 0];
+danger == (fieldoverheat & reactionpersistence) | emergency;
+emergency == ~ fieldon & ~ reactionoff;
+
+alert == since(~ danger @ -1 & danger, ~ acknowledge & switchon);
+generalfault == (danger & alert) @ [-35, 0] | emergency;
+

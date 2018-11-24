@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "6.1.1 (single core)"
+#define VER "6.1.2 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -1196,8 +1196,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       e = arc_between(vp, wp, lc);
       if(e.lc < 0)
         {
-          fprintf(stderr, "%s, (%s, %s): Undefined edge\n",
-                  file_name, name_v, name_w);
+          fprintf(stderr, "%s, (%s, %s) # %d: Undefined edge\n",
+                  file_name, name_v, name_w, lc);
           exit(EXIT_FAILURE);
         }
 
@@ -1459,8 +1459,8 @@ void init_state(k_base *kb, char *state_name)
       s.e = arc_between(vp, wp, lc);
       if(s.e.lc < 0)
         {
-          fprintf(stderr, "%s, (%s, %s): Undefined edge\n",
-                  file_name, name_v, name_w);
+          fprintf(stderr, "%s, (%s, %s) # %d: Undefined edge\n",
+                  file_name, name_v, name_w, lc);
           exit(EXIT_FAILURE);
         }
 

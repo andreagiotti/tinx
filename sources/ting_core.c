@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "2.0.1"
+#define VER "2.0.2"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -247,7 +247,7 @@ btl_specification *parse(char *expr)
 
   if(yylex_init(&scanner))
     {
-      printf("error, internal lexical analyzer failure\n");
+      fprintf(stderr, "Error, internal lexical analyzer failure\n");
       return NULL;
     }
 
@@ -404,6 +404,7 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
           sp = &cb->sigtab[cb->num_signals];
 
           strcpy(sp->name, name);
+          sp->sclass = internal_class;
           sp->signal_id = cb->num_signals;
 
           cb->num_signals++;
@@ -571,7 +572,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
   if(level >= NUM_LEVELS)
     {
-      fprintf(stderr, "Error, too many nested quantifiers: { %s ; }\n", spec->debug);
+      fprintf(stderr, "Error, too many nested quantifiers: %s\n", spec->debug);
       exit(EXIT_FAILURE);
     }
 
@@ -599,7 +600,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
           }
         else
           {
-            fprintf(stderr, "%s: Error, reference to undefined constant: { %s ; }\n", spec->symbol, spec->debug);
+            fprintf(stderr, "%s: Error, reference to undefined constant: %s\n", spec->symbol, spec->debug);
             exit(EXIT_FAILURE);
           }
       break;
@@ -620,7 +621,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         l = level - strlen(spec->symbol);
         if(l < 0)
           {
-            fprintf(stderr, "%s: Error, iterator symbol out of scope: { %s ; }\n", spec->symbol, spec->debug);
+            fprintf(stderr, "%s: Error, iterator symbol out of scope: %s\n", spec->symbol, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -700,7 +701,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(stv_2.a > stv_2.b)
           {
-            fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval in initial conditions: { %s ; }\n", stv_2.a, stv_2.b, spec->debug);
+            fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval in initial conditions: %s\n", stv_2.a, stv_2.b, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -774,7 +775,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(!stv_2.a)
           {
-            fprintf(stderr, "Error, division by zero: { %s ; }\n", spec->debug);
+            fprintf(stderr, "Error, division by zero: %s\n", spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -844,7 +845,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(stv_2.a > stv_2.b)
           {
-            fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval after <@>: { %s ; }\n", stv_2.a, stv_2.b, spec->debug);
+            fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval after <@>: %s\n", stv_2.a, stv_2.b, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -901,7 +902,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(stv_2.a > stv_2.b)
           {
-            fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval after <?>: { %s ; }\n", stv_2.a, stv_2.b, spec->debug);
+            fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval after <?>: %s\n", stv_2.a, stv_2.b, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -1104,7 +1105,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(stv_2.a < 1)
           {
-            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <forall> construct: { %s ; }\n", stv_2.a, spec->debug);
+            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <forall> construct: %s\n", stv_2.a, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -1137,7 +1138,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(stv_2.a < 1)
           {
-            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <exists> construct: { %s ; }\n", stv_2.a, spec->debug);
+            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <exists> construct: %s\n", stv_2.a, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -1170,13 +1171,13 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(stv_2.b < 1)
           {
-            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <one> construct: { %s ; }\n", stv_2.b, spec->debug);
+            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <one> construct: %s\n", stv_2.b, spec->debug);
             exit(EXIT_FAILURE);
           }
 
         if(stv_2.a < 0 || stv_2.a >= stv_2.b)
           {
-            fprintf(stderr, TIME_FMT": Error, selection parameter out of range in <one> construct: { %s ; }\n", stv_2.a, spec->debug);
+            fprintf(stderr, TIME_FMT": Error, selection parameter out of range in <one> construct: %s\n", stv_2.a, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -1213,7 +1214,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(stv_2.a < 1)
           {
-            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <unique> construct: { %s ; }\n", stv_2.a, spec->debug);
+            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <unique> construct: %s\n", stv_2.a, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -1273,7 +1274,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(stv_2.a < 1)
           {
-            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <iter> construct: { %s ; }\n", stv_2.a, spec->debug);
+            fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <iter> construct: %s\n", stv_2.a, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -1356,13 +1357,20 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
         else
           {
-            fprintf(stderr, "%s: Error, reference to undefined signal: { %s ; }\n", spec->symbol, spec->debug);
+            fprintf(stderr, "%s: Error, reference to undefined signal: %s\n", spec->symbol, spec->debug);
             exit(EXIT_FAILURE);
           }
       break;
 
       case op_dname:
         sp = name2signal(cb, spec->symbol, TRUE);
+
+        if(sp->sclass != internal_class)
+          {
+            fprintf(stderr, "%s: Error, duplicate definition of signal: %s\n", spec->symbol, spec->debug);
+            exit(EXIT_FAILURE);
+          }
+
         sp->sclass = sclass;
       break;
 
@@ -1793,10 +1801,10 @@ int save_smalltree(c_base *cb, FILE *fp)
       up = *genup(vp);
 
       if(!up || !vp->left || (!vp->right && vp->nclass != delay))
-        fprintf(stderr, "%s: Warning, network not closed: { %s ; }\n", vp->name, vp->debug);
+        fprintf(stderr, "%s: Warning, network not closed: %s\n", vp->name, vp->debug);
 
       if(vp == up || vp == vp->left || vp == vp->right)
-        fprintf(stderr, "%s: Warning, tight loop on node: { %s ; }\n", vp->name, vp->debug);
+        fprintf(stderr, "%s: Warning, tight loop on node: %s\n", vp->name, vp->debug);
 
       switch(vp->nclass)
         {
