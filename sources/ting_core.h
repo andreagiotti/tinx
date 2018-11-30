@@ -138,6 +138,8 @@ typedef struct initial_condition
 #define NUM_INTEGERS 4096
 #define NUM_LEVELS 256
 
+#define BTL_HISTORY_LEN 256
+
 typedef struct c_base
 {
   char source[SOURCE_BUFSIZE];

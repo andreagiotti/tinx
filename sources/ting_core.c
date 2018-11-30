@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "2.0.2"
+#define VER "2.1.0"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -554,12 +554,12 @@ char *opname(op_type ot)
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 {
   subtreeval stv, stv_2;
-  char symbol[MAX_NAMELEN], symbol1[MAX_NAMELEN], symbol2[MAX_NAMELEN];
+  char symbol[MAX_NAMELEN], symbol1[MAX_NAMELEN], symbol2[MAX_NAMELEN], symbol_h[BTL_HISTORY_LEN][MAX_NAMELEN];
   char debug[MAX_STRLEN];
-  btl_specification *newbtl, *p, *q, *p1, *q1, *r;
+  btl_specification *newbtl, *p, *q, *p1, *q1, *r, *btl_history[BTL_HISTORY_LEN], *btl_history1[BTL_HISTORY_LEN];
   constant *tp;
   d_time val;
-  int h, k, l;
+  int h, k, l, n, tail;
   op_type ot;
 
   stv.btl = NULL;
@@ -840,6 +840,12 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       break;
 
       case op_at:
+        for(h = 0; h < BTL_HISTORY_LEN; h++)
+          {
+            btl_history[h] = NULL;
+            btl_history1[h] = NULL;
+          }
+
         stv = preval(cb, spec->left, level, param);
         stv_2 = preval(cb, spec->right, level, param);
 
@@ -851,41 +857,140 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(cb->seplit)
           {
+            tail = stv_2.b - stv_2.a;
+            r = NULL;
+
             gensym(cb, symbol, "AT", asserted, FALSE);
             gensym(cb, symbol1, "AT", negated, FALSE);
-
-            p = create_ground(op_name, symbol, 0);
-            p1 = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
-
-            newbtl = create_operation(op_and, CREATE_IMPLY(p, stv.btl), CREATE_IMPLY(copy_specification(stv.btl), p1), "%s & %s");
-
             gensym(cb, symbol2, "AT", undefined, TRUE);
 
-            q = create_operation(op_delay, create_ground(op_name, symbol2, 0),
-                                           create_ground(op_number, "", stv_2.a), "%s @ %s");
+            btl_history[0] = create_ground(op_name, symbol, 0);
+            btl_history1[0] = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
+            strcpy(symbol_h[0], symbol2);
 
-            for(k = stv_2.a + 1; k <= stv_2.b; k++)
-              q = create_operation(op_and, q,
-                                           create_operation(op_delay, create_ground(op_name, symbol2, 0),
-                                                                        create_ground(op_number, "", k), "%s @ %s"), "%s & %s");
-            stv.btl = q;
+            newbtl = create_operation(op_and, CREATE_IMPLY(btl_history[0], stv.btl), CREATE_IMPLY(copy_specification(stv.btl), btl_history1[0]), "%s & %s");
+
+            do
+              {
+                p = btl_history[0];
+                p1 = btl_history1[0];
+
+                n = 1;
+                h = 0;
+
+                while(tail >= n)
+                  {
+                    h++;
+                    if(h >= BTL_HISTORY_LEN)
+                      {
+                        fprintf(stderr, "Error, interval too large: %s\n", spec->debug);
+                        exit(EXIT_FAILURE);
+                      }
+
+                    if(btl_history[h])
+                      {
+                        p = btl_history[h];
+                        p1 = btl_history[h];
+                      }
+                    else
+                      {
+                        q = create_operation(op_and, copy_specification(p),
+                                                     create_operation(op_delay, copy_specification(p),
+                                                                                create_ground(op_number, "", - n), "%s @ %s"), "%s & %s");
+
+                        q1 = create_operation(op_and, copy_specification(p1),
+                                                      create_operation(op_delay, copy_specification(p1),
+                                                                                 create_ground(op_number, "", - n), "%s @ %s"), "%s & %s");
+
+                        gensym(cb, symbol, "AT", asserted, FALSE);
+                        gensym(cb, symbol1, "AT", negated, FALSE);
+                        gensym(cb, symbol2, "AT", undefined, TRUE);
+
+                        p = create_ground(op_name, symbol, 0);
+                        p1 = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
+                        btl_history[h] = p;
+                        btl_history1[h] = p1;
+                        strcpy(symbol_h[h], symbol2);
+
+                        newbtl = create_operation(op_and, newbtl, create_operation(op_and, CREATE_IMPLY(p, q), CREATE_IMPLY(q1, p1), "%s & %s"), "%s ; %s");
+                      }
+
+                    tail -= n;
+                    n *= 2;
+                  }
+
+                q = create_operation(op_delay, create_ground(op_name, symbol_h[h], 0), create_ground(op_number, "", stv_2.b), "%s @ %s");
+
+                if(r)
+                  r = create_operation(op_and, q, r, "%s & %s");
+                else
+                  r = q;
+
+                stv_2.b = stv_2.a + tail;
+              }
+            while(tail > 0);
+
+            stv.btl = r;
           }
         else
           {
+            tail = stv_2.b - stv_2.a;
+            r = NULL;
+
             gensym(cb, symbol, "AT", asserted, TRUE);
 
-            p = create_ground(op_name, symbol, 0);
+            btl_history[0] = create_ground(op_name, symbol, 0);
 
-            newbtl = CREATE_EQV(p, stv.btl);
+            newbtl = CREATE_EQV(btl_history[0], stv.btl);
 
-            q = create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                           create_ground(op_number, "", stv_2.a), "%s @ %s");
+            do
+              {
+                p = btl_history[0];
 
-            for(k = stv_2.a + 1; k <= stv_2.b; k++)
-              q = create_operation(op_and, q,
-                                           create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                                                        create_ground(op_number, "", k), "%s @ %s"), "%s & %s");
-            stv.btl = q;
+                n = 1;
+                h = 0;
+
+                while(tail >= n)
+                  {
+                    h++;
+                    if(h >= BTL_HISTORY_LEN)
+                      {
+                        fprintf(stderr, "Error, interval too large: %s\n", spec->debug);
+                        exit(EXIT_FAILURE);
+                      }
+
+                    if(btl_history[h])
+                      p = btl_history[h];
+                    else
+                      {
+                        q = create_operation(op_and, copy_specification(p),
+                                             create_operation(op_delay, copy_specification(p),
+                                                                        create_ground(op_number, "", - n), "%s @ %s"), "%s & %s");
+
+                        gensym(cb, symbol, "AT", asserted, TRUE);
+
+                        p = create_ground(op_name, symbol, 0);
+                        btl_history[h] = p;
+
+                        newbtl = create_operation(op_and, newbtl, CREATE_EQV(p, q), "%s ; %s");
+                      }
+
+                    tail -= n;
+                    n *= 2;
+                  }
+
+                q = create_operation(op_delay, copy_specification(p), create_ground(op_number, "", stv_2.b), "%s @ %s");
+
+                if(r)
+                  r = create_operation(op_and, q, r, "%s & %s");
+                else
+                  r = q;
+
+                stv_2.b = stv_2.a + tail;
+              }
+            while(tail > 0);
+
+            stv.btl = r;
           }
 
         if(stv.btldef)
@@ -897,6 +1002,12 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       break;
 
       case op_happen:
+        for(h = 0; h < BTL_HISTORY_LEN; h++)
+          {
+            btl_history[h] = NULL;
+            btl_history1[h] = NULL;
+          }
+
         stv = preval(cb, spec->left, level, param);
         stv_2 = preval(cb, spec->right, level, param);
 
@@ -908,41 +1019,140 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(cb->seplit)
           {
+            tail = stv_2.b - stv_2.a;
+            r = NULL;
+
             gensym(cb, symbol, "HP", asserted, FALSE);
             gensym(cb, symbol1, "HP", negated, FALSE);
-
-            p = create_ground(op_name, symbol, 0);
-            p1 = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
-
-            newbtl = create_operation(op_and, CREATE_IMPLY(p, stv.btl), CREATE_IMPLY(copy_specification(stv.btl), p1), "%s & %s");
-
             gensym(cb, symbol2, "HP", undefined, TRUE);
 
-            q = create_operation(op_delay, create_ground(op_name, symbol2, 0),
-                                           create_ground(op_number, "", stv_2.a), "%s @ %s");
+            btl_history[0] = create_ground(op_name, symbol, 0);
+            btl_history1[0] = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
+            strcpy(symbol_h[0], symbol2);
 
-            for(k = stv_2.a + 1; k <= stv_2.b; k++)
-              q = create_operation(op_or, q,
-                                          create_operation(op_delay, create_ground(op_name, symbol2, 0),
-                                                                        create_ground(op_number, "", k), "%s @ %s"), "%s | %s");
-            stv.btl = q;
+            newbtl = create_operation(op_and, CREATE_IMPLY(btl_history[0], stv.btl), CREATE_IMPLY(copy_specification(stv.btl), btl_history1[0]), "%s & %s");
+
+            do
+              {
+                p = btl_history[0];
+                p1 = btl_history1[0];
+
+                n = 1;
+                h = 0;
+
+                while(tail >= n)
+                  {
+                    h++;
+                    if(h >= BTL_HISTORY_LEN)
+                      {
+                        fprintf(stderr, "Error, interval too large: %s\n", spec->debug);
+                        exit(EXIT_FAILURE);
+                      }
+
+                    if(btl_history[h])
+                      {
+                        p = btl_history[h];
+                        p1 = btl_history[h];
+                      }
+                    else
+                      {
+                        q = create_operation(op_or, copy_specification(p),
+                                                    create_operation(op_delay, copy_specification(p),
+                                                                               create_ground(op_number, "", - n), "%s @ %s"), "%s | %s");
+
+                        q1 = create_operation(op_or, copy_specification(p1),
+                                                     create_operation(op_delay, copy_specification(p1),
+                                                                                create_ground(op_number, "", - n), "%s @ %s"), "%s | %s");
+
+                        gensym(cb, symbol, "HP", asserted, FALSE);
+                        gensym(cb, symbol1, "HP", negated, FALSE);
+                        gensym(cb, symbol2, "HP", undefined, TRUE);
+
+                        p = create_ground(op_name, symbol, 0);
+                        p1 = create_operation(op_not, create_ground(op_name, symbol1, 0), NULL, "~ %s");
+                        btl_history[h] = p;
+                        btl_history1[h] = p1;
+                        strcpy(symbol_h[h], symbol2);
+
+                        newbtl = create_operation(op_and, newbtl, create_operation(op_and, CREATE_IMPLY(p, q), CREATE_IMPLY(q1, p1), "%s & %s"), "%s ; %s");
+                      }
+
+                    tail -= n;
+                    n *= 2;
+                  }
+
+                q = create_operation(op_delay, create_ground(op_name, symbol_h[h], 0), create_ground(op_number, "", stv_2.b), "%s @ %s");
+
+                if(r)
+                  r = create_operation(op_or, q, r, "%s | %s");
+                else
+                  r = q;
+
+                stv_2.b = stv_2.a + tail;
+              }
+            while(tail > 0);
+
+            stv.btl = r;
           }
         else
           {
+            tail = stv_2.b - stv_2.a;
+            r = NULL;
+
             gensym(cb, symbol, "HP", asserted, TRUE);
 
-            p = create_ground(op_name, symbol, 0);
+            btl_history[0] = create_ground(op_name, symbol, 0);
 
-            newbtl = CREATE_EQV(p, stv.btl);
+            newbtl = CREATE_EQV(btl_history[0], stv.btl);
 
-            q = create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                           create_ground(op_number, "", stv_2.a), "%s @ %s");
+            do
+              {
+                p = btl_history[0];
 
-            for(k = stv_2.a + 1; k <= stv_2.b; k++)
-              q = create_operation(op_or, q,
-                                          create_operation(op_delay, create_ground(op_name, symbol, 0),
-                                                                        create_ground(op_number, "", k), "%s @ %s"), "%s | %s");
-            stv.btl = q;
+                n = 1;
+                h = 0;
+
+                while(tail >= n)
+                  {
+                    h++;
+                    if(h >= BTL_HISTORY_LEN)
+                      {
+                        fprintf(stderr, "Error, interval too large: %s\n", spec->debug);
+                        exit(EXIT_FAILURE);
+                      }
+
+                    if(btl_history[h])
+                      p = btl_history[h];
+                    else
+                      {
+                        q = create_operation(op_or, copy_specification(p),
+                                             create_operation(op_delay, copy_specification(p),
+                                                                        create_ground(op_number, "", - n), "%s @ %s"), "%s | %s");
+
+                        gensym(cb, symbol, "HP", asserted, TRUE);
+
+                        p = create_ground(op_name, symbol, 0);
+                        btl_history[h] = p;
+
+                        newbtl = create_operation(op_and, newbtl, CREATE_EQV(p, q), "%s ; %s");
+                      }
+
+                    tail -= n;
+                    n *= 2;
+                  }
+
+                q = create_operation(op_delay, copy_specification(p), create_ground(op_number, "", stv_2.b), "%s @ %s");
+
+                if(r)
+                  r = create_operation(op_or, q, r, "%s | %s");
+                else
+                  r = q;
+
+                stv_2.b = stv_2.a + tail;
+              }
+            while(tail > 0);
+
+            stv.btl = r;
           }
 
         if(stv.btldef)
