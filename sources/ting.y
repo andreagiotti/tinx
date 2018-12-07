@@ -74,6 +74,7 @@ typedef struct tracker
   btl_specification *declaration;
   btl_specification *decllist;
   btl_specification *eventlist;
+  btl_specification *filelist;
   btl_specification *assignlist;
   btl_specification *assignment;
   btl_specification *varname;
@@ -82,6 +83,7 @@ typedef struct tracker
   btl_specification *eventname;
   btl_specification *qualname;
   btl_specification *constname;
+  btl_specification *filename;
   btl_specification *expression;
   btl_specification *number;
 }
@@ -111,6 +113,7 @@ typedef struct tracker
 %token TOKEN_COMMA
 %token TOKEN_ITER
 %token TOKEN_DEFINE
+%token TOKEN_INCLUDE
 %token TOKEN_INPUT
 %token TOKEN_OUTPUT
 %token TOKEN_AUX
@@ -134,6 +137,7 @@ typedef struct tracker
 %token TOKEN_MUL
 %token TOKEN_DIV
 %token <symbol> TOKEN_NAME
+%token <symbol> TOKEN_FILENAME
 %token <symbol> TOKEN_ITERATOR
 %token <value> TOKEN_NUMBER
 
@@ -147,6 +151,7 @@ typedef struct tracker
 %type <declaration> decl
 %type <decllist> dlist
 %type <eventlist> elist
+%type <filelist> flist
 %type <assignlist> alist
 %type <assignment> assign
 %type <varname> name
@@ -155,6 +160,7 @@ typedef struct tracker
 %type <eventname> ename
 %type <qualname> qname
 %type <constname> cname
+%type <filename> fname
 %type <expression> expr
 %type <number> num
 
@@ -227,6 +233,7 @@ decl
     | TOKEN_AUX dlist[A] { $$ = create_operation(op_aux, $A, NULL, "aux %s"); }
     | TOKEN_INIT elist[A] { $$ = create_operation(op_init, $A, NULL, "init %s"); }
     | TOKEN_DEFINE alist[A] { $$ = $A; }
+    | TOKEN_INCLUDE flist[A] { $$ = $A; }
     ;
 
 dlist
@@ -237,6 +244,11 @@ dlist
 elist
     : elist[L] TOKEN_COMMA ename[R] { $$ = create_operation(op_join, $L, $R, "%s , %s"); }
     | ename[A] { $$ = $A; }
+    ;
+
+flist
+    : flist[L] TOKEN_COMMA fname[R] { $$ = create_operation(op_join, $L, $R, "%s , %s"); }
+    | fname[A] { $$ = $A; }
     ;
 
 alist
@@ -281,6 +293,10 @@ iname
 
 cname
     : TOKEN_NAME { $$ = create_ground(op_cname, $1, 0); }
+    ;
+
+fname
+    : TOKEN_FILENAME { $$ = create_ground(op_fname, $1, 0); }
     ;
 
 expr

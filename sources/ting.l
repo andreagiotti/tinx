@@ -57,6 +57,7 @@ OUTPUT      "output"
 AUX         "aux"
 INIT        "init"
 DEFINE      "define"
+INCLUDE     "include"
 ITER        "iter"
 
 LBRACKET    "{"
@@ -64,6 +65,7 @@ RBRACKET    "}"
 SEMICOLON   ";"
 
 NAME        [a-zA-Z][a-zA-Z0-9_]*
+FILENAME    "\""[^\"]+"\""
 ITERATOR    "^"+
 NUMBER      [0-9]+
 BLANKS      [ \r\n\t]*
@@ -96,6 +98,7 @@ BLANKS      [ \r\n\t]*
 {AUX}           { return TOKEN_AUX; }
 {INIT}          { return TOKEN_INIT; }
 {DEFINE}        { return TOKEN_DEFINE; }
+{INCLUDE}       { return TOKEN_INCLUDE; }
 {ITER}          { return TOKEN_ITER; }
 
 {COMMA}         { return TOKEN_COMMA; }
@@ -108,6 +111,7 @@ BLANKS      [ \r\n\t]*
 {RBRACKET}      { return TOKEN_RBRACKET; }
 
 {NAME}          { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_NAME; }
+{FILENAME}      { sscanf(yytext, FILENAME_FMT, yylval->symbol); return TOKEN_FILENAME; }
 {ITERATOR}      { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_ITERATOR; }
 {NUMBER}        { sscanf(yytext, TIME_FMT, &yylval->value); return TOKEN_NUMBER; }
 {BLANKS}        {  }

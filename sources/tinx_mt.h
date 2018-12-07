@@ -22,6 +22,7 @@
 #include <errno.h>
 
 #include <pthread.h>
+#include <unistd.h>
 #include <sched.h>
 
 #if defined POSIX_IPC_IO
@@ -29,7 +30,6 @@
 #endif
 
 #if defined UNIX_FILE_IO || defined UNIX_IPC_IO
-  #include <unistd.h>
   #include <fcntl.h>
   #include <sys/types.h>
   #include <sys/ipc.h>
@@ -322,6 +322,7 @@ typedef struct priv_vars
 typedef struct info
 {
   int nodes;
+  int num_nodes[NODE_CLASSES_NUMBER];
   int edges;
   int shared;
   d_time horizon;
@@ -358,8 +359,6 @@ typedef struct k_base
   int io_num[STREAM_CLASSES_NUMBER];
   int io_count[STREAM_CLASSES_NUMBER];
   int io_open;
-  int io_togo;
-  int io_slice;
   char alpha[SYMBOL_NUMBER + 1];
   d_time curr_time;
   d_time max_time;
@@ -417,7 +416,6 @@ INLINE event ev_neg(event s);
 arc arc_between(node *vp, node *wp, link_code lc);
 INLINE m_time get_time(void);
 unsigned long int hashnode(char *name);
-int gcd(int p, int q);
 
 INLINE void state(k_base *kb, event s);
 INLINE event choose(k_base *kb, int tid);
@@ -437,8 +435,9 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 void close_stream(stream *ios, char *alpha);
 void remove_stream(stream **handle);
 
-node *alloc_node(k_base *kb, char *name);
-void free_node(k_base *kb, node *vp);
+node *alloc_node(char *name);
+void init_node(node *vp, node_class nclass, d_time k, int bs);
+void free_node(node *vp, int bs);
 node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
 void assign_threads(k_base *kb);
@@ -446,7 +445,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
                   bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sturdy,
                   int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads);
 void close_base(k_base *kb);
-void init_state(k_base *kb, char *state_name);
+int init_state(k_base *kb, char *state_name);
 
 void trap(void);
 void loops(thread_arg *tp);

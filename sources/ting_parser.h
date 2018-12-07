@@ -88,18 +88,20 @@ typedef struct tracker
     TOKEN_COMMA = 278,
     TOKEN_ITER = 279,
     TOKEN_DEFINE = 280,
-    TOKEN_INPUT = 281,
-    TOKEN_OUTPUT = 282,
-    TOKEN_AUX = 283,
-    TOKEN_INIT = 284,
-    TOKEN_FORALL = 285,
-    TOKEN_EXISTS = 286,
-    TOKEN_ONE = 287,
-    TOKEN_UNIQUE = 288,
-    TOKEN_EQUAL = 289,
-    TOKEN_NAME = 290,
-    TOKEN_ITERATOR = 291,
-    TOKEN_NUMBER = 292
+    TOKEN_INCLUDE = 281,
+    TOKEN_INPUT = 282,
+    TOKEN_OUTPUT = 283,
+    TOKEN_AUX = 284,
+    TOKEN_INIT = 285,
+    TOKEN_FORALL = 286,
+    TOKEN_EXISTS = 287,
+    TOKEN_ONE = 288,
+    TOKEN_UNIQUE = 289,
+    TOKEN_EQUAL = 290,
+    TOKEN_NAME = 291,
+    TOKEN_FILENAME = 292,
+    TOKEN_ITERATOR = 293,
+    TOKEN_NUMBER = 294
   };
 #endif
 
@@ -122,6 +124,7 @@ union YYSTYPE
   btl_specification *declaration;
   btl_specification *decllist;
   btl_specification *eventlist;
+  btl_specification *filelist;
   btl_specification *assignlist;
   btl_specification *assignment;
   btl_specification *varname;
@@ -130,10 +133,11 @@ union YYSTYPE
   btl_specification *eventname;
   btl_specification *qualname;
   btl_specification *constname;
+  btl_specification *filename;
   btl_specification *expression;
   btl_specification *number;
 
-#line 137 "ting_parser.h" /* yacc.c:1909  */
+#line 141 "ting_parser.h" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;

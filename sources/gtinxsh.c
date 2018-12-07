@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "6.5.0"
-#define VER "2.3.1"
+#define PACK_VER "6.8.0"
+#define VER "2.5.0"
 
 INLINE m_time get_time()
 {
@@ -44,7 +44,7 @@ void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int
      break;
 
      case DISPLAY_UNKNOWN_CHAR:
-       if(sb->draw_undef)
+       if(sb->cfg.draw_undef)
          cairo_rectangle(cr, round(offset_x + (x + 0.5) * rectw - 0.5), round(offset_y + (y + 0.5) * recth - 0.5), 1, 1);
      break;
 
@@ -219,7 +219,7 @@ void tintloop(s_base *sb)
   for(;;)
     {
       sb->time = get_time() - sb->time_base;
-      if(sb->time >= sb->t * sb->cp_step * (1 + sb->correction))
+      if(sb->time >= sb->t * sb->cp_step * (1 + sb->cfg.correction))
         {
           if(!sb->cp_batch_out)
             {
@@ -249,7 +249,7 @@ void tintloop(s_base *sb)
                             break;
                         }
 
-                      switch(strchr(sb->alpha, ic) - sb->alpha)
+                      switch(strchr(sb->cfg.alpha, ic) - sb->cfg.alpha)
                         {
                           case unknown_symbol:
                             sb->memory_g[i][tau[i] % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CHAR;
@@ -285,7 +285,7 @@ void tintloop(s_base *sb)
             {
               for(i = 0; i < sb->fn; i++)
                 {
-                  oc = sb->alpha[rand() <= sb->prob * RAND_MAX? true_symbol : false_symbol];
+                  oc = sb->cfg.alpha[rand() <= sb->cfg.prob * RAND_MAX? true_symbol : false_symbol];
 
                   if(sb->cp_file_io)
                     {
@@ -304,7 +304,7 @@ void tintloop(s_base *sb)
                   else
                     send_message(sb->cp[i], &oc);
 
-                  sb->memory_f[i][sb->t % sb->cp_horizon_size] = (oc == sb->alpha[false_symbol])? DISPLAY_LO_CHAR : DISPLAY_HI_CHAR;
+                  sb->memory_f[i][sb->t % sb->cp_horizon_size] = (oc == sb->cfg.alpha[false_symbol])? DISPLAY_LO_CHAR : DISPLAY_HI_CHAR;
                 }
             }
 
@@ -416,15 +416,15 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
 
         pthread_mutex_unlock(&sb->mutex_exec);
 
-        sb->cp_step = sb->step;
-        sb->cp_max_time = sb->max_time;
-        sb->cp_echo_stdout = sb->echo_stdout;
-        sb->cp_file_io = sb->file_io;
-        sb->cp_quiet = sb->quiet;
-        sb->cp_batch_in = sb->batch_in;
-        sb->cp_batch_out = sb->batch_out;
-        sb->cp_horizon_size = sb->horizon_size;
-        sb->cp_display_rows = sb->display_rows;
+        sb->cp_step = sb->cfg.step;
+        sb->cp_max_time = sb->cfg.max_time;
+        sb->cp_echo_stdout = sb->cfg.echo_stdout;
+        sb->cp_file_io = sb->cfg.file_io;
+        sb->cp_quiet = sb->cfg.quiet;
+        sb->cp_batch_in = sb->cfg.batch_in;
+        sb->cp_batch_out = sb->cfg.batch_out;
+        sb->cp_horizon_size = sb->cfg.horizon_size;
+        sb->cp_display_rows = sb->cfg.display_rows;
 
         if(!sb->cp_quiet)
           {
@@ -440,7 +440,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                 sb->dp[i] = -1;
               }
 
-            strcpy(file_name, sb->base_name);
+            strcpy(file_name, sb->cfg.base_name);
             strcat(file_name, NETWORK_EXT);
 
             bp = fopen(file_name, "r");
@@ -471,9 +471,9 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
 
                           if(sb->cp_file_io)
                             {
-                              if(*sb->path)
+                              if(*sb->cfg.path)
                                 {
-                                  strcpy(sb->fnames[sb->fn], sb->path);
+                                  strcpy(sb->fnames[sb->fn], sb->cfg.path);
                                   strcat(sb->fnames[sb->fn], "/");
                                 }
                               else
@@ -492,7 +492,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                             }
                           else
                             {
-                              strcpy(sb->fnames[sb->fn], sb->prefix);
+                              strcpy(sb->fnames[sb->fn], sb->cfg.prefix);
                               strcat(sb->fnames[sb->fn], name);
 
                               remove_queue(sb->fnames[sb->fn]);
@@ -527,9 +527,9 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
 
                           if(sb->cp_file_io)
                             {
-                              if(*sb->path)
+                              if(*sb->cfg.path)
                                 {
-                                  strcpy(sb->gnames[sb->gn], sb->path);
+                                  strcpy(sb->gnames[sb->gn], sb->cfg.path);
                                   strcat(sb->gnames[sb->gn], "/");
                                 }
                               else
@@ -542,7 +542,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                             }
                           else
                             {
-                              strcpy(sb->gnames[sb->gn], sb->prefix);
+                              strcpy(sb->gnames[sb->gn], sb->cfg.prefix);
                               strcat(sb->gnames[sb->gn], name);
 
                               remove_queue(sb->gnames[sb->gn]);
@@ -581,90 +581,90 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
           }
 
         tot_rows = max(1, sb->fn + sb->gn);
-        page_rows = min(tot_rows, sb->display_rows);
+        page_rows = min(tot_rows, sb->cfg.display_rows);
         gtk_adjustment_configure(sb->area_adj, 0, 0, tot_rows, 1, page_rows, page_rows);
 
         sb->time_base = get_time();
-        sb->mt = (sb->num_threads > 1);
+        sb->mt = (sb->cfg.num_threads > 1);
 
         strcpy(cmd, CMD_PATH);
         strcat(cmd, sb->mt? "tinx_mt" : "tinx");
         strcat(cmd, " 2>&1");
 
-        sprintf(arg, " -n %d", sb->num_threads);
+        sprintf(arg, " -n %d", sb->cfg.num_threads);
         strcat(cmd, arg);
 
-        sprintf(arg, " -r %d", sb->bsbt);
+        sprintf(arg, " -r %d", sb->cfg.bsbt);
         strcat(cmd, arg);
 
-        sprintf(arg, " -t "REAL_FMT, sb->step);
+        sprintf(arg, " -t "REAL_FMT, sb->cfg.step);
         strcat(cmd, arg);
 
         sprintf(arg, " -g "ORIGIN_FMT, sb->time_base);
         strcat(cmd, arg);
 
-        sprintf(arg, " -z "TIME_FMT, sb->max_time);
+        sprintf(arg, " -z "TIME_FMT, sb->cfg.max_time);
         strcat(cmd, arg);
 
         strcat(cmd, " -e '");
-        strcat(cmd, sb->prefix);
+        strcat(cmd, sb->cfg.prefix);
         strcat(cmd, "'");
 
-        if(*sb->path)
+        if(*sb->cfg.path)
           {
             strcat(cmd, " -p '");
-            strcat(cmd, sb->path);
+            strcat(cmd, sb->cfg.path);
             strcat(cmd, "'");
           }
 
         strcat(cmd, " -a '");
-        strcat(cmd, sb->alpha);
+        strcat(cmd, sb->cfg.alpha);
         strcat(cmd, "'");
 
-        if(sb->load_state)
+        if(sb->cfg.load_state)
           {
             strcat(cmd, " -I '");
-            strcat(cmd, sb->state_name);
+            strcat(cmd, sb->cfg.state_name);
             strcat(cmd, "'");
           }
 
-        if(sb->echo_logfile)
+        if(sb->cfg.echo_logfile)
           {
             strcat(cmd, " -L '");
-            strcat(cmd, sb->logfile_name);
+            strcat(cmd, sb->cfg.logfile_name);
             strcat(cmd, "'");
           }
 
-        if(sb->use_xref)
+        if(sb->cfg.use_xref)
           {
             strcat(cmd, " -X '");
-            strcat(cmd, sb->xref_name);
+            strcat(cmd, sb->cfg.xref_name);
             strcat(cmd, "'");
           }
 
-        if(sb->strictly_causal)
+        if(sb->cfg.strictly_causal)
           strcat(cmd, " -c");
 
-        if(sb->soundness_check)
+        if(sb->cfg.soundness_check)
           strcat(cmd, " -v");
 
-        if(sb->echo_stdout)
+        if(sb->cfg.echo_stdout)
           strcat(cmd, " -d");
 
-        if(sb->file_io)
+        if(sb->cfg.file_io)
           strcat(cmd, " -f");
 
-        if(sb->quiet)
+        if(sb->cfg.quiet)
           strcat(cmd, " -q");
 
-        if(sb->hard)
+        if(sb->cfg.hard)
           strcat(cmd, " -s");
 
-        if(sb->sturdy)
+        if(sb->cfg.sturdy)
           strcat(cmd, " -y");
 
         strcat(cmd, " '");
-        strcat(cmd, sb->base_name);
+        strcat(cmd, sb->cfg.base_name);
         strcat(cmd, "'");
 
         strcpy(sb->cmd, cmd);
@@ -748,7 +748,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
               {
                 for(i = 0; i < sb->fn; i++)
                   {
-                    oc = sb->alpha[end_symbol];
+                    oc = sb->cfg.alpha[end_symbol];
 
                     if(sb->cp_file_io)
                       {
@@ -805,7 +805,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                         else
                           read_message(sb->dp[i], &ic);
 
-                        if(ic == sb->alpha[end_symbol])
+                        if(ic == sb->cfg.alpha[end_symbol])
                           count += TAIL_LEN;
                         else
                           if(ic != EOF)
@@ -908,31 +908,38 @@ void gen_button_clicked(GtkWidget *widget, s_base *sb)
   bool got;
 
   strcpy(cmd, CMD_PATH"ting 2>&1 -o '");
-  strcat(cmd, sb->base_name);
+  strcat(cmd, sb->cfg.base_name);
   strcat(cmd, "'");
 
   strcat(cmd, " -I '");
-  strcat(cmd, sb->state_name);
+  strcat(cmd, sb->cfg.state_name);
   strcat(cmd, "'");
 
-  if(sb->use_xref)
+  if(sb->cfg.use_xref)
     {
       strcat(cmd, " -X '");
-      strcat(cmd, sb->xref_name);
+      strcat(cmd, sb->cfg.xref_name);
       strcat(cmd, "'");
     }
 
-  if(sb->seplit)
+  if(*sb->cfg.include_path)
+    {
+      strcat(cmd, " -P '");
+      strcat(cmd, sb->cfg.include_path);
+      strcat(cmd, "'");
+    }
+
+  if(sb->cfg.seplit)
     strcat(cmd, " -w");
 
-  if(sb->merge)
+  if(sb->cfg.merge)
     strcat(cmd, " -u");
 
-  if(sb->outaux)
-    strcat(cmd, sb->outint? " -B" : " -b");
+  if(sb->cfg.outaux)
+    strcat(cmd, sb->cfg.outint? " -B" : " -b");
 
   strcat(cmd, " '");
-  strcat(cmd, sb->source_name);
+  strcat(cmd, sb->cfg.source_name);
   strcat(cmd, "'");
 
   print(sb, "%s\n", cmd);
@@ -1018,7 +1025,7 @@ void save_button_clicked(GtkWidget *widget, s_base *sb)
   fp = fopen(CONFIG_FILENAME, "w");
   if(fp)
     {
-      fwrite(sb, sizeof(*sb), 1, fp);
+      fwrite(&sb->cfg, sizeof(sb->cfg), 1, fp);
       fclose(fp);
 
       sb->changed = FALSE;
@@ -1053,9 +1060,9 @@ void erase_button_clicked(GtkWidget *widget, s_base *sb)
 void load_state_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->load_state = TRUE;
+    sb->cfg.load_state = TRUE;
   else
-    sb->load_state = FALSE;
+    sb->cfg.load_state = FALSE;
 
   if(!sb->changed)
     {
@@ -1070,9 +1077,9 @@ void load_state_box(GtkWidget *widget, s_base *sb)
 void soundness_check_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->soundness_check = TRUE;
+    sb->cfg.soundness_check = TRUE;
   else
-    sb->soundness_check = FALSE;
+    sb->cfg.soundness_check = FALSE;
 
   if(!sb->changed)
     {
@@ -1087,9 +1094,9 @@ void soundness_check_box(GtkWidget *widget, s_base *sb)
 void strictly_causal_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->strictly_causal = TRUE;
+    sb->cfg.strictly_causal = TRUE;
   else
-    sb->strictly_causal = FALSE;
+    sb->cfg.strictly_causal = FALSE;
 
   if(!sb->changed)
     {
@@ -1104,9 +1111,9 @@ void strictly_causal_box(GtkWidget *widget, s_base *sb)
 void echo_stdout_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->echo_stdout = TRUE;
+    sb->cfg.echo_stdout = TRUE;
   else
-    sb->echo_stdout = FALSE;
+    sb->cfg.echo_stdout = FALSE;
 
   if(!sb->changed)
     {
@@ -1121,9 +1128,9 @@ void echo_stdout_box(GtkWidget *widget, s_base *sb)
 void echo_logfile_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->echo_logfile = TRUE;
+    sb->cfg.echo_logfile = TRUE;
   else
-    sb->echo_logfile = FALSE;
+    sb->cfg.echo_logfile = FALSE;
 
   if(!sb->changed)
     {
@@ -1138,9 +1145,9 @@ void echo_logfile_box(GtkWidget *widget, s_base *sb)
 void file_io_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->file_io = TRUE;
+    sb->cfg.file_io = TRUE;
   else
-    sb->file_io = FALSE;
+    sb->cfg.file_io = FALSE;
 
   if(!sb->changed)
     {
@@ -1155,9 +1162,9 @@ void file_io_box(GtkWidget *widget, s_base *sb)
 void quiet_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->quiet = TRUE;
+    sb->cfg.quiet = TRUE;
   else
-    sb->quiet = FALSE;
+    sb->cfg.quiet = FALSE;
 
   if(!sb->changed)
     {
@@ -1172,9 +1179,9 @@ void quiet_box(GtkWidget *widget, s_base *sb)
 void hard_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->hard = TRUE;
+    sb->cfg.hard = TRUE;
   else
-    sb->hard = FALSE;
+    sb->cfg.hard = FALSE;
 
   if(!sb->changed)
     {
@@ -1189,9 +1196,9 @@ void hard_box(GtkWidget *widget, s_base *sb)
 void sturdy_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->sturdy = TRUE;
+    sb->cfg.sturdy = TRUE;
   else
-    sb->sturdy = FALSE;
+    sb->cfg.sturdy = FALSE;
 
   if(!sb->changed)
     {
@@ -1207,7 +1214,7 @@ void use_xref_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
     {
-      sb->use_xref = TRUE;
+      sb->cfg.use_xref = TRUE;
 
       if(!sb->regenerate)
         {
@@ -1217,7 +1224,7 @@ void use_xref_box(GtkWidget *widget, s_base *sb)
         }
     }
   else
-    sb->use_xref = FALSE;
+    sb->cfg.use_xref = FALSE;
 
   if(!sb->changed)
     {
@@ -1232,9 +1239,9 @@ void use_xref_box(GtkWidget *widget, s_base *sb)
 void seplit_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->seplit = TRUE;
+    sb->cfg.seplit = TRUE;
   else
-    sb->seplit = FALSE;
+    sb->cfg.seplit = FALSE;
 
   if(!sb->regenerate)
     {
@@ -1256,9 +1263,9 @@ void seplit_box(GtkWidget *widget, s_base *sb)
 void merge_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->merge = TRUE;
+    sb->cfg.merge = TRUE;
   else
-    sb->merge = FALSE;
+    sb->cfg.merge = FALSE;
 
   if(!sb->regenerate)
     {
@@ -1280,9 +1287,9 @@ void merge_box(GtkWidget *widget, s_base *sb)
 void outaux_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->outaux = TRUE;
+    sb->cfg.outaux = TRUE;
   else
-    sb->outaux = FALSE;
+    sb->cfg.outaux = FALSE;
 
   if(!sb->regenerate)
     {
@@ -1304,11 +1311,11 @@ void outaux_box(GtkWidget *widget, s_base *sb)
 void outint_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->outint = TRUE;
+    sb->cfg.outint = TRUE;
   else
-    sb->outint = FALSE;
+    sb->cfg.outint = FALSE;
 
-  if(!sb->regenerate && sb->outaux)
+  if(!sb->regenerate && sb->cfg.outaux)
     {
       sb->regenerate = TRUE;
       gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
@@ -1328,9 +1335,9 @@ void outint_box(GtkWidget *widget, s_base *sb)
 void batch_in_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->batch_in = TRUE;
+    sb->cfg.batch_in = TRUE;
   else
-    sb->batch_in = FALSE;
+    sb->cfg.batch_in = FALSE;
 
   if(!sb->changed)
     {
@@ -1345,9 +1352,9 @@ void batch_in_box(GtkWidget *widget, s_base *sb)
 void batch_out_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->batch_out = TRUE;
+    sb->cfg.batch_out = TRUE;
   else
-    sb->batch_out = FALSE;
+    sb->cfg.batch_out = FALSE;
 
   if(!sb->changed)
     {
@@ -1362,9 +1369,9 @@ void batch_out_box(GtkWidget *widget, s_base *sb)
 void draw_undef_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->draw_undef = TRUE;
+    sb->cfg.draw_undef = TRUE;
   else
-    sb->draw_undef = FALSE;
+    sb->cfg.draw_undef = FALSE;
 
   gtk_widget_queue_draw(GTK_WIDGET(sb->drawingarea));
 
@@ -1380,14 +1387,14 @@ void draw_undef_box(GtkWidget *widget, s_base *sb)
 
 void source_fname(GtkWidget *widget, s_base *sb)
 {
-  strcpy(sb->source_name, gtk_entry_get_text(GTK_ENTRY(widget)));
+  strcpy(sb->cfg.source_name, gtk_entry_get_text(GTK_ENTRY(widget)));
 
-  strcpy(sb->base_name, sb->source_name);
-  strcpy(sb->state_name, sb->base_name);
-  strcat(sb->state_name, STATE_SUFFIX);
-  strcpy(sb->logfile_name, sb->base_name);
-  strcat(sb->logfile_name, LOG_SUFFIX);
-  strcpy(sb->xref_name, sb->base_name);
+  strcpy(sb->cfg.base_name, sb->cfg.source_name);
+  strcpy(sb->cfg.state_name, sb->cfg.base_name);
+  strcat(sb->cfg.state_name, STATE_SUFFIX);
+  strcpy(sb->cfg.logfile_name, sb->cfg.base_name);
+  strcat(sb->cfg.logfile_name, LOG_SUFFIX);
+  strcpy(sb->cfg.xref_name, sb->cfg.base_name);
 
   if(sb->config_window)
     gtk_widget_queue_draw(GTK_WIDGET(sb->config_window));
@@ -1411,13 +1418,13 @@ void source_fname(GtkWidget *widget, s_base *sb)
 
 void base_fname(GtkWidget *widget, s_base *sb)
 {
-  strcpy(sb->base_name, gtk_entry_get_text(GTK_ENTRY(widget)));
+  strcpy(sb->cfg.base_name, gtk_entry_get_text(GTK_ENTRY(widget)));
 
-  strcpy(sb->state_name, sb->base_name);
-  strcat(sb->state_name, STATE_SUFFIX);
-  strcpy(sb->logfile_name, sb->base_name);
-  strcat(sb->logfile_name, LOG_SUFFIX);
-  strcpy(sb->xref_name, sb->base_name);
+  strcpy(sb->cfg.state_name, sb->cfg.base_name);
+  strcat(sb->cfg.state_name, STATE_SUFFIX);
+  strcpy(sb->cfg.logfile_name, sb->cfg.base_name);
+  strcat(sb->cfg.logfile_name, LOG_SUFFIX);
+  strcpy(sb->cfg.xref_name, sb->cfg.base_name);
 
   if(sb->config_window)
     gtk_widget_queue_draw(GTK_WIDGET(sb->config_window));
@@ -1434,7 +1441,7 @@ void base_fname(GtkWidget *widget, s_base *sb)
 
 void state_fname(GtkWidget *widget, s_base *sb)
 {
-  strcpy(sb->state_name, gtk_entry_get_text(GTK_ENTRY(widget)));
+  strcpy(sb->cfg.state_name, gtk_entry_get_text(GTK_ENTRY(widget)));
 
   if(!sb->changed)
     {
@@ -1448,7 +1455,7 @@ void state_fname(GtkWidget *widget, s_base *sb)
 
 void logfile_fname(GtkWidget *widget, s_base *sb)
 {
-  strcpy(sb->logfile_name, gtk_entry_get_text(GTK_ENTRY(widget)));
+  strcpy(sb->cfg.logfile_name, gtk_entry_get_text(GTK_ENTRY(widget)));
 
   if(!sb->changed)
     {
@@ -1462,7 +1469,7 @@ void logfile_fname(GtkWidget *widget, s_base *sb)
 
 void xref_fname(GtkWidget *widget, s_base *sb)
 {
-  strcpy(sb->xref_name, gtk_entry_get_text(GTK_ENTRY(widget)));
+  strcpy(sb->cfg.xref_name, gtk_entry_get_text(GTK_ENTRY(widget)));
 
   if(!sb->changed)
     {
@@ -1476,7 +1483,7 @@ void xref_fname(GtkWidget *widget, s_base *sb)
 
 void prefix_fname(GtkWidget *widget, s_base *sb)
 {
-  strcpy(sb->prefix, gtk_entry_get_text(GTK_ENTRY(widget)));
+  strcpy(sb->cfg.prefix, gtk_entry_get_text(GTK_ENTRY(widget)));
 
   if(!sb->changed)
     {
@@ -1490,7 +1497,21 @@ void prefix_fname(GtkWidget *widget, s_base *sb)
 
 void path_fname(GtkWidget *widget, s_base *sb)
 {
-  strcpy(sb->path, gtk_entry_get_text(GTK_ENTRY(widget)));
+  strcpy(sb->cfg.path, gtk_entry_get_text(GTK_ENTRY(widget)));
+
+  if(!sb->changed)
+    {
+      sb->changed = TRUE;
+
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+      if(sb->save_button)
+        gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+    }
+}
+
+void include_path_fname(GtkWidget *widget, s_base *sb)
+{
+  strcpy(sb->cfg.include_path, gtk_entry_get_text(GTK_ENTRY(widget)));
 
   if(!sb->changed)
     {
@@ -1504,7 +1525,7 @@ void path_fname(GtkWidget *widget, s_base *sb)
 
 void false_sym(GtkWidget *widget, s_base *sb)
 {
-  strncpy(&sb->alpha[false_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
+  strncpy(&sb->cfg.alpha[false_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
 
   if(!sb->changed)
     {
@@ -1518,7 +1539,7 @@ void false_sym(GtkWidget *widget, s_base *sb)
 
 void true_sym(GtkWidget *widget, s_base *sb)
 {
-  strncpy(&sb->alpha[true_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
+  strncpy(&sb->cfg.alpha[true_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
 
   if(!sb->changed)
     {
@@ -1532,7 +1553,7 @@ void true_sym(GtkWidget *widget, s_base *sb)
 
 void unknown_sym(GtkWidget *widget, s_base *sb)
 {
-  strncpy(&sb->alpha[unknown_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
+  strncpy(&sb->cfg.alpha[unknown_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
 
   if(!sb->changed)
     {
@@ -1546,7 +1567,7 @@ void unknown_sym(GtkWidget *widget, s_base *sb)
 
 void end_sym(GtkWidget *widget, s_base *sb)
 {
-  strncpy(&sb->alpha[end_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
+  strncpy(&sb->cfg.alpha[end_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
 
   if(!sb->changed)
     {
@@ -1560,49 +1581,56 @@ void end_sym(GtkWidget *widget, s_base *sb)
 
 gboolean source_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
-  gtk_entry_set_text(GTK_ENTRY(widget), sb->source_name);
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.source_name);
 
   return FALSE;
 }
 
 gboolean base_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
-  gtk_entry_set_text(GTK_ENTRY(widget), sb->base_name);
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.base_name);
 
   return FALSE;
 }
 
 gboolean state_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
-  gtk_entry_set_text(GTK_ENTRY(widget), sb->state_name);
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.state_name);
 
   return FALSE;
 }
 
 gboolean logfile_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
-  gtk_entry_set_text(GTK_ENTRY(widget), sb->logfile_name);
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.logfile_name);
 
   return FALSE;
 }
 
 gboolean xref_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
-  gtk_entry_set_text(GTK_ENTRY(widget), sb->xref_name);
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.xref_name);
 
   return FALSE;
 }
 
 gboolean prefix_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
-  gtk_entry_set_text(GTK_ENTRY(widget), sb->prefix);
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.prefix);
 
   return FALSE;
 }
 
 gboolean path_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
-  gtk_entry_set_text(GTK_ENTRY(widget), sb->path);
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.path);
+
+  return FALSE;
+}
+
+gboolean include_path_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
+{
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.include_path);
 
   return FALSE;
 }
@@ -1621,7 +1649,7 @@ void source_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, 
 
   if(gtk_dialog_run(dialog) == GTK_RESPONSE_ACCEPT)
     {
-      strcpy(sb->source_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
+      strcpy(sb->cfg.source_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
       if(!sb->changed)
         {
           sb->changed = TRUE;
@@ -1634,7 +1662,7 @@ void source_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, 
 
   gtk_widget_destroy(GTK_WIDGET(dialog));
 
-  ext = strstr(sb->source_name, SOURCE_EXT);
+  ext = strstr(sb->cfg.source_name, SOURCE_EXT);
   if(ext && !strcmp(ext, SOURCE_EXT))
     *ext = '\0';
 }
@@ -1648,7 +1676,7 @@ void base_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_
 
   if(gtk_dialog_run(dialog) == GTK_RESPONSE_ACCEPT)
     {
-      strcpy(sb->base_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
+      strcpy(sb->cfg.base_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
       if(!sb->changed)
         {
           sb->changed = TRUE;
@@ -1661,7 +1689,7 @@ void base_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_
 
   gtk_widget_destroy(GTK_WIDGET(dialog));
 
-  ext = strstr(sb->base_name, NETWORK_EXT);
+  ext = strstr(sb->cfg.base_name, NETWORK_EXT);
   if(ext && !strcmp(ext, NETWORK_EXT))
     *ext = '\0';
 }
@@ -1675,7 +1703,7 @@ void state_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s
 
   if(gtk_dialog_run(dialog) == GTK_RESPONSE_ACCEPT)
     {
-      strcpy(sb->state_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
+      strcpy(sb->cfg.state_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
       if(!sb->changed)
         {
           sb->changed = TRUE;
@@ -1688,7 +1716,7 @@ void state_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s
 
   gtk_widget_destroy(GTK_WIDGET(dialog));
 
-  ext = strstr(sb->state_name, EVENT_LIST_EXT);
+  ext = strstr(sb->cfg.state_name, EVENT_LIST_EXT);
   if(ext && !strcmp(ext, EVENT_LIST_EXT))
     *ext = '\0';
 }
@@ -1702,7 +1730,7 @@ void logfile_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event,
 
   if(gtk_dialog_run(dialog) == GTK_RESPONSE_ACCEPT)
     {
-      strcpy(sb->logfile_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
+      strcpy(sb->cfg.logfile_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
       if(!sb->changed)
         {
           sb->changed = TRUE;
@@ -1715,7 +1743,7 @@ void logfile_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event,
 
   gtk_widget_destroy(GTK_WIDGET(dialog));
 
-  ext = strstr(sb->logfile_name, EVENT_LIST_EXT);
+  ext = strstr(sb->cfg.logfile_name, EVENT_LIST_EXT);
   if(ext && !strcmp(ext, EVENT_LIST_EXT))
     *ext = '\0';
 }
@@ -1729,7 +1757,7 @@ void xref_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_
 
   if(gtk_dialog_run(dialog) == GTK_RESPONSE_ACCEPT)
     {
-      strcpy(sb->xref_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
+      strcpy(sb->cfg.xref_name, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
       if(!sb->changed)
         {
           sb->changed = TRUE;
@@ -1742,7 +1770,7 @@ void xref_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_
 
   gtk_widget_destroy(GTK_WIDGET(dialog));
 
-  ext = strstr(sb->xref_name, XREF_EXT);
+  ext = strstr(sb->cfg.xref_name, XREF_EXT);
   if(ext && !strcmp(ext, XREF_EXT))
     *ext = '\0';
 }
@@ -1755,7 +1783,29 @@ void path_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_
 
   if(gtk_dialog_run(dialog) == GTK_RESPONSE_ACCEPT)
     {
-      strcpy(sb->path, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
+      strcpy(sb->cfg.path, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
+      if(!sb->changed)
+        {
+          sb->changed = TRUE;
+
+          gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+          if(sb->save_button)
+            gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+        }
+    }
+
+  gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+void include_path_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_base *sb)
+{
+  GtkDialog *dialog;
+
+  dialog = GTK_DIALOG(gtk_file_chooser_dialog_new("Select module file path", sb->config_window, GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "Cancel", GTK_RESPONSE_CANCEL, "Open", GTK_RESPONSE_ACCEPT, NULL));
+
+  if(gtk_dialog_run(dialog) == GTK_RESPONSE_ACCEPT)
+    {
+      strcpy(sb->cfg.include_path, gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog)));
       if(!sb->changed)
         {
           sb->changed = TRUE;
@@ -1771,7 +1821,7 @@ void path_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_
 
 void step_value(GtkWidget *widget, s_base *sb)
 {
-  sb->step = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
+  sb->cfg.step = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
 
   if(!sb->changed)
     {
@@ -1785,7 +1835,7 @@ void step_value(GtkWidget *widget, s_base *sb)
 
 void max_time_value(GtkWidget *widget, s_base *sb)
 {
-  sb->max_time = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
+  sb->cfg.max_time = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
 
   if(!sb->changed)
     {
@@ -1799,7 +1849,7 @@ void max_time_value(GtkWidget *widget, s_base *sb)
 
 void num_threads_value(GtkWidget *widget, s_base *sb)
 {
-  sb->num_threads = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
+  sb->cfg.num_threads = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
 
   if(!sb->changed)
     {
@@ -1813,7 +1863,7 @@ void num_threads_value(GtkWidget *widget, s_base *sb)
 
 void bsbt_value(GtkWidget *widget, s_base *sb)
 {
-  sb->bsbt = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
+  sb->cfg.bsbt = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
 
   if(!sb->changed)
     {
@@ -1835,7 +1885,7 @@ void pos_value(GtkWidget *widget, s_base *sb)
 
 void prob_value(GtkWidget *widget, s_base *sb)
 {
-  sb->prob = gtk_range_get_value(GTK_RANGE(widget));
+  sb->cfg.prob = gtk_range_get_value(GTK_RANGE(widget));
 
   if(!sb->changed)
     {
@@ -1849,7 +1899,7 @@ void prob_value(GtkWidget *widget, s_base *sb)
 
 void correction_value(GtkWidget *widget, s_base *sb)
 {
-  sb->correction = gtk_range_get_value(GTK_RANGE(widget));
+  sb->cfg.correction = gtk_range_get_value(GTK_RANGE(widget));
 
   if(!sb->changed)
     {
@@ -1863,7 +1913,7 @@ void correction_value(GtkWidget *widget, s_base *sb)
 
 void horizon_value(GtkWidget *widget, s_base *sb)
 {
-  sb->horizon_size = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget)) + 1;
+  sb->cfg.horizon_size = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget)) + 1;
 
   if(!sb->changed)
     {
@@ -1877,7 +1927,7 @@ void horizon_value(GtkWidget *widget, s_base *sb)
 
 void rows_value(GtkWidget *widget, s_base *sb)
 {
-  sb->display_rows = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
+  sb->cfg.display_rows = gtk_spin_button_get_value(GTK_SPIN_BUTTON(widget));
 
   if(!sb->changed)
     {
@@ -2045,8 +2095,8 @@ void configure(GtkWidget *widget, s_base *sb)
   GtkWidget *btn5, *btn6;
   GtkWidget *tabf, *tabk, *tabh, *tabg, *tabs, *tabw;
   GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15;
-  GtkWidget *lbl2, *ent2, *lbl3, *ent3, *lbl4, *ent4, *lbl7, *ent7, *lbl10, *ent10, *lbl11, *ent11, *lbl12, *ent12, *lbl13, *ent13, *lbl14, *ent14, *lbl15, *ent15, *lbl16, *ent16,
-            *lbl17, *ent17, *lbl18, *ent18, *lbl19, *ent19;
+  GtkWidget *lbl2, *ent2, *lbl3, *ent3, *lbl4, *ent4, *lbl7, *ent7, *lbl10, *ent10, *lbl11, *ent11, *lbl12, *ent12, *lbl13, *ent13, *lbl14, *ent14, *lbl15, *ent15, *lbl16, *ent16, *lbl17, *ent17,
+            *lbl18, *ent18, *lbl19, *ent19, *lbl20, *ent20;
   GtkWidget *fr1, *fr2, *fr3, *fr4;
   GtkWidget *vbox1, *vbox2, *vbox3, *vbox6, *vbox7, *vbox8, *hbox1, *hbox2, *hbox4, *extbox;
   char buf[2];
@@ -2077,63 +2127,77 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_container_set_border_width(GTK_CONTAINER(fr1), 5);
   gtk_container_set_border_width(GTK_CONTAINER(vbox1), 5);
 
-  tabf = gtk_table_new(2, 4, FALSE);
+  tabf = gtk_table_new(2, 5, FALSE);
 
   lbl2 = gtk_label_new("Network object file name ");
   gtk_misc_set_alignment(GTK_MISC(lbl2), 1, 0.5);
-  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl2, 0, 1, 1, 2);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl2, 0, 1, 0, 1);
   ent2 = gtk_entry_new();
   gtk_entry_set_max_length(GTK_ENTRY(ent2), 0);
   gtk_entry_set_width_chars(GTK_ENTRY(ent2), 50);
   gtk_entry_set_max_width_chars(GTK_ENTRY(ent2), 50);
   gtk_entry_set_icon_from_stock(GTK_ENTRY(ent2), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_FILE);
-  gtk_entry_set_text(GTK_ENTRY(ent2), sb->base_name);
-  gtk_table_attach_defaults(GTK_TABLE(tabf), ent2, 1, 2, 1, 2);
+  gtk_entry_set_text(GTK_ENTRY(ent2), sb->cfg.base_name);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), ent2, 1, 2, 0, 1);
   g_signal_connect(G_OBJECT(ent2), "changed", G_CALLBACK(base_fname), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent2), "draw", G_CALLBACK(base_default), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent2), "icon-press", G_CALLBACK(base_dialog), (gpointer)sb);
 
   lbl3 = gtk_label_new("Initial conditions file name ");
   gtk_misc_set_alignment(GTK_MISC(lbl3), 1, 0.5);
-  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl3, 0, 1, 2, 3);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl3, 0, 1, 1, 2);
   ent3 = gtk_entry_new();
   gtk_entry_set_max_length(GTK_ENTRY(ent3), 0);
   gtk_entry_set_width_chars(GTK_ENTRY(ent3), 50);
   gtk_entry_set_max_width_chars(GTK_ENTRY(ent3), 50);
   gtk_entry_set_icon_from_stock(GTK_ENTRY(ent3), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_FILE);
-  gtk_entry_set_text(GTK_ENTRY(ent3), sb->state_name);
-  gtk_table_attach_defaults(GTK_TABLE(tabf), ent3, 1, 2, 2, 3);
+  gtk_entry_set_text(GTK_ENTRY(ent3), sb->cfg.state_name);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), ent3, 1, 2, 1, 2);
   g_signal_connect(G_OBJECT(ent3), "changed", G_CALLBACK(state_fname), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent3), "draw", G_CALLBACK(state_default), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent3), "icon-press", G_CALLBACK(state_dialog), (gpointer)sb);
 
   lbl4 = gtk_label_new("Log file name ");
   gtk_misc_set_alignment(GTK_MISC(lbl4), 1, 0.5);
-  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl4, 0, 1, 3, 4);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl4, 0, 1, 2, 3);
   ent4 = gtk_entry_new();
   gtk_entry_set_max_length(GTK_ENTRY(ent4), 0);
   gtk_entry_set_width_chars(GTK_ENTRY(ent4), 50);
   gtk_entry_set_max_width_chars(GTK_ENTRY(ent4), 50);
   gtk_entry_set_icon_from_stock(GTK_ENTRY(ent4), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_FILE);
-  gtk_entry_set_text(GTK_ENTRY(ent4), sb->logfile_name);
-  gtk_table_attach_defaults(GTK_TABLE(tabf), ent4, 1, 2, 3, 4);
+  gtk_entry_set_text(GTK_ENTRY(ent4), sb->cfg.logfile_name);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), ent4, 1, 2, 2, 3);
   g_signal_connect(G_OBJECT(ent4), "changed", G_CALLBACK(logfile_fname), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent4), "draw", G_CALLBACK(logfile_default), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent4), "icon-press", G_CALLBACK(logfile_dialog), (gpointer)sb);
 
   lbl10 = gtk_label_new("Symbol table file name ");
   gtk_misc_set_alignment(GTK_MISC(lbl10), 1, 0.5);
-  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl10, 0, 1, 4, 5);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl10, 0, 1, 3, 4);
   ent10 = gtk_entry_new();
   gtk_entry_set_max_length(GTK_ENTRY(ent10), 0);
   gtk_entry_set_width_chars(GTK_ENTRY(ent10), 50);
   gtk_entry_set_max_width_chars(GTK_ENTRY(ent10), 50);
   gtk_entry_set_icon_from_stock(GTK_ENTRY(ent10), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_FILE);
-  gtk_entry_set_text(GTK_ENTRY(ent10), sb->xref_name);
-  gtk_table_attach_defaults(GTK_TABLE(tabf), ent10, 1, 2, 4, 5);
+  gtk_entry_set_text(GTK_ENTRY(ent10), sb->cfg.xref_name);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), ent10, 1, 2, 3, 4);
   g_signal_connect(G_OBJECT(ent10), "changed", G_CALLBACK(xref_fname), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent10), "draw", G_CALLBACK(xref_default), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent10), "icon-press", G_CALLBACK(xref_dialog), (gpointer)sb);
+
+  lbl20 = gtk_label_new("Module file path ");
+  gtk_misc_set_alignment(GTK_MISC(lbl20), 1, 0.5);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl20, 0, 1, 4, 5);
+  ent20 = gtk_entry_new();
+  gtk_entry_set_max_length(GTK_ENTRY(ent20), 0);
+  gtk_entry_set_width_chars(GTK_ENTRY(ent20), 50);
+  gtk_entry_set_max_width_chars(GTK_ENTRY(ent20), 50);
+  gtk_entry_set_icon_from_stock(GTK_ENTRY(ent20), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_FILE);
+  gtk_entry_set_text(GTK_ENTRY(ent20), sb->cfg.include_path);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), ent20, 1, 2, 4, 5);
+  g_signal_connect(G_OBJECT(ent20), "changed", G_CALLBACK(include_path_fname), (gpointer)sb);
+  g_signal_connect(G_OBJECT(ent20), "draw", G_CALLBACK(include_path_default), (gpointer)sb);
+  g_signal_connect(G_OBJECT(ent20), "icon-press", G_CALLBACK(include_path_dialog), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox1), tabf);
   gtk_container_add(GTK_CONTAINER(fr1), vbox1);
@@ -2157,7 +2221,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_entry_set_max_length(GTK_ENTRY(ent13), 0);
   gtk_entry_set_width_chars(GTK_ENTRY(ent13), 50);
   gtk_entry_set_max_width_chars(GTK_ENTRY(ent13), 50);
-  gtk_entry_set_text(GTK_ENTRY(ent13), sb->prefix);
+  gtk_entry_set_text(GTK_ENTRY(ent13), sb->cfg.prefix);
   gtk_table_attach_defaults(GTK_TABLE(tabg), ent13, 1, 2, 0, 1);
   g_signal_connect(G_OBJECT(ent13), "changed", G_CALLBACK(prefix_fname), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent13), "draw", G_CALLBACK(prefix_default), (gpointer)sb);
@@ -2170,7 +2234,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_entry_set_width_chars(GTK_ENTRY(ent12), 50);
   gtk_entry_set_max_width_chars(GTK_ENTRY(ent12), 50);
   gtk_entry_set_icon_from_stock(GTK_ENTRY(ent12), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_FILE);
-  gtk_entry_set_text(GTK_ENTRY(ent12), sb->path);
+  gtk_entry_set_text(GTK_ENTRY(ent12), sb->cfg.path);
   gtk_table_attach_defaults(GTK_TABLE(tabg), ent12, 1, 2, 1, 2);
   g_signal_connect(G_OBJECT(ent12), "changed", G_CALLBACK(path_fname), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent12), "draw", G_CALLBACK(path_default), (gpointer)sb);
@@ -2180,7 +2244,7 @@ void configure(GtkWidget *widget, s_base *sb)
 
   tabs = gtk_table_new(8, 1, FALSE);
 
-  buf[0] = sb->alpha[false_symbol];
+  buf[0] = sb->cfg.alpha[false_symbol];
   lbl14 = gtk_label_new("False char ");
   gtk_misc_set_alignment(GTK_MISC(lbl14), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabs), lbl14, 0, 1, 0, 1);
@@ -2192,7 +2256,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_table_attach_defaults(GTK_TABLE(tabs), ent14, 1, 2, 0, 1);
   g_signal_connect(G_OBJECT(ent14), "changed", G_CALLBACK(false_sym), (gpointer)sb);
 
-  buf[0] = sb->alpha[true_symbol];
+  buf[0] = sb->cfg.alpha[true_symbol];
   lbl15 = gtk_label_new("True char ");
   gtk_misc_set_alignment(GTK_MISC(lbl15), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabs), lbl15, 2, 3, 0, 1);
@@ -2204,7 +2268,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_table_attach_defaults(GTK_TABLE(tabs), ent15, 3, 4, 0, 1);
   g_signal_connect(G_OBJECT(ent15), "changed", G_CALLBACK(true_sym), (gpointer)sb);
 
-  buf[0] = sb->alpha[unknown_symbol];
+  buf[0] = sb->cfg.alpha[unknown_symbol];
   lbl16 = gtk_label_new("Unknown char ");
   gtk_misc_set_alignment(GTK_MISC(lbl16), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabs), lbl16, 4, 5, 0, 1);
@@ -2216,7 +2280,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_table_attach_defaults(GTK_TABLE(tabs), ent16, 5, 6, 0, 1);
   g_signal_connect(G_OBJECT(ent16), "changed", G_CALLBACK(unknown_sym), (gpointer)sb);
 
-  buf[0] = sb->alpha[end_symbol];
+  buf[0] = sb->cfg.alpha[end_symbol];
   lbl17 = gtk_label_new("End char ");
   gtk_misc_set_alignment(GTK_MISC(lbl17), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabs), lbl17, 6, 7, 0, 1);
@@ -2237,17 +2301,17 @@ void configure(GtkWidget *widget, s_base *sb)
   tabw = gtk_table_new(1, 3, FALSE);
 
   cb10 = gtk_check_button_new_with_label("External inputs");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb10), sb->batch_in);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb10), sb->cfg.batch_in);
   gtk_table_attach_defaults(GTK_TABLE(tabw), cb10, 2, 3, 0, 1);
   g_signal_connect(G_OBJECT(cb10), "clicked", G_CALLBACK(batch_in_box), (gpointer)sb);
 
   cb11 = gtk_check_button_new_with_label("External outputs");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb11), sb->batch_out);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb11), sb->cfg.batch_out);
   gtk_table_attach_defaults(GTK_TABLE(tabw), cb11, 2, 3, 1, 2);
   g_signal_connect(G_OBJECT(cb11), "clicked", G_CALLBACK(batch_out_box), (gpointer)sb);
 
   cb9 = gtk_check_button_new_with_label("Sturdy IPC");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb9), sb->sturdy);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb9), sb->cfg.sturdy);
   gtk_table_attach_defaults(GTK_TABLE(tabw), cb9, 2, 3, 2, 3);
   g_signal_connect(G_OBJECT(cb9), "clicked", G_CALLBACK(sturdy_box), (gpointer)sb);
 
@@ -2272,15 +2336,15 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_misc_set_alignment(GTK_MISC(lbl7), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabk), lbl7, 0, 1, 0, 1);
   ent7 = gtk_spin_button_new_with_range(1, MAX_THREADS, 1);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent7), sb->num_threads);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent7), sb->cfg.num_threads);
   gtk_table_attach_defaults(GTK_TABLE(tabk), ent7, 1, 2, 0, 1);
   g_signal_connect(G_OBJECT(ent7), "value-changed", G_CALLBACK(num_threads_value), (gpointer)sb);
 
-  lbl11 = gtk_label_new("Core size logarithm ");
+  lbl11 = gtk_label_new("Memory size logarithm ");
   gtk_misc_set_alignment(GTK_MISC(lbl11), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabk), lbl11, 0, 1, 1, 2);
   ent11 = gtk_spin_button_new_with_range(MIN_BSBT, MAX_BSBT, 1);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent11), sb->bsbt);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent11), sb->cfg.bsbt);
   gtk_table_attach_defaults(GTK_TABLE(tabk), ent11, 1, 2, 1, 2);
   g_signal_connect(G_OBJECT(ent11), "value-changed", G_CALLBACK(bsbt_value), (gpointer)sb);
 
@@ -2288,7 +2352,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_misc_set_alignment(GTK_MISC(lbl18), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabk), lbl18, 0, 1, 2, 3);
   ent18 = gtk_spin_button_new_with_range(1, MAX_HORIZON_SIZE - 1, 1);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent18), sb->horizon_size - 1);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent18), sb->cfg.horizon_size - 1);
   gtk_table_attach_defaults(GTK_TABLE(tabk), ent18, 1, 2, 2, 3);
   g_signal_connect(G_OBJECT(ent18), "value-changed", G_CALLBACK(horizon_value), (gpointer)sb);
 
@@ -2296,7 +2360,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_misc_set_alignment(GTK_MISC(lbl19), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabk), lbl19, 0, 1, 3, 4);
   ent19 = gtk_spin_button_new_with_range(1, MAX_DISPLAY_ROWS, 1);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent19), sb->display_rows);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent19), sb->cfg.display_rows);
   gtk_table_attach_defaults(GTK_TABLE(tabk), ent19, 1, 2, 3, 4);
   g_signal_connect(G_OBJECT(ent19), "value-changed", G_CALLBACK(rows_value), (gpointer)sb);
 
@@ -2313,27 +2377,27 @@ void configure(GtkWidget *widget, s_base *sb)
   tabh = gtk_table_new(1, 5, FALSE);
 
   cb12 = gtk_check_button_new_with_label("Optimize network joints");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb12), sb->seplit);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb12), sb->cfg.seplit);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb12, 0, 1, 0, 1);
   g_signal_connect(G_OBJECT(cb12), "clicked", G_CALLBACK(seplit_box), (gpointer)sb);
 
   cb13 = gtk_check_button_new_with_label("Optimize network delays");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb13), sb->merge);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb13), sb->cfg.merge);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb13, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(cb13), "clicked", G_CALLBACK(merge_box), (gpointer)sb);
 
   cb14 = gtk_check_button_new_with_label("Internal as auxiliary signals");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sb->outint);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sb->cfg.outint);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb14, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb14), "clicked", G_CALLBACK(outint_box), (gpointer)sb);
 
   cb8 = gtk_check_button_new_with_label("Hard real time (root access only)");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb8), sb->hard);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb8), sb->cfg.hard);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb8, 0, 1, 3, 4);
   g_signal_connect(G_OBJECT(cb8), "clicked", G_CALLBACK(hard_box), (gpointer)sb);
 
   cb15 = gtk_check_button_new_with_label("Display unknowns as dots");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb15), sb->draw_undef);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb15), sb->cfg.draw_undef);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb15, 0, 1, 4, 5);
   g_signal_connect(G_OBJECT(cb15), "clicked", G_CALLBACK(draw_undef_box), (gpointer)sb);
 
@@ -2380,7 +2444,7 @@ void configure(GtkWidget *widget, s_base *sb)
 
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool seplit, bool merge, bool outaux, bool outint,
-         int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads, float prob, bool batch_in, bool batch_out, bool draw_undef)
+         int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, float prob, bool batch_in, bool batch_out, bool draw_undef)
 {
   s_base sbs;
   GtkWidget *window;
@@ -2402,7 +2466,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   fp = fopen(CONFIG_FILENAME, "r");
   if(fp)
     {
-      if(fread(&sbs, sizeof(sbs), 1, fp) == 1)
+      if(fread(&sbs.cfg, sizeof(sbs.cfg), 1, fp) == 1)
         sbs.configured = TRUE;
       else
         sbs.configured = FALSE;
@@ -2416,73 +2480,74 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
     {
       memset(&sbs, 0, sizeof(s_base));
 
-      strcpy(sbs.source_name, source_name);
+      strcpy(sbs.cfg.source_name, source_name);
 
       if(!base_name)
         base_name = source_name;
 
-      strcpy(sbs.base_name, base_name);
+      strcpy(sbs.cfg.base_name, base_name);
 
       if(state_name)
         {
-          strcpy(sbs.state_name, state_name);
-          sbs.load_state = TRUE;
+          strcpy(sbs.cfg.state_name, state_name);
+          sbs.cfg.load_state = TRUE;
         }
       else
         {
-          strcpy(sbs.state_name, base_name);
-          strcat(sbs.state_name, STATE_SUFFIX);
-          sbs.load_state = FALSE;
+          strcpy(sbs.cfg.state_name, base_name);
+          strcat(sbs.cfg.state_name, STATE_SUFFIX);
+          sbs.cfg.load_state = FALSE;
         }
 
       if(logfile_name)
         {
-          strcpy(sbs.logfile_name, logfile_name);
-          sbs.echo_logfile = TRUE;
+          strcpy(sbs.cfg.logfile_name, logfile_name);
+          sbs.cfg.echo_logfile = TRUE;
         }
       else
         {
-          strcpy(sbs.logfile_name, base_name);
-          strcat(sbs.logfile_name, LOG_SUFFIX);
-          sbs.echo_logfile = FALSE;
+          strcpy(sbs.cfg.logfile_name, base_name);
+          strcat(sbs.cfg.logfile_name, LOG_SUFFIX);
+          sbs.cfg.echo_logfile = FALSE;
         }
 
       if(xref_name)
         {
-          strcpy(sbs.xref_name, xref_name);
-          sbs.use_xref = TRUE;
+          strcpy(sbs.cfg.xref_name, xref_name);
+          sbs.cfg.use_xref = TRUE;
         }
       else
         {
-          strcpy(sbs.xref_name, base_name);
-          sbs.use_xref = FALSE;
+          strcpy(sbs.cfg.xref_name, base_name);
+          sbs.cfg.use_xref = FALSE;
         }
 
-      sbs.bsbt = bufexp;
-      sbs.max_time = max_time;
-      sbs.step = step;
-      sbs.num_threads = num_threads;
-      sbs.prob = prob;
-      sbs.correction = 0;
-      strcpy(sbs.prefix, prefix);
-      strcpy(sbs.path, path);
-      strncpy(sbs.alpha, alpha, end_symbol - false_symbol + 1);
-      sbs.strictly_causal = strictly_causal;
-      sbs.soundness_check = soundness_check;
-      sbs.echo_stdout = echo_stdout;
-      sbs.file_io = file_io;
-      sbs.quiet = quiet;
-      sbs.hard = hard;
-      sbs.sturdy = sturdy;
-      sbs.seplit = seplit;
-      sbs.merge = merge;
-      sbs.outaux = outaux;
-      sbs.outint = outint;
-      sbs.batch_in = batch_in;
-      sbs.batch_out = batch_out;
-      sbs.draw_undef = draw_undef;
-      sbs.horizon_size = DEFAULT_HORIZON_SIZE;
-      sbs.display_rows = DEFAULT_DISPLAY_ROWS;
+      sbs.cfg.bsbt = bufexp;
+      sbs.cfg.step = step;
+      sbs.cfg.max_time = max_time;
+      sbs.cfg.num_threads = num_threads;
+      sbs.cfg.prob = prob;
+      sbs.cfg.correction = 0;
+      strcpy(sbs.cfg.prefix, prefix);
+      strcpy(sbs.cfg.path, path);
+      strcpy(sbs.cfg.include_path, include_path);
+      strncpy(sbs.cfg.alpha, alpha, end_symbol - false_symbol + 1);
+      sbs.cfg.strictly_causal = strictly_causal;
+      sbs.cfg.soundness_check = soundness_check;
+      sbs.cfg.echo_stdout = echo_stdout;
+      sbs.cfg.file_io = file_io;
+      sbs.cfg.quiet = quiet;
+      sbs.cfg.hard = hard;
+      sbs.cfg.sturdy = sturdy;
+      sbs.cfg.seplit = seplit;
+      sbs.cfg.merge = merge;
+      sbs.cfg.outaux = outaux;
+      sbs.cfg.outint = outint;
+      sbs.cfg.batch_in = batch_in;
+      sbs.cfg.batch_out = batch_out;
+      sbs.cfg.draw_undef = draw_undef;
+      sbs.cfg.horizon_size = DEFAULT_HORIZON_SIZE;
+      sbs.cfg.display_rows = DEFAULT_DISPLAY_ROWS;
 
       sbs.configured = FALSE;
     }
@@ -2660,7 +2725,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_entry_set_width_chars(GTK_ENTRY(ent1), 50);
   gtk_entry_set_max_width_chars(GTK_ENTRY(ent1), 50);
   gtk_entry_set_icon_from_stock(GTK_ENTRY(ent1), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_FILE);
-  gtk_entry_set_text(GTK_ENTRY(ent1), sbs.source_name);
+  gtk_entry_set_text(GTK_ENTRY(ent1), sbs.cfg.source_name);
   gtk_table_attach_defaults(GTK_TABLE(tabf), ent1, 1, 2, 0, 1);
   lblg = gtk_label_new(NULL);
   icng = gtk_image_new();
@@ -2678,7 +2743,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   sbs.reg_warning_icon = GTK_IMAGE(icng);
 
   cb1 = gtk_check_button_new_with_label("Load initial conditions");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb1), sbs.load_state);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb1), sbs.cfg.load_state);
   gtk_table_attach_defaults(GTK_TABLE(tabf), cb1, 1, 2, 1, 2);
   g_signal_connect(G_OBJECT(cb1), "clicked", G_CALLBACK(load_state_box), (gpointer)&sbs);
 
@@ -2698,15 +2763,15 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_misc_set_alignment(GTK_MISC(lbl5), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabt), lbl5, 0, 1, 0, 1);
   ent5 = gtk_spin_button_new_with_range(0, 9999.999, 0.001);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent5), sbs.step);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent5), sbs.cfg.step);
   gtk_table_attach_defaults(GTK_TABLE(tabt), ent5, 1, 2, 0, 1);
   g_signal_connect(G_OBJECT(ent5), "value-changed", G_CALLBACK(step_value), (gpointer)&sbs);
 
-  lbl6 = gtk_label_new("Horizon lenght (0 = none) ");
+  lbl6 = gtk_label_new("Horizon length (0 = none) ");
   gtk_misc_set_alignment(GTK_MISC(lbl6), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabt), lbl6, 0, 1, 1, 2);
   ent6 = gtk_spin_button_new_with_range(0, MAX_RUN_LEN, 1);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent6), sbs.max_time);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent6), sbs.cfg.max_time);
   gtk_table_attach_defaults(GTK_TABLE(tabt), ent6, 1, 2, 1, 2);
   g_signal_connect(G_OBJECT(ent6), "value-changed", G_CALLBACK(max_time_value), (gpointer)&sbs);
 
@@ -2723,17 +2788,17 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   tabi = gtk_table_new(1, 3, FALSE);
 
   cb2 = gtk_check_button_new_with_label("Verify inference soundness");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb2), sbs.soundness_check);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb2), sbs.cfg.soundness_check);
   gtk_table_attach_defaults(GTK_TABLE(tabi), cb2, 0, 1, 0, 1);
   g_signal_connect(G_OBJECT(cb2), "clicked", G_CALLBACK(soundness_check_box), (gpointer)&sbs);
 
   cb3 = gtk_check_button_new_with_label("Causal inference only");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb3), sbs.strictly_causal);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb3), sbs.cfg.strictly_causal);
   gtk_table_attach_defaults(GTK_TABLE(tabi), cb3, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(cb3), "clicked", G_CALLBACK(strictly_causal_box), (gpointer)&sbs);
 
   cb10 = gtk_check_button_new_with_label("Use symbol table");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb10), sbs.use_xref);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb10), sbs.cfg.use_xref);
   gtk_table_attach_defaults(GTK_TABLE(tabi), cb10, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb10), "clicked", G_CALLBACK(use_xref_box), (gpointer)&sbs);
 
@@ -2750,31 +2815,31 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   tabh = gtk_table_new(2, 3, FALSE);
 
   cb0 = gtk_radio_button_new_with_label(NULL, "IPC input and output");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb0), !sbs.quiet && !sbs.file_io);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb0), !sbs.cfg.quiet && !sbs.cfg.file_io);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb0, 0, 1, 0, 1);
 
   cb7 = gtk_radio_button_new_with_label(gtk_radio_button_get_group(GTK_RADIO_BUTTON(cb0)), "File input and output");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb7), sbs.file_io);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb7), sbs.cfg.file_io);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb7, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(cb7), "clicked", G_CALLBACK(file_io_box), (gpointer)&sbs);
 
   cb6 = gtk_radio_button_new_with_label(gtk_radio_button_get_group(GTK_RADIO_BUTTON(cb7)), "Quiet mode");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb6), sbs.quiet);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb6), sbs.cfg.quiet);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb6, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb6), "clicked", G_CALLBACK(quiet_box), (gpointer)&sbs);
 
   cb4 = gtk_check_button_new_with_label("Trace inference");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb4), sbs.echo_stdout);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb4), sbs.cfg.echo_stdout);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb4, 1, 2, 0, 1);
   g_signal_connect(G_OBJECT(cb4), "clicked", G_CALLBACK(echo_stdout_box), (gpointer)&sbs);
 
   cb5 = gtk_check_button_new_with_label("Log inference to file");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb5), sbs.echo_logfile);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb5), sbs.cfg.echo_logfile);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb5, 1, 2, 1, 2);
   g_signal_connect(G_OBJECT(cb5), "clicked", G_CALLBACK(echo_logfile_box), (gpointer)&sbs);
 
   cb14 = gtk_check_button_new_with_label("Display auxiliary signals");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sbs.outaux);
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sbs.cfg.outaux);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb14, 1, 2, 2, 3);
   g_signal_connect(G_OBJECT(cb14), "clicked", G_CALLBACK(outaux_box), (gpointer)&sbs);
 
@@ -2797,7 +2862,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_scale_set_value_pos(GTK_SCALE(ent8), GTK_POS_LEFT);
   gtk_scale_add_mark(GTK_SCALE(ent8), 0.5,  GTK_POS_TOP, NULL);
   gtk_scale_add_mark(GTK_SCALE(ent8), 0.5,  GTK_POS_BOTTOM, NULL);
-  gtk_range_set_value(GTK_RANGE(ent8), sbs.prob);
+  gtk_range_set_value(GTK_RANGE(ent8), sbs.cfg.prob);
   gtk_table_attach_defaults(GTK_TABLE(tabx), ent8, 1, 2, 0, 1);
   g_object_set(G_OBJECT(ent8), "width-request", BAR_WIDTH, NULL);
   g_signal_connect(G_OBJECT(ent8), "value-changed", G_CALLBACK(prob_value), (gpointer)&sbs);
@@ -2809,7 +2874,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_scale_set_value_pos(GTK_SCALE(ent9), GTK_POS_LEFT);
   gtk_scale_add_mark(GTK_SCALE(ent9), 0,  GTK_POS_TOP, NULL);
   gtk_scale_add_mark(GTK_SCALE(ent9), 0,  GTK_POS_BOTTOM, NULL);
-  gtk_range_set_value(GTK_RANGE(ent9), sbs.correction);
+  gtk_range_set_value(GTK_RANGE(ent9), sbs.cfg.correction);
   gtk_table_attach_defaults(GTK_TABLE(tabx), ent9, 1, 2, 1, 2);
   g_object_set(G_OBJECT(ent9), "width-request", BAR_WIDTH, NULL);
   g_signal_connect(G_OBJECT(ent9), "value-changed", G_CALLBACK(correction_value), (gpointer)&sbs);
@@ -2872,7 +2937,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
 int main(int argc, char *argv[])
 {
-  char *source_name, *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path;
+  char *source_name, *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path, *include_path;
   char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
   bool strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, seplit, merge, outaux, outint, batch_in, batch_out, draw_undef;
   int i, k, n;
@@ -2885,6 +2950,7 @@ int main(int argc, char *argv[])
   source_name = base_name = state_name = logfile_name = xref_name = NULL;
   prefix = MAGIC_PREFIX;
   path = "";
+  include_path = "";
   strcpy(alpha, IO_SYMBOLS);
   strictly_causal = soundness_check = echo_stdout = file_io = quiet = hard = sturdy = seplit = merge = outaux = outint = batch_in = batch_out = draw_undef = FALSE;
   bufexp = DEFAULT_BUFEXP;
@@ -2902,7 +2968,7 @@ int main(int argc, char *argv[])
             {
             case 'h':
               fprintf(stderr,
-              "Usage: %s [-AbBcdfilqsuvwxyYZ] [-a alphabet] [-e prefix] [-I state] [-L log] [-n processes] [-o base] [-p path] [-P probability] [-r core] [-t step] [-X symbols] [-z horizon] [source]\n",
+              "Usage: %s [-AbBcdfilqsuvwxyYZ] [-a alphabet] [-e prefix] [-I state] [-L log] [-n processes] [-o base] [-p path] [-P path] [-Q probability] [-r core] [-t step] [-X symbols] [-z horizon] [source]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -3088,6 +3154,24 @@ int main(int argc, char *argv[])
             break;
 
             case 'P':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                include_path = argv[i]; 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
+            break;
+
+            case 'Q':
               if(*(++option))
                 {
                   fprintf(stderr, "%s, %c: Invalid command line option"
@@ -3345,7 +3429,7 @@ int main(int argc, char *argv[])
 
   return execute(source_name, base_name, state_name, logfile_name, xref_name,
          strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, seplit, merge, outaux, outint,
-         bufexp, max_time, step, prefix, path, alpha, num_threads, prob, batch_in, batch_out, draw_undef);
+         bufexp, max_time, step, prefix, path, include_path, alpha, num_threads, prob, batch_in, batch_out, draw_undef);
 }
 
 

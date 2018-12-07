@@ -43,7 +43,7 @@
                "A real time inference engine for temporal logic specifications, which is able to process and generate any binary signal through POSIX IPC or files.\n" \
                "Specifications of signals are represented as special graphs and executed in real time, with a sampling time of few milliseconds.\n" \
                "The accepted language provides timed logic operators, conditional operators, interval operators, bounded quantifiers and parametrization of signals.\n\n" \
-               "This software is licensed under the GNU Public License."
+               "This software is licensed under the GNU Public License.\n"
 
 #define REAL_FMT "%.3f"
 #define ORIGIN_FMT "%.9f"
@@ -83,6 +83,44 @@ typedef enum runstate
     stopping
   } runstate;
 
+typedef struct config
+  {
+    char source_name[MAX_STRLEN];
+    char base_name[MAX_STRLEN];
+    char state_name[MAX_STRLEN];
+    char logfile_name[MAX_STRLEN];
+    char xref_name[MAX_STRLEN];
+    int bsbt;
+    m_time step;
+    d_time max_time;
+    int num_threads;
+    float prob;
+    float correction;
+    char prefix[MAX_STRLEN];
+    char path[MAX_STRLEN];
+    char include_path[MAX_STRLEN];
+    char alpha[SYMBOL_NUMBER + 1];
+    bool load_state;
+    bool strictly_causal;
+    bool soundness_check;
+    bool echo_stdout;
+    bool echo_logfile;
+    bool file_io;
+    bool quiet;
+    bool hard;
+    bool sturdy;
+    bool use_xref;
+    bool seplit;
+    bool merge;
+    bool outaux;
+    bool outint;
+    bool batch_in;
+    bool batch_out;
+    bool draw_undef;
+    int horizon_size;
+    int display_rows;
+  } config;
+
 typedef struct s_base
   {
     char memory_f[MAX_FILES][MAX_HORIZON_SIZE];
@@ -107,54 +145,22 @@ typedef struct s_base
     bool xcat;
     bool mt;
     char cmd[MAX_STRLEN_IF];
-    char source_name[MAX_STRLEN];
-    char base_name[MAX_STRLEN];
-    char state_name[MAX_STRLEN];
-    char logfile_name[MAX_STRLEN];
-    char xref_name[MAX_STRLEN];
-    int bsbt;
-    m_time step;
-    m_time cp_step;
-    d_time max_time;
-    d_time cp_max_time;
-    int num_threads;
-    float prob;
-    float correction;
-    char prefix[MAX_STRLEN];
-    char path[MAX_STRLEN];
-    char alpha[SYMBOL_NUMBER + 1];
-    bool load_state;
-    bool strictly_causal;
-    bool soundness_check;
-    bool echo_stdout;
-    bool cp_echo_stdout;
-    bool echo_logfile;
-    bool file_io;
-    bool cp_file_io;
-    bool quiet;
-    bool cp_quiet;
-    bool hard;
-    bool sturdy;
-    bool use_xref;
-    bool seplit;
-    bool merge;
-    bool outaux;
-    bool outint;
-    bool batch_in;
-    bool cp_batch_in;
-    bool batch_out;
-    bool cp_batch_out;
-    bool draw_undef;
-    int horizon_size;
-    int cp_horizon_size;
-    int display_rows;
-    int cp_display_rows;
     runstate rs;
     bool term;
     bool sent;
     bool regenerate;
     bool changed;
     bool configured;
+    config cfg;
+    m_time cp_step;
+    d_time cp_max_time;
+    bool cp_echo_stdout;
+    bool cp_file_io;
+    bool cp_quiet;
+    bool cp_batch_in;
+    bool cp_batch_out;
+    int cp_horizon_size;
+    int cp_display_rows;
     pthread_t tintloop;
     pthread_t tinxpipe;
     pthread_mutex_t mutex_xbuffer;
@@ -224,6 +230,6 @@ void print_add(s_base *sb, char *string, ...);
 pid_t pidof(s_base *sb, char *name);
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool seplit, bool merge, bool outaux, bool outint,
-         int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads, float prob, bool batch_in, bool batch_out, bool draw_undef);
+         int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, float prob, bool batch_in, bool batch_out, bool draw_undef);
 
 

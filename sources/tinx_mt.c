@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "6.1.2 MT (multiple cores)"
+#define VER "6.3.1 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -87,21 +87,6 @@ unsigned long int hashnode(char *name)
   return k;
 }
 
-int gcd(int p, int q)
-{
-  int r;
-
-  while(q)
-    {
-      r = p % q;
-
-      p = q;
-      q = r;
-    }
-
-  return p;
-}
-
 /******** Inference engine ********/
 
 INLINE void state(k_base *kb, event s)
@@ -116,8 +101,8 @@ INLINE void state(k_base *kb, event s)
 
   if(kb->soundness_check && is_stated(kb, ev_neg(s)))
     {
-      fprintf(stderr, "(%s, %s) @ "TIME_FMT": Soundness violation\n",
-              arc_neg(s.e).vp->name, s.e.vp->name, s.t);
+      fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT": Soundness violation\n",
+              arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t);
 
       irq = TRUE;
       return;
@@ -329,12 +314,7 @@ INLINE void process(k_base *kb, event s)
           r.t = s.t + s.e.vp->k;
         }
 
-      if(kb->strictly_causal)
-        {
-          if(r.t >= s.t)
-            safe_state(kb, r);
-        }
-      else
+      if(!kb->strictly_causal || r.t >= s.t)
         safe_state(kb, r);
 
       break;
@@ -446,6 +426,8 @@ INLINE bool loop(k_base *kb, int tid)
 
 INLINE bool loop_io(k_base *kb, int tid)
 {
+  m_time delta_time;
+
   assert(kb);
 
   if(kb->curr_time - kb->anchor_time < kb->bsd4)
@@ -453,28 +435,33 @@ INLINE bool loop_io(k_base *kb, int tid)
       scan_inputs(kb);
       scan_outputs(kb);
 
-      if(!kb->io_count[input_stream] && !kb->io_count[output_stream] && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step)
+      if(!kb->io_count[input_stream] && !kb->io_count[output_stream])
         {
-          kb->io_count[input_stream] = kb->io_num[input_stream];
-          kb->io_count[output_stream] = kb->io_num[output_stream];
-
-          kb->curr_time++;
-
-          if(kb->max_time && kb->curr_time >= kb->max_time)
+          if(kb->quiet && kb->last_empty == kb->curr_time)
             kb->exiting = TRUE;
+          else
+            {
+              delta_time = get_time() - kb->time_base - (kb->curr_time - kb->offset + 1) * kb->step;
+
+              if(delta_time >= 0)
+                {
+                  kb->io_count[input_stream] = kb->io_num[input_stream];
+                  kb->io_count[output_stream] = kb->io_num[output_stream];
+
+                  kb->curr_time++;
+
+                  if(kb->max_time && kb->curr_time >= kb->max_time)
+                    kb->exiting = TRUE;
+                }
+              else
+                if(kb->last_far == kb->curr_time)
+                  usleep(1000000 * (- delta_time));
+            }
         }
     }
 
-  if(!kb->io_togo)
-    {
-      kb->io_togo = kb->io_slice;
-      barrier(kb, tid);
-    }
-  else
-    kb->io_togo--;
-
-  if(kb->quiet && kb->last_empty == kb->curr_time)
-    kb->exiting = TRUE;
+  if(kb->barrier_count == kb->num_threads)
+    barrier(kb, tid);
 
   return kb->exiting;
 }
@@ -796,7 +783,11 @@ bool output_m(k_base *kb, stream *ios)
       ios->errors++;
 
       if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
-        ios->open = FALSE;
+        {
+          ios->open = FALSE;
+
+          fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+        }
 
       return FALSE;
     }
@@ -1014,11 +1005,9 @@ void remove_stream(stream **handle)
 
 /******** Network setup ********/
 
-node *alloc_node(k_base *kb, char *name)
+node *alloc_node(char *name)
 {
   node *vp;
-  link_code lc;
-  d_time t;
 
   vp = malloc(sizeof(node));
   if(!vp)
@@ -1029,22 +1018,39 @@ node *alloc_node(k_base *kb, char *name)
 
   strcpy(vp->name, name);
   vp->nclass = null_op;
+  vp->debug = NULL;
+  vp->def_proc = NO_THREAD;
+
+  return vp;
+}
+
+void init_node(node *vp, node_class nclass, d_time k, int bs)
+{
+  link_code lc, max_lc;
+  d_time t;
+
+  vp->nclass = nclass;
+  vp->k = k;
 
   for(lc = 0; lc < LINK_CODES_NUMBER; lc++)
     {
       vp->pin[lc].e.vp = NULL;
       vp->pin[lc].e.lc = no_link;
-
       vp->pin[lc].shared = FALSE;
+    }
 
-      vp->pin[lc].history = malloc(sizeof(record) * (kb->bsm1 + 1));
+  max_lc = (nclass == delay)? (LINK_CODES_NUMBER - 1) : LINK_CODES_NUMBER;
+
+  for(lc = 0; lc < max_lc; lc++)
+    {
+      vp->pin[lc].history = malloc(sizeof(record) * bs);
       if(!vp->pin[lc].history)
         {
           perror(NULL);
           exit(EXIT_FAILURE);
         }
 
-      for(t = 0; t <= kb->bsm1; t++)
+      for(t = 0; t < bs; t++)
         {
           vp->pin[lc].history[t].stated = NULL_PHASE;
           vp->pin[lc].history[t].chosen = NULL_PHASE;
@@ -1055,21 +1061,16 @@ node *alloc_node(k_base *kb, char *name)
           pthread_mutex_init(&vp->pin[lc].history[t].mutex, NULL);
         }
     }
-
-  vp->debug = NULL;
-  vp->def_proc = NO_THREAD;
-
-  return vp;
 }
 
-void free_node(k_base *kb, node *vp)
+void free_node(node *vp, int bs)
 {
   link_code lc;
   d_time t;
 
-  for(lc = 0; lc < LINK_CODES_NUMBER; lc++)
+  for(lc = 0; lc < LINK_CODES_NUMBER && vp->pin[lc].e.vp; lc++)
     {
-      for(t = 0; t <= kb->bsm1; t++)
+      for(t = 0; t < bs; t++)
         pthread_mutex_destroy(&vp->pin[lc].history[t].mutex);
 
       free(vp->pin[lc].history);
@@ -1111,7 +1112,7 @@ node *name2node(k_base *kb, char *name, bool create)
 
       if(create)
         {
-          vp = alloc_node(kb, name);
+          vp = alloc_node(name);
           assert(vp);
 
           vp->vp = kb->network;
@@ -1154,6 +1155,7 @@ void thread_network(node *network)
                   break;
                 }
             }
+
           if(lc1 == LINK_CODES_NUMBER)
             {
               fprintf(stderr, "%s: Edge mismatch in node declarations\n",
@@ -1351,14 +1353,12 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   d_time k, offset;
   node *vp, *wp;
   node_class nclass;
-  int num_nodes[NODE_CLASSES_NUMBER];
   stream *ios;
   stream_class sclass;
   arc e;
   int bufsiz;
   link_code lc;
   int tid;
-  int p, q;
 
   kb = malloc(sizeof(k_base));
   if(!kb)
@@ -1410,7 +1410,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
     }
 
   for(nclass = 0; nclass < NODE_CLASSES_NUMBER; nclass++)
-    num_nodes[nclass] = 0;
+    kb->perf.num_nodes[nclass] = 0;
 
   *left = *right = '\0';
   while(fscanf(fp, " "NAME_FMT" : "NAME_FMT" ; "NAME_FMT" , "
@@ -1449,14 +1449,13 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      vp->nclass = nclass;
-      vp->k = k;
+      init_node(vp, nclass, k, bufsiz);
 
       vp->pin[parent].e.vp = name2node(kb, up, TRUE);
       vp->pin[left_son].e.vp = name2node(kb, left, TRUE);
       vp->pin[right_son].e.vp = name2node(kb, right, TRUE);
 
-      num_nodes[nclass]++;
+      kb->perf.num_nodes[nclass]++;
 
       *left = *right = '\0';
     }
@@ -1467,8 +1466,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       exit(EXIT_FAILURE);
     }
 
-  kb->perf.nodes = num_nodes[gate] + num_nodes[joint] + num_nodes[delay];
-  kb->perf.edges = (3 * (num_nodes[gate] + num_nodes[joint]) + 2 * num_nodes[delay]) / 2;
+  kb->perf.nodes = kb->perf.num_nodes[gate] + kb->perf.num_nodes[joint] + kb->perf.num_nodes[delay];
+  kb->perf.edges = (3 * (kb->perf.num_nodes[gate] + kb->perf.num_nodes[joint]) + 2 * kb->perf.num_nodes[delay]) / 2;
 
   thread_network(kb->network);
 
@@ -1697,12 +1696,6 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->io_count[input_stream] = kb->io_num[input_stream];
   kb->io_count[output_stream] = kb->io_num[output_stream];
 
-  p = max(1, kb->io_num[input_stream]);
-  q = max(1, kb->io_num[output_stream]);
-
-  kb->io_slice = p * q / gcd(p, q);
-  kb->io_togo = kb->io_slice;
-
   kb->barrier_count = 0;
 
   kb->curr_time = kb->offset;
@@ -1771,20 +1764,21 @@ void close_base(k_base *kb)
   while(vp)
     {
       wp = vp->vp;
-      free_node(kb, vp);
+      free_node(vp, kb->bsm1 + 1);
       vp = wp;
     }
 
   free(kb);
 }
 
-void init_state(k_base *kb, char *state_name)
+int init_state(k_base *kb, char *state_name)
 {
   FILE *fp;
   char file_name[MAX_STRLEN], name_v[MAX_NAMEBUF], name_w[MAX_NAMEBUF];
   node *vp, *wp;
   event s;
   link_code lc;
+  int n;
 
   strcpy(file_name, state_name);
   strcat(file_name, EVENT_LIST_EXT);
@@ -1795,6 +1789,7 @@ void init_state(k_base *kb, char *state_name)
       exit(EXIT_FAILURE);
     }
 
+  n = 0;
   while(fscanf(fp, " ( "NAME_FMT" , "NAME_FMT" ) # %d @ "TIME_FMT" : %*[^\n]\n",
                name_v, name_w, &lc, &s.t) >= 4)
     {
@@ -1824,6 +1819,8 @@ void init_state(k_base *kb, char *state_name)
         }
 
       safe_state(kb, s);
+
+      n++;
     }
 
   if(ferror(fp))
@@ -1843,6 +1840,8 @@ void init_state(k_base *kb, char *state_name)
       perror(file_name);
       exit(EXIT_FAILURE);
     }
+
+  return n;
 }
 
 /******** Toplevel ********/
@@ -1923,12 +1922,24 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
   char buffer[MAX_STRLEN], buffer2[MAX_STRLEN];
   cpu_set_t cpuset;
   int tid;
-  int i;
+  int i, n;
 
   kb = open_base(base_name, logfile_name, xref_name,
                  strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, sturdy, bufexp, max_time, step, prefix, path, alpha, num_threads);
+
+  printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d inputs, %d outputs, %d shared edges (%.3f %%)\n",
+         kb->perf.edges, kb->perf.nodes, kb->perf.num_nodes[gate], kb->perf.num_nodes[joint], kb->perf.num_nodes[delay], kb->io_num[input_stream], kb->io_num[output_stream], kb->perf.shared,
+         kb->perf.edges? 100.0 * kb->perf.shared / kb->perf.edges : 0);
+
   if(state_name)
-    init_state(kb, state_name);
+    {
+      n = init_state(kb, state_name);
+      printf("State ok -- %d initial conditions\n", n);
+    }
+
+  printf("Execution running...\n");
+
+  fflush(stdout);
 
   pthread_attr_init(&attributes);
   if(hard)
@@ -2460,7 +2471,7 @@ int main(int argc, char **argv)
   perf = run(base_name, state_name, logfile_name, xref_name,
       strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sturdy, bufexp, max_time, step, origin, prefix, path, alpha, num_threads);
 
-  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.3f seconds, %.3f KLIPS, %lu depth (avg %.3f), %d shared edges (%.3f %%), %lu halts (%.3f %%)\n",
+  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.3f seconds, %.3f KLIPS, %lu depth (avg %.3f), %lu halts (%.3f %%)\n",
 	irq? "Execution interrupted" : "End of execution",
 	perf.count,
 	perf.horizon && perf.edges? 100.0 * perf.count / (perf.horizon * perf.edges) : 0,
@@ -2470,8 +2481,6 @@ int main(int argc, char **argv)
 	perf.ticks? perf.count / (1000 * perf.ticks) : 0,
 	perf.depth,
 	perf.count? (float)perf.depth / perf.count : 0,
-        perf.shared,
-        perf.edges? 100.0 * perf.shared / perf.edges : 0,
 	perf.halts,
         perf.count? 100.0 * perf.halts / perf.count : 0);
 

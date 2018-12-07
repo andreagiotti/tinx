@@ -1,5 +1,5 @@
 /*
-  Washing machine simulator by Andrea Giotti v1.1
+  Washing machine simulator by Andrea Giotti v1.2
 */
 
 define FILL = 3, HEAT = 5, WASH = 45, DRAIN = 3, RINSE = 20, SPIN = 20;
@@ -37,7 +37,7 @@ start_spinning == draining_2 @ [-DRAIN, 0) & ~ halt_button;
 start_draining_3 == ~ (idle | spinning | draining_3) @ -1 & halt_button;
 start_idle == beep_ok | beep_abort;
 beep_ok == (~ repeat_spinning | (repeat_spinning & spinning_cycle @ -2 * SPIN & spinning_cycle @ -SPIN)) & spinning_cycle;
-beep_abort == draining_3 @ [-DRAIN, 0) | (spinning @ -1 & halt_button);
+beep_abort == draining_3 @ [-DRAIN, 0) | (spinning @ -1 & halt_button & ~ beep_ok);
 spinning_cycle == spinning @ [-SPIN, 0);
 
 up_rinsing == ~ double_rinsing @ -1 & double_rinsing;

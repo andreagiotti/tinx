@@ -12,6 +12,7 @@
 
 #define VARSEP "][)(}{"BLANKS"~&|@?,;*/+-#"
 #define VARNAME_FMT "%"MAX_NAMEBUF_C"[^"VARSEP"]"
+#define FILENAME_FMT "\"%[^\"]\""
 
 typedef enum op_type
 {
@@ -20,6 +21,7 @@ typedef enum op_type
   op_dname,
   op_iname,
   op_cname,
+  op_fname,
   op_number,
   op_constant,
   op_iterator,
@@ -56,6 +58,7 @@ typedef enum op_type
   op_join,
   op_iter,
   op_define,
+  op_include,
   OP_TYPES_NUMBER
 } op_type;
 
@@ -158,6 +161,7 @@ typedef struct c_base
   int iterator[NUM_LEVELS];
   int num_nodes[NODE_CLASSES_NUMBER];
   int num_vargen;
+  char path[MAX_STRLEN];
   bool seplit;
   bool merge;
   bool outaux;
@@ -228,6 +232,6 @@ void raise_signals(c_base *cb, smallnode *vp);
 smallnode *build_smalltree(c_base *cb, int i, bool neg);
 smallnode *build_twotrees(c_base *cb, int i);
 smallnode *build_cotree(c_base *cb);
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, bool seplit, bool merge, bool outaux, bool outint);
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit, bool merge, bool outaux, bool outint);
 char *opname(op_type ot);
 

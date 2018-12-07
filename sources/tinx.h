@@ -19,6 +19,7 @@
 #include <math.h>
 #include <errno.h>
 
+#include <unistd.h>
 #include <sched.h>
 
 #if defined POSIX_IPC_IO
@@ -26,7 +27,6 @@
 #endif
 
 #if defined UNIX_FILE_IO || defined UNIX_IPC_IO
-  #include <unistd.h>
   #include <fcntl.h>
   #include <sys/types.h>
   #include <sys/ipc.h>
@@ -263,12 +263,16 @@ struct node
 #define other(KB, S) (record_of(KB, S).other)
 #define next(KB, S) (record_of(KB, S).next)
 
+#define safe_state(KB, S) { if(!is_stated(KB, S)) state(KB, S); }
+
 #define HASH_SIZE 8191    /* Prime */
 #define HASH_DEPTH 64
 #define HASH_FMT "%X"
 
 typedef struct info
 {
+  int nodes;
+  int num_nodes[NODE_CLASSES_NUMBER];
   int edges;
   d_time horizon;
   unsigned long int count;
@@ -366,15 +370,16 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 void close_stream(stream *ios, char *alpha);
 void remove_stream(stream **handle);
 
-node *alloc_node(k_base *kb, char *name);
-void free_node(k_base *kb, node *vp);
+node *alloc_node(char *name);
+void init_node(node *vp, node_class nclass, d_time k, int bs);
+void free_node(node *vp);
 node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
                   bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sturdy,
                   int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha);
 void close_base(k_base *kb);
-void init_state(k_base *kb, char *state_name);
+int init_state(k_base *kb, char *state_name);
 
 void trap(void);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,

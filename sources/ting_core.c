@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "2.1.0"
+#define VER "2.3.0"
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -555,12 +555,13 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 {
   subtreeval stv, stv_2;
   char symbol[MAX_NAMELEN], symbol1[MAX_NAMELEN], symbol2[MAX_NAMELEN], symbol_h[BTL_HISTORY_LEN][MAX_NAMELEN];
-  char debug[MAX_STRLEN];
-  btl_specification *newbtl, *p, *q, *p1, *q1, *r, *btl_history[BTL_HISTORY_LEN], *btl_history1[BTL_HISTORY_LEN];
+  char debug[MAX_STRLEN], filename[MAX_STRLEN];
+  btl_specification *e, *newbtl, *p, *q, *p1, *q1, *r, *btl_history[BTL_HISTORY_LEN], *btl_history1[BTL_HISTORY_LEN];
   constant *tp;
   d_time val;
   int h, k, l, n, tail;
   op_type ot;
+  FILE *fp;
 
   stv.btl = NULL;
   stv.btldef = NULL;
@@ -578,11 +579,44 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
   switch(spec->ot)
     {
+      case op_fname:
+        strcpy(filename, cb->path);
+        strcat(filename, spec->symbol);
+
+        fp = fopen(filename, "r");
+        if(!fp)
+          {
+            perror(filename);
+            exit(EXIT_FAILURE);
+          }
+
+        fread(cb->source, SOURCE_BUFSIZE, sizeof(char), fp);
+        if(ferror(fp))
+          {
+            perror(filename);
+            exit(EXIT_FAILURE);
+          }
+
+        fclose(fp);
+
+        printf("\tCompiling module %s\n", spec->symbol);
+
+        e = parse(cb->source);
+        if(!e)
+          exit(EXIT_FAILURE);
+
+        stv = preval(cb, e, 0, 0);
+
+        delete_specification(e);
+
+        printf("\t\t%s ok\n", spec->symbol);
+      break;
+
       case op_define:
         stv_2 = preval(cb, spec->right, level, param);
         stv = preval(cb, spec->left, level, stv_2.a);
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_cname:
@@ -637,8 +671,8 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         sprintf(symbol, "%s("TIME_FMT")", stv.btl->symbol, stv_2.a);
         ot = stv.btl->ot;
  
-        free(stv.btl);
-        free(stv_2.btl);
+        delete_specification(stv.btl);
+        delete_specification(stv_2.btl);
 
         stv.btl = create_ground(ot, symbol, 0);
       break;
@@ -650,8 +684,8 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         sprintf(symbol, "%s("TIME_FMT","TIME_FMT")", stv.btl->symbol, stv_2.a, stv_2.b);
         ot = stv.btl->ot;
  
-        free(stv.btl);
-        free(stv_2.btl);
+        delete_specification(stv.btl);
+        delete_specification(stv_2.btl);
 
         stv.btl = create_ground(ot, symbol, 0);
       break;
@@ -713,7 +747,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                                                                      create_ground(op_number, "", k), "%s @ %s"), "%s , %s");
         stv.btl = q;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_not:
@@ -733,8 +767,8 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         val = stv.a + stv_2.a;
 
-        free(stv.btl);
-        free(stv_2.btl);
+        delete_specification(stv.btl);
+        delete_specification(stv_2.btl);
 
         stv.btl = create_ground(op_number, "", val);
         stv.a = val;
@@ -747,8 +781,8 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         val = stv.a - stv_2.a;
 
-        free(stv.btl);
-        free(stv_2.btl);
+        delete_specification(stv.btl);
+        delete_specification(stv_2.btl);
 
         stv.btl = create_ground(op_number, "", val);
         stv.a = val;
@@ -761,8 +795,8 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         val = stv.a * stv_2.a;
 
-        free(stv.btl);
-        free(stv_2.btl);
+        delete_specification(stv.btl);
+        delete_specification(stv_2.btl);
 
         stv.btl = create_ground(op_number, "", val);
         stv.a = val;
@@ -781,8 +815,8 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         val = stv.a / stv_2.a;
 
-        free(stv.btl);
-        free(stv_2.btl);
+        delete_specification(stv.btl);
+        delete_specification(stv_2.btl);
 
         stv.btl = create_ground(op_number, "", val);
         stv.a = val;
@@ -794,7 +828,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         val = - stv.a;
 
-        free(stv.btl);
+        delete_specification(stv.btl);
 
         stv.btl = create_ground(op_number, "", val);
         stv.a = val;
@@ -807,7 +841,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         stv.b = stv_2.a;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_interval_2:
@@ -817,7 +851,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.a++;
         stv.b = stv_2.a;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_interval_3:
@@ -826,7 +860,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         stv.b = stv_2.a - 1;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_interval_4:
@@ -836,7 +870,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.a++;
         stv.b = stv_2.a - 1;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_at:
@@ -998,7 +1032,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         else
           stv.btldef = newbtl;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_happen:
@@ -1160,7 +1194,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         else
           stv.btldef = newbtl;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_since:
@@ -1337,7 +1371,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.btl = p;
         stv.btldef = q;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_exists:
@@ -1370,7 +1404,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.btl = p;
         stv.btldef = q;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_one:
@@ -1416,7 +1450,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.btl = p;
         stv.btldef = q;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_unique:
@@ -1473,7 +1507,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.btl = p;
         stv.btldef = q;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       case op_iter:
@@ -1506,7 +1540,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv.btl = p;
         stv.btldef = q;
 
-        free(stv_2.btl);
+        delete_specification(stv_2.btl);
       break;
 
       default:
@@ -1567,7 +1601,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
         else
           {
-            fprintf(stderr, "%s: Error, reference to undefined signal: %s\n", spec->symbol, spec->debug);
+            fprintf(stderr, "%s: Error, reference to undeclared signal: %s\n", spec->symbol, spec->debug);
             exit(EXIT_FAILURE);
           }
       break;
@@ -1577,7 +1611,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
 
         if(sp->sclass != internal_class)
           {
-            fprintf(stderr, "%s: Error, duplicate definition of signal: %s\n", spec->symbol, spec->debug);
+            fprintf(stderr, "%s: Error, duplicate declaration of signal: %s\n", spec->symbol, spec->debug);
             exit(EXIT_FAILURE);
           }
 
@@ -2115,7 +2149,7 @@ int save_ics(c_base *cb, FILE *fp)
         }
       else
         {
-          fprintf(stderr, "%s: Error, initial condition refers to undefined signal\n", icp->name);
+          fprintf(stderr, "%s: Error, initial condition refers to undeclared signal\n", icp->name);
           exit(EXIT_FAILURE);
         }
     }
@@ -2399,7 +2433,7 @@ smallnode *build_cotree(c_base *cb)
   return xp;
 }
 
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, bool seplit, bool merge, bool outaux, bool outint)
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit, bool merge, bool outaux, bool outint)
 {
   c_base *cb;
   btl_specification *e, *f;
@@ -2427,6 +2461,19 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   memset(cb, 0, sizeof(c_base));
 
+  if(*path)
+    {
+      strcpy(cb->path, path);
+      strcat(cb->path, "/");
+    }
+  else
+    *(cb->path) = '\0';
+
+  cb->seplit = seplit;
+  cb->merge = merge;
+  cb->outaux = outaux;
+  cb->outint = outint;
+
   fp = fopen(source_filename, "r");
   if(!fp)
     {
@@ -2445,6 +2492,8 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   fclose(fp);
 
+  printf("Compiling master %s to %s\n", source_filename, base_filename);
+
   e = parse(cb->source);
   if(!e)
     {
@@ -2452,14 +2501,11 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
       return cperf;
     }
 
-  cb->seplit = seplit;
-  cb->merge = merge;
-  cb->outaux = outaux;
-  cb->outint = outint;
-
   stv = preval(cb, e, 0, 0);
 
   delete_specification(e);
+
+  printf("\t%s ok\n", source_filename);
 
   if(stv.btldef)
     f = create_operation(op_and, stv.btl, stv.btldef, "%s ; %s");
@@ -2470,12 +2516,16 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   delete_specification(f);
 
+  printf("Generating overall network\n");
+
   cvp = build_cotree(cb);
 
   purge_smalltree(cb, stv.vp, NULL);
   purge_smalltree(cb, cvp, NULL);
 
   delete_zombies(cb);
+
+  printf("Generating object files\n");
 
   gp = fopen(base_filename, "w");
   if(!gp)
@@ -2545,13 +2595,14 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
 int main(int argc, char *argv[])
 {
-  char *source_name, *base_name, *state_name, *xref_name, *option, *ext;
+  char *source_name, *base_name, *state_name, *xref_name, *path, *option, *ext;
   char default_state_name[MAX_STRLEN], default_xref_name[MAX_STRLEN];
   bool seplit, merge, outaux, outint;
   compinfo cperf;
   int i;
 
   source_name = base_name = state_name = xref_name = NULL;
+  path = "";
   seplit = merge = outaux = outint = FALSE;
 
   for(i = 1; i < argc; i++)
@@ -2562,7 +2613,7 @@ int main(int argc, char *argv[])
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-bBuwx] [-I state] [-o base] [-X symbols] [source]\n",
+              fprintf(stderr, "Usage: %s [-bBuwx] [-I state] [-o base] [-P path] [-X symbols] [source]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -2621,6 +2672,24 @@ int main(int argc, char *argv[])
               ext = strstr(state_name, EVENT_LIST_EXT);
               if(ext && !strcmp(ext, EVENT_LIST_EXT))
                 *ext = '\0';
+            break;
+
+            case 'P':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                path = argv[i]; 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
             break;
 
             case 'X':
@@ -2723,7 +2792,7 @@ int main(int argc, char *argv[])
   printf("\nTING "VER" - Temporal Inference Network Generator\n"
          "Design & coding by Andrea Giotti, 2017-2018\n\n");
 
-  cperf = compile(source_name, base_name, state_name, xref_name, seplit, merge, outaux, outint);
+  cperf = compile(source_name, base_name, state_name, xref_name, path, seplit, merge, outaux, outint);
 
   if(cperf.ok)
     printf("Network generated -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d signals, %d initial conditions\n",

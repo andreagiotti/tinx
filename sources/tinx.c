@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "6.1.2 (single core)"
+#define VER "6.3.1 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -99,8 +99,8 @@ INLINE void state(k_base *kb, event s)
 
   if(kb->soundness_check && is_stated(kb, ev_neg(s)))
     {
-      fprintf(stderr, "(%s, %s) @ "TIME_FMT": Soundness violation\n",
-              arc_neg(s.e).vp->name, s.e.vp->name, s.t);
+      fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT": Soundness violation\n",
+              arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t);
 
       close_base(kb);
       exit(EXIT_FAILURE);
@@ -231,8 +231,7 @@ INLINE void process(k_base *kb, event s)
           r.e = s.e.vp->pin[lc2].e;
           r.t = s.t;
 
-          if(!is_stated(kb, r))
-            state(kb, r);
+          safe_state(kb, r);
         }
       else
         if(s.e.vp->pin[lc2].history[index_of(kb, s)].chosen == phase_of(kb, s))
@@ -240,8 +239,7 @@ INLINE void process(k_base *kb, event s)
             r.e = s.e.vp->pin[lc1].e;
             r.t = s.t;
 
-            if(!is_stated(kb, r))
-              state(kb, r);
+            safe_state(kb, r);
           }
 
     break;
@@ -254,20 +252,17 @@ INLINE void process(k_base *kb, event s)
         {
           r.e = s.e.vp->pin[left_son].e;
 
-          if(!is_stated(kb, r))
-            state(kb, r);
+          safe_state(kb, r);
 
           r.e = s.e.vp->pin[right_son].e;
 
-          if(!is_stated(kb, r))
-            state(kb, r);
+          safe_state(kb, r);
         }
       else
         {
           r.e = s.e.vp->pin[parent].e;
 
-          if(!is_stated(kb, r))
-            state(kb, r);
+          safe_state(kb, r);
         }
 
       break;
@@ -285,14 +280,8 @@ INLINE void process(k_base *kb, event s)
           r.t = s.t + s.e.vp->k;
         }
 
-      if(kb->strictly_causal)
-        {
-          if(r.t >= s.t && !is_stated(kb, r))
-            state(kb, r);
-        }
-      else
-        if(!is_stated(kb, r))
-          state(kb, r);
+      if(!kb->strictly_causal || r.t >= s.t)
+        safe_state(kb, r);
 
       break;
 
@@ -378,6 +367,7 @@ INLINE void scan_outputs(k_base *kb)
 INLINE bool loop(k_base *kb)
 {
   event s;
+  m_time delta_time;
 
   assert(kb);
 
@@ -399,26 +389,36 @@ INLINE bool loop(k_base *kb)
 
   kb->slice = kb->max_slice;
 
-  if(valid(kb->focus) && kb->curr_time - kb->focus.t >= kb->bsd4)
-    return FALSE;
-
-  scan_inputs(kb);
-  scan_outputs(kb);
-
-  if(!kb->io_count[input_stream] && !kb->io_count[output_stream] && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step)
+  if(!valid(kb->focus) || kb->curr_time - kb->focus.t < kb->bsd4)
     {
-      kb->io_count[input_stream] = kb->io_num[input_stream];
-      kb->io_count[output_stream] = kb->io_num[output_stream];
+      scan_inputs(kb);
+      scan_outputs(kb);
 
-      kb->curr_time++;
-      kb->far = FALSE;
+      if(!kb->io_count[input_stream] && !kb->io_count[output_stream])
+        {
+          if(kb->quiet && !valid(kb->focus))
+            kb->exiting = TRUE;
+          else
+            {
+              delta_time = get_time() - kb->time_base - (kb->curr_time - kb->offset + 1) * kb->step;
 
-      if(kb->max_time && kb->curr_time >= kb->max_time)
-        kb->exiting = TRUE;
+              if(delta_time >= 0)
+                {
+                  kb->io_count[input_stream] = kb->io_num[input_stream];
+                  kb->io_count[output_stream] = kb->io_num[output_stream];
+
+                  kb->curr_time++;
+                  kb->far = FALSE;
+
+                  if(kb->max_time && kb->curr_time >= kb->max_time)
+                    kb->exiting = TRUE;
+                }
+              else
+                if(kb->far)
+                  usleep(1000000 * (- delta_time));
+            }
+        }
     }
-
-  if(kb->quiet && !valid(kb->focus))
-    kb->exiting = TRUE;
 
   return kb->exiting;
 }
@@ -475,8 +475,7 @@ bool input_f(k_base *kb, stream *ios)
 
   if(valid(s))
     {
-      if(!is_stated(kb, s))
-        state(kb, s);
+      safe_state(kb, s);
 
       return TRUE;
     }
@@ -540,8 +539,7 @@ bool input_m(k_base *kb, stream *ios)
 
   if(valid(s))
     {
-      if(!is_stated(kb, s))
-        state(kb, s);
+      safe_state(kb, s);
 
       return TRUE;
     }
@@ -657,7 +655,11 @@ bool output_m(k_base *kb, stream *ios)
       ios->errors++;
 
       if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
-        ios->open = FALSE;
+        {
+          ios->open = FALSE;
+
+          fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+        }
 
       return FALSE;
     }
@@ -844,11 +846,9 @@ void remove_stream(stream **handle)
 
 /******** Network setup ********/
 
-node *alloc_node(k_base *kb, char *name)
+node *alloc_node(char *name)
 {
   node *vp;
-  link_code lc;
-  d_time t;
 
   vp = malloc(sizeof(node));
   if(!vp)
@@ -859,20 +859,37 @@ node *alloc_node(k_base *kb, char *name)
 
   strcpy(vp->name, name);
   vp->nclass = null_op;
+  vp->debug = NULL;
+
+  return vp;
+}
+
+void init_node(node *vp, node_class nclass, d_time k, int bs)
+{
+  link_code lc, max_lc;
+  d_time t;
+
+  vp->nclass = nclass;
+  vp->k = k;
 
   for(lc = 0; lc < LINK_CODES_NUMBER; lc++)
     {
       vp->pin[lc].e.vp = NULL;
       vp->pin[lc].e.lc = no_link;
+    }
 
-      vp->pin[lc].history = malloc(sizeof(record) * (kb->bsm1 + 1));
+  max_lc = (nclass == delay)? (LINK_CODES_NUMBER - 1) : LINK_CODES_NUMBER;
+
+  for(lc = 0; lc < max_lc; lc++)
+    {
+      vp->pin[lc].history = malloc(sizeof(record) * bs);
       if(!vp->pin[lc].history)
         {
           perror(NULL);
           exit(EXIT_FAILURE);
         }
 
-      for(t = 0; t <= kb->bsm1; t++)
+      for(t = 0; t < bs; t++)
         {
           vp->pin[lc].history[t].stated = NULL_PHASE;
           vp->pin[lc].history[t].chosen = NULL_PHASE;
@@ -881,17 +898,13 @@ node *alloc_node(k_base *kb, char *name)
           vp->pin[lc].history[t].next = null_event;
         }
     }
-
-  vp->debug = NULL;
-
-  return vp;
 }
 
-void free_node(k_base *kb, node *vp)
+void free_node(node *vp)
 {
   link_code lc;
 
-  for(lc = 0; lc < LINK_CODES_NUMBER; lc++)
+  for(lc = 0; lc < LINK_CODES_NUMBER && vp->pin[lc].e.vp; lc++)
     free(vp->pin[lc].history);
 
   if(vp->debug)
@@ -930,7 +943,7 @@ node *name2node(k_base *kb, char *name, bool create)
 
       if(create)
         {
-          vp = alloc_node(kb, name);
+          vp = alloc_node(name);
           assert(vp);
 
           vp->vp = kb->network;
@@ -973,6 +986,7 @@ void thread_network(node *network)
                   break;
                 }
             }
+
           if(lc1 == LINK_CODES_NUMBER)
             {
               fprintf(stderr, "%s: Edge mismatch in node declarations\n",
@@ -1047,12 +1061,12 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   d_time k, offset;
   node *vp, *wp;
   node_class nclass;
-  int num_nodes[NODE_CLASSES_NUMBER];
   stream *ios;
   stream_class sclass;
   arc e;
   int bufsiz;
   link_code lc;
+  int n;
 
   kb = malloc(sizeof(k_base));
   if(!kb)
@@ -1084,7 +1098,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
     }
 
   for(nclass = 0; nclass < NODE_CLASSES_NUMBER; nclass++)
-    num_nodes[nclass] = 0;
+    kb->perf.num_nodes[nclass] = 0;
 
   *left = *right = '\0';
   while(fscanf(fp, " "NAME_FMT" : "NAME_FMT" ; "NAME_FMT" , "
@@ -1123,14 +1137,13 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      vp->nclass = nclass;
-      vp->k = k;
+      init_node(vp, nclass, k, bufsiz);
 
       vp->pin[parent].e.vp = name2node(kb, up, TRUE);
       vp->pin[left_son].e.vp = name2node(kb, left, TRUE);
       vp->pin[right_son].e.vp = name2node(kb, right, TRUE);
 
-      num_nodes[nclass]++;
+      kb->perf.num_nodes[nclass]++;
 
       *left = *right = '\0';
     }
@@ -1141,7 +1154,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       exit(EXIT_FAILURE);
     }
 
-  kb->perf.edges = (3 * (num_nodes[gate] + num_nodes[joint]) + 2 * num_nodes[delay]) / 2;
+  kb->perf.nodes = kb->perf.num_nodes[gate] + kb->perf.num_nodes[joint] + kb->perf.num_nodes[delay];
+  kb->perf.edges = (3 * (kb->perf.num_nodes[gate] + kb->perf.num_nodes[joint]) + 2 * kb->perf.num_nodes[delay]) / 2;
 
   thread_network(kb->network);
 
@@ -1366,7 +1380,14 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
         }
     }
 
-  kb->max_slice = max(1, kb->perf.edges / (IO_INFERENCE_RATIO * max(1, max(kb->io_num[input_stream], kb->io_num[output_stream]))));
+  n = max(kb->io_num[input_stream], kb->io_num[output_stream]);
+  if(!n)
+    n = 1;
+
+  kb->max_slice = kb->perf.edges / (IO_INFERENCE_RATIO * n);
+  if(!kb->max_slice)
+    kb->max_slice = 1;
+
   kb->slice = kb->max_slice;
 
   kb->io_count[input_stream] = kb->io_num[input_stream];
@@ -1419,20 +1440,21 @@ void close_base(k_base *kb)
   while(vp)
     {
       wp = vp->vp;
-      free_node(kb, vp);
+      free_node(vp);
       vp = wp;
     }
 
   free(kb);
 }
 
-void init_state(k_base *kb, char *state_name)
+int init_state(k_base *kb, char *state_name)
 {
   FILE *fp;
   char file_name[MAX_STRLEN], name_v[MAX_NAMEBUF], name_w[MAX_NAMEBUF];
   node *vp, *wp;
   event s;
   link_code lc;
+  int n;
 
   strcpy(file_name, state_name);
   strcat(file_name, EVENT_LIST_EXT);
@@ -1443,6 +1465,7 @@ void init_state(k_base *kb, char *state_name)
       exit(EXIT_FAILURE);
     }
 
+  n = 0;
   while(fscanf(fp, " ( "NAME_FMT" , "NAME_FMT" ) # %d @ "TIME_FMT" : %*[^\n]\n",
                name_v, name_w, &lc, &s.t) >= 4)
     {
@@ -1471,8 +1494,9 @@ void init_state(k_base *kb, char *state_name)
           exit(EXIT_FAILURE);
         }
 
-      if(!is_stated(kb, s))
-        state(kb, s);
+      safe_state(kb, s);
+
+      n++;
     }
 
   if(ferror(fp))
@@ -1492,6 +1516,8 @@ void init_state(k_base *kb, char *state_name)
       perror(file_name);
       exit(EXIT_FAILURE);
     }
+
+  return n;
 }
 
 /******** Toplevel ********/
@@ -1508,11 +1534,23 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
   k_base *kb;
   info perf;
   struct sched_param spar;
+  int n;
 
   kb = open_base(base_name, logfile_name, xref_name,
                  strictly_causal, soundness_check, echo_stdout, file_io, quiet, sturdy, bufexp, max_time, step, prefix, path, alpha);
+
+  printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d inputs, %d outputs\n",
+         kb->perf.edges, kb->perf.nodes, kb->perf.num_nodes[gate], kb->perf.num_nodes[joint], kb->perf.num_nodes[delay], kb->io_num[input_stream], kb->io_num[output_stream]);
+
   if(state_name)
-    init_state(kb, state_name);
+    {
+      n = init_state(kb, state_name);
+      printf("State ok -- %d initial conditions\n", n);
+    }
+
+  printf("Execution running...\n");
+
+  fflush(stdout);
 
   if(hard)
     {
