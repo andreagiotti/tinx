@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "6.3.1 (single core)"
+#define VER "6.3.2 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -1587,7 +1587,7 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
 int main(int argc, char **argv)
 {
   char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path;
-  char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
+  char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
   bool strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy;
   int i, k, n;
   info perf;
@@ -1850,7 +1850,7 @@ int main(int argc, char **argv)
                   exit(EXIT_FAILURE);
                 }
 
-              if(xref_name && xref_name != default_xref_name)
+              if(xref_name && xref_name != base_name)
                 {
                   fprintf(stderr, "%s: Duplicate option\n", argv[i]);
                   exit(EXIT_FAILURE);
@@ -1935,7 +1935,7 @@ int main(int argc, char **argv)
 
                     case 'x':
                       if(!xref_name)
-                        xref_name = default_xref_name;
+                        xref_name = base_name;
                     break;
 
                     case 'y':
@@ -1981,9 +1981,6 @@ int main(int argc, char **argv)
       strcpy(logfile_name, base_name);
       strcat(logfile_name, LOG_SUFFIX);
     }
-
-  if(xref_name == default_xref_name)
-    strcpy(xref_name, base_name);
 
   if(default_step < 0)
     step = quiet? 0 : DEFAULT_STEP_SEC;

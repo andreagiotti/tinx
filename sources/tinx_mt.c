@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "6.3.1 MT (multiple cores)"
+#define VER "6.3.3 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -418,17 +418,20 @@ INLINE bool loop(k_base *kb, int tid)
   if(kb->pv[tid].passed)
     {
       kb->pv[tid].halts++;
-      barrier(kb, tid);
+      join_barrier(kb, tid);
     }
 
   return kb->exiting;
 }
 
-INLINE bool loop_io(k_base *kb, int tid)
+INLINE bool loop_io(k_base *kb)
 {
   m_time delta_time;
+  bool term;
 
   assert(kb);
+
+  term = FALSE;
 
   if(kb->curr_time - kb->anchor_time < kb->bsd4)
     {
@@ -438,7 +441,7 @@ INLINE bool loop_io(k_base *kb, int tid)
       if(!kb->io_count[input_stream] && !kb->io_count[output_stream])
         {
           if(kb->quiet && kb->last_empty == kb->curr_time)
-            kb->exiting = TRUE;
+            term = TRUE;
           else
             {
               delta_time = get_time() - kb->time_base - (kb->curr_time - kb->offset + 1) * kb->step;
@@ -451,7 +454,7 @@ INLINE bool loop_io(k_base *kb, int tid)
                   kb->curr_time++;
 
                   if(kb->max_time && kb->curr_time >= kb->max_time)
-                    kb->exiting = TRUE;
+                    term = TRUE;
                 }
               else
                 if(kb->last_far == kb->curr_time)
@@ -461,84 +464,81 @@ INLINE bool loop_io(k_base *kb, int tid)
     }
 
   if(kb->barrier_count == kb->num_threads)
-    barrier(kb, tid);
+    broadcast_barrier(kb);
+
+  if(term || irq)
+    kb->exiting = kb->num_threads;
 
   return kb->exiting;
 }
 
-INLINE void barrier(k_base *kb, int tid)
+INLINE void join_barrier(k_base *kb, int tid)
 {
-  int tid_2;
+  lock_barrier(kb);
+
+  kb->barrier_count++;
+
+  kb->pv[tid].done = TRUE;
+  do
+    wait_deadline(kb, tid);
+  while(kb->pv[tid].done);
+
+  unlock_barrier(kb);
+}
+
+INLINE void broadcast_barrier(k_base *kb)
+{
+  int tid;
   bool all_empty, all_far;
   d_time new_anchor;
 
   lock_barrier(kb);
 
-  if(kb->barrier_count < kb->num_threads)
-    {
-      kb->barrier_count++;
+  kb->min_sigma = NULL_TIME;
+  for(tid = 0; tid < kb->num_threads; tid++)
+    if(kb->min_sigma > kb->pv[tid].focus.t)
+      kb->min_sigma = kb->pv[tid].focus.t;
 
-      kb->done[tid] = TRUE;
-      do
-        wait_deadline(kb, tid);
-      while(kb->done[tid]);
+  new_anchor = min(kb->min_sigma, kb->curr_time);
+
+  if(kb->anchor_time < new_anchor)
+    {
+      kb->anchor_time = new_anchor;
+
+      for(tid = 0; tid < kb->num_threads; tid++)
+        if(kb->pv[tid].dstate == far)
+          kb->pv[tid].dstate = normal;
     }
-  else
-    {
-      kb->min_sigma = NULL_TIME;
-      for(tid_2 = 0; tid_2 < kb->num_threads; tid_2++)
-        if(kb->min_sigma > kb->pv[tid_2].focus.t)
-          kb->min_sigma = kb->pv[tid_2].focus.t;
 
-      new_anchor = min(kb->min_sigma, kb->curr_time);
+  all_empty = TRUE;
+  all_far = TRUE;
 
-      if(kb->anchor_time < new_anchor)
-        {
-          kb->anchor_time = new_anchor;
+  for(tid = 0; tid < kb->num_threads; tid++)
+    if(kb->pv[tid].dstate != empty)
+      {
+        all_empty = FALSE;
 
-          for(tid_2 = 0; tid_2 < kb->num_threads; tid_2++)
-            if(kb->pv[tid_2].dstate == far)
-              kb->pv[tid_2].dstate = normal;
-        }
-
-      all_empty = TRUE;
-      all_far = TRUE;
-
-      for(tid_2 = 0; tid_2 < kb->num_threads; tid_2++)
-        if(kb->pv[tid_2].dstate != empty)
+        if(kb->pv[tid].dstate == normal)
           {
-            all_empty = FALSE;
+            all_far = FALSE;
 
-            if(kb->pv[tid_2].dstate == normal)
+            if(kb->pv[tid].done)
               {
-                all_far = FALSE;
+                kb->barrier_count--;
 
-                if(kb->done[tid_2])
-                  {
-                    kb->barrier_count--;
-
-                    kb->done[tid_2] = FALSE;
-                    signal_deadline(kb, tid_2);
-                  }
+                kb->pv[tid].done = FALSE;
+                signal_deadline(kb, tid);
               }
           }
+      }
 
-      if(kb->done[kb->num_threads])
-        {
-          kb->barrier_count--;
+  if(!kb->io_count[input_stream])
+    {
+      if(all_empty)
+        kb->last_empty = kb->curr_time;
 
-          kb->done[kb->num_threads] = FALSE;
-          signal_deadline(kb, kb->num_threads);
-        }
-
-      if(!kb->io_count[input_stream])
-        {
-          if(all_empty)
-            kb->last_empty = kb->curr_time;
-
-          if(all_far)
-            kb->last_far = kb->curr_time;
-        }
+      if(all_far)
+        kb->last_far = kb->curr_time;
     }
 
   unlock_barrier(kb);
@@ -1380,15 +1380,11 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       kb->pv[tid].count = 0;
       kb->pv[tid].depth = 0;
       kb->pv[tid].halts = 0;
+      kb->pv[tid].done = FALSE;
 
+      pthread_cond_init(&kb->pv[tid].cond_done, NULL);
       pthread_mutex_init(&kb->pv[tid].mutex, NULL);
-
-      kb->done[tid] = FALSE;
-      pthread_cond_init(&kb->cond_done[tid], NULL);
     }
-
-  kb->done[num_threads] = FALSE;
-  pthread_cond_init(&kb->cond_done[num_threads], NULL);
 
   bufsiz = 1 << bufexp;
   kb->bsm1 = bufsiz - 1;
@@ -1705,7 +1701,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
   kb->last_empty = NULL_TIME;
   kb->last_far = NULL_TIME;
-  kb->exiting = FALSE;
+  kb->exiting = 0;
 
   kb->step = step;
 
@@ -1729,12 +1725,9 @@ void close_base(k_base *kb)
 
   for(tid = 0; tid < kb->num_threads; tid++)
     {
+      pthread_cond_destroy(&kb->pv[tid].cond_done);
       pthread_mutex_destroy(&kb->pv[tid].mutex);
-
-      pthread_cond_destroy(&kb->cond_done[tid]);
     }
-
-  pthread_cond_destroy(&kb->cond_done[kb->num_threads]);
 
   pthread_mutex_destroy(&kb->mutex_barrier);
 
@@ -1854,26 +1847,16 @@ void trap()
 void loops(thread_arg *tp)
 {
   k_base *kb;
-  int tid, tid_2;
+  int tid;
 
   kb = tp->kb;
   tid = tp->tid;
 
-  while(!irq && !loop(kb, tid));
+  while(!loop(kb, tid));
 
   lock_barrier(kb);
 
-  kb->barrier_count++;
-
-  for(tid_2 = 0; tid_2 < kb->num_threads + 1; tid_2++)
-    if(kb->done[tid_2])
-      {
-        kb->barrier_count--;
-
-        kb->done[tid_2] = FALSE;
-
-        signal_deadline(kb, tid_2);
-      }
+  kb->exiting--;
 
   unlock_barrier(kb);
 
@@ -1883,28 +1866,28 @@ void loops(thread_arg *tp)
 void loops_io(thread_arg *tp)
 {
   k_base *kb;
-  int tid, tid_2;
+  int tid;
 
   kb = tp->kb;
-  tid = tp->tid;
 
-  while(!irq && !loop_io(kb, tid));
+  while(!loop_io(kb));
 
-  lock_barrier(kb);
+  while(kb->exiting)
+    {
+      lock_barrier(kb);
 
-  kb->barrier_count++;
+      for(tid = 0; tid < kb->num_threads; tid++)
+        if(kb->pv[tid].done)
+          {
+            kb->barrier_count--;
 
-  for(tid_2 = 0; tid_2 < kb->num_threads; tid_2++)
-    if(kb->done[tid_2])
-      {
-        kb->barrier_count--;
+            kb->pv[tid].done = FALSE;
 
-        kb->done[tid_2] = FALSE;
+            signal_deadline(kb, tid);
+          }
 
-        signal_deadline(kb, tid_2);
-      }
-
-  unlock_barrier(kb);
+      unlock_barrier(kb);
+    }
 
   myexit(EXIT_SUCCESS);
 }
@@ -2050,7 +2033,7 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
 int main(int argc, char **argv)
 {
   char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path;
-  char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
+  char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
   bool strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sturdy;
   int i, k, n;
   info perf;
@@ -2319,7 +2302,7 @@ int main(int argc, char **argv)
                   exit(EXIT_FAILURE);
                 }
 
-              if(xref_name && xref_name != default_xref_name)
+              if(xref_name && xref_name != base_name)
                 {
                   fprintf(stderr, "%s: Duplicate option\n", argv[i]);
                   exit(EXIT_FAILURE);
@@ -2408,7 +2391,7 @@ int main(int argc, char **argv)
 
                     case 'x':
                       if(!xref_name)
-                        xref_name = default_xref_name;
+                        xref_name = base_name;
                     break;
 
                     case 'y':
@@ -2454,9 +2437,6 @@ int main(int argc, char **argv)
       strcpy(logfile_name, base_name);
       strcat(logfile_name, LOG_SUFFIX);
     }
-
-  if(xref_name == default_xref_name)
-    strcpy(xref_name, base_name);
 
   if(default_step < 0)
     step = quiet? 0 : DEFAULT_STEP_SEC;

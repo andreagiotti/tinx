@@ -281,8 +281,8 @@ struct node
 #define lock_barrier(KB) pthread_mutex_lock(&(KB)->mutex_barrier)
 #define unlock_barrier(KB) pthread_mutex_unlock(&(KB)->mutex_barrier)
 
-#define wait_deadline(KB, TID) pthread_cond_wait(&(KB)->cond_done[TID], &(KB)->mutex_barrier)
-#define signal_deadline(KB, TID) pthread_cond_signal(&(KB)->cond_done[TID])
+#define wait_deadline(KB, TID) pthread_cond_wait(&(KB)->pv[TID].cond_done, &(KB)->mutex_barrier)
+#define signal_deadline(KB, TID) pthread_cond_signal(&(KB)->pv[TID].cond_done)
 
 #define myexit(RV) pthread_exit(NULL)
 
@@ -316,6 +316,8 @@ typedef struct priv_vars
   unsigned long int count;
   unsigned long int depth;
   unsigned long int halts;
+  bool done;
+  pthread_cond_t cond_done;
   pthread_mutex_t mutex;
 } priv_vars;
 
@@ -349,7 +351,6 @@ typedef struct k_base
 {
   priv_vars pv[MAX_THREADS];
   int num_threads;
-  int done[MAX_THREADS + 1];
   int barrier_count;
   int bsm1;
   int bsbt;
@@ -374,7 +375,7 @@ typedef struct k_base
   bool echo_debug;
   bool quiet;
   bool sturdy;
-  bool exiting;
+  int exiting;
   FILE *logfp;
   m_time time_base;
   m_time step;
@@ -382,7 +383,6 @@ typedef struct k_base
   bool (* input)(k_base *kb, stream *ios);
   bool (* output)(k_base *kb, stream *ios);
   pthread_mutex_t mutex_barrier;
-  pthread_cond_t cond_done[MAX_THREADS + 1];
   node *table[HASH_SIZE][HASH_DEPTH];
 } k_base;
 
@@ -423,8 +423,9 @@ INLINE void process(k_base *kb, event s);
 INLINE void scan_inputs(k_base *kb);
 INLINE void scan_outputs(k_base *kb);
 INLINE bool loop(k_base *kb, int tid);
-INLINE bool loop_io(k_base *kb, int tid);
-INLINE void barrier(k_base *kb, int tid);
+INLINE bool loop_io(k_base *kb);
+INLINE void join_barrier(k_base *kb, int tid);
+INLINE void broadcast_barrier(k_base *kb);
 
 bool input_f(k_base *kb, stream *ios);
 bool input_m(k_base *kb, stream *ios);

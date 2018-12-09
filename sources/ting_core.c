@@ -9,11 +9,17 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "2.3.0"
+#define VER "2.3.1"
+
+const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
-const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
+void exit_failure()
+{
+  printf("Network not generated\n");
+  exit(EXIT_FAILURE);
+}
 
 btl_specification *alloc_syntnode()
 {
@@ -43,7 +49,7 @@ btl_specification *create_ground(op_type ot, char *symbol, d_time value)
   if(!sp)
     {
       perror(NULL);
-      exit(EXIT_FAILURE);
+      exit_failure();
     }
 
   sp->ot = ot;
@@ -66,7 +72,7 @@ btl_specification *create_operation(op_type ot, btl_specification *left, btl_spe
   if(!sp)
     {
       perror(NULL);
-      exit(EXIT_FAILURE);
+      exit_failure();
     }
 
   sp->ot = ot;
@@ -111,7 +117,7 @@ btl_specification *copy_specification(btl_specification *sp)
   if(!rp)
     {
       perror(NULL);
-      exit(EXIT_FAILURE);
+      exit_failure();
     }
 
   rp->ot = sp->ot;
@@ -304,7 +310,7 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
               if(i == SYMTAB_DEPTH)
                 {
                   fprintf(stderr, "%s, %s: Error, node names generate duplicate hashes\n", vp->name, name);
-                  exit(EXIT_FAILURE);
+                  exit_failure();
                 }
             }
           else
@@ -315,7 +321,7 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
                   if(!wp)
                    {
                      perror(NULL);
-                     exit(EXIT_FAILURE);
+                     exit_failure();
                    }
 
                   cb->symtab[vp->literal_id][cb->symcount[vp->literal_id]] = wp;
@@ -328,7 +334,7 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
                   if(cb->symcount[vp->literal_id] >= NUM_OCCURRENCES)
                     {
                       fprintf(stderr, "%s: Error, too many occurrences for literal\n", name);
-                      exit(EXIT_FAILURE);
+                      exit_failure();
                     }
                 }
               else
@@ -344,7 +350,7 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
           if(!vp)
             {
               perror(NULL);
-              exit(EXIT_FAILURE);
+              exit_failure();
             }
 
           cb->symtab[cb->num_literals][0] = vp;
@@ -358,7 +364,7 @@ smallnode *name2smallnode(c_base *cb, char *name, bool create)
           if(cb->num_literals >= NUM_LITERALS)
             {
               fprintf(stderr, "Error, too many literals in formula\n");
-              exit(EXIT_FAILURE);
+              exit_failure();
             }
 
           cb->symptr[h][i] = vp;
@@ -392,7 +398,7 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
                 {
                   fprintf(stderr, "%s, %s: Error, signal names generate duplicate hashes\n",
                       sp->name, name);
-                  exit(EXIT_FAILURE);
+                  exit_failure();
                 }
             }
           else
@@ -412,7 +418,7 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
           if(cb->num_signals >= NUM_LITERALS)
             {
               fprintf(stderr, "Error, too many signals declared\n");
-              exit(EXIT_FAILURE);
+              exit_failure();
             }
 
           cb->sigptr[h][i] = sp;
@@ -446,7 +452,7 @@ constant *name2constant(c_base *cb, char *name, bool create)
                 {
                   fprintf(stderr, "%s, %s: Error, constant names generate duplicate hashes\n",
                       tp->name, name);
-                  exit(EXIT_FAILURE);
+                  exit_failure();
                 }
             }
           else
@@ -465,7 +471,7 @@ constant *name2constant(c_base *cb, char *name, bool create)
           if(cb->num_integers >= NUM_INTEGERS)
             {
               fprintf(stderr, "Error, too many constants declared\n");
-              exit(EXIT_FAILURE);
+              exit_failure();
             }
 
           cb->intptr[h][i] = tp;
@@ -490,7 +496,7 @@ void add_ic(c_base *cb, char *name, bool neg, d_time t)
   if(cb->num_ics >= NUM_ICS)
     {
       fprintf(stderr, "Error, too many initial conditions\n");
-      exit(EXIT_FAILURE);
+      exit_failure();
     }
 }
 
@@ -574,7 +580,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
   if(level >= NUM_LEVELS)
     {
       fprintf(stderr, "Error, too many nested quantifiers: %s\n", spec->debug);
-      exit(EXIT_FAILURE);
+      exit_failure();
     }
 
   switch(spec->ot)
@@ -587,14 +593,14 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(!fp)
           {
             perror(filename);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         fread(cb->source, SOURCE_BUFSIZE, sizeof(char), fp);
         if(ferror(fp))
           {
             perror(filename);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         fclose(fp);
@@ -603,7 +609,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         e = parse(cb->source);
         if(!e)
-          exit(EXIT_FAILURE);
+          exit_failure();
 
         stv = preval(cb, e, 0, 0);
 
@@ -635,7 +641,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         else
           {
             fprintf(stderr, "%s: Error, reference to undefined constant: %s\n", spec->symbol, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
       break;
 
@@ -656,7 +662,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(l < 0)
           {
             fprintf(stderr, "%s: Error, iterator symbol out of scope: %s\n", spec->symbol, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         stv.btl = create_ground(op_number, "", cb->iterator[l]);
@@ -736,7 +742,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(stv_2.a > stv_2.b)
           {
             fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval in initial conditions: %s\n", stv_2.a, stv_2.b, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         q = create_operation(op_var_at, stv.btl, create_ground(op_number, "", stv_2.a), "%s @ %s");
@@ -810,7 +816,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(!stv_2.a)
           {
             fprintf(stderr, "Error, division by zero: %s\n", spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         val = stv.a / stv_2.a;
@@ -886,7 +892,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(stv_2.a > stv_2.b)
           {
             fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval after <@>: %s\n", stv_2.a, stv_2.b, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         if(cb->seplit)
@@ -918,7 +924,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                     if(h >= BTL_HISTORY_LEN)
                       {
                         fprintf(stderr, "Error, interval too large: %s\n", spec->debug);
-                        exit(EXIT_FAILURE);
+                        exit_failure();
                       }
 
                     if(btl_history[h])
@@ -990,7 +996,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                     if(h >= BTL_HISTORY_LEN)
                       {
                         fprintf(stderr, "Error, interval too large: %s\n", spec->debug);
-                        exit(EXIT_FAILURE);
+                        exit_failure();
                       }
 
                     if(btl_history[h])
@@ -1048,7 +1054,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(stv_2.a > stv_2.b)
           {
             fprintf(stderr, TIME_FMT", "TIME_FMT": Error, empty interval after <?>: %s\n", stv_2.a, stv_2.b, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         if(cb->seplit)
@@ -1080,7 +1086,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                     if(h >= BTL_HISTORY_LEN)
                       {
                         fprintf(stderr, "Error, interval too large: %s\n", spec->debug);
-                        exit(EXIT_FAILURE);
+                        exit_failure();
                       }
 
                     if(btl_history[h])
@@ -1152,7 +1158,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                     if(h >= BTL_HISTORY_LEN)
                       {
                         fprintf(stderr, "Error, interval too large: %s\n", spec->debug);
-                        exit(EXIT_FAILURE);
+                        exit_failure();
                       }
 
                     if(btl_history[h])
@@ -1350,7 +1356,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(stv_2.a < 1)
           {
             fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <forall> construct: %s\n", stv_2.a, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         p = stv.btl;
@@ -1383,7 +1389,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(stv_2.a < 1)
           {
             fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <exists> construct: %s\n", stv_2.a, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         p = stv.btl;
@@ -1416,13 +1422,13 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(stv_2.b < 1)
           {
             fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <one> construct: %s\n", stv_2.b, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         if(stv_2.a < 0 || stv_2.a >= stv_2.b)
           {
             fprintf(stderr, TIME_FMT": Error, selection parameter out of range in <one> construct: %s\n", stv_2.a, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         if(!stv_2.a)
@@ -1459,7 +1465,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(stv_2.a < 1)
           {
             fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <unique> construct: %s\n", stv_2.a, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         p = NULL;
@@ -1519,7 +1525,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         if(stv_2.a < 1)
           {
             fprintf(stderr, TIME_FMT": Error, iteration parameter out of range in <iter> construct: %s\n", stv_2.a, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         p = stv.btl;
@@ -1602,7 +1608,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
         else
           {
             fprintf(stderr, "%s: Error, reference to undeclared signal: %s\n", spec->symbol, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
       break;
 
@@ -1612,7 +1618,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
         if(sp->sclass != internal_class)
           {
             fprintf(stderr, "%s: Error, duplicate declaration of signal: %s\n", spec->symbol, spec->debug);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         sp->sclass = sclass;
@@ -1644,7 +1650,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
         if(!wp)
           {
             perror(NULL);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         wp->up = vp;
@@ -1664,7 +1670,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
         if(!wp)
           {
             perror(NULL);
-            exit(EXIT_FAILURE);
+            exit_failure();
           }
 
         wp->up = vp;
@@ -1691,7 +1697,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
             if(!wp)
               {
                 perror(NULL);
-                exit(EXIT_FAILURE);
+                exit_failure();
               }
 
             stv_2 = eval(cb, spec->left, wp, neg, sclass, t);
@@ -2150,7 +2156,7 @@ int save_ics(c_base *cb, FILE *fp)
       else
         {
           fprintf(stderr, "%s: Error, initial condition refers to undeclared signal\n", icp->name);
-          exit(EXIT_FAILURE);
+          exit_failure();
         }
     }
 
@@ -2308,7 +2314,7 @@ smallnode *build_smalltree(c_base *cb, int i, bool neg)
               if(!xp)
                 {
                   perror(NULL);
-                  exit(EXIT_FAILURE);
+                  exit_failure();
                 }
 
               xp->left = vp;
@@ -2347,7 +2353,7 @@ smallnode *build_twotrees(c_base *cb, int i)
   if(!vp)
     {
       fprintf(stderr, "%s: Error, missing asserted literal for signal\n", cb->symtab[i][0]->name);
-      exit(EXIT_FAILURE);
+      exit_failure();
     }
 
   wp = build_smalltree(cb, i, TRUE);
@@ -2355,14 +2361,14 @@ smallnode *build_twotrees(c_base *cb, int i)
   if(!wp)
     {
       fprintf(stderr, "%s: Error, missing negated literal for signal\n", cb->symtab[i][0]->name);
-      exit(EXIT_FAILURE);
+      exit_failure();
     }
 
   xp = create_smallnode(cb, gate);
   if(!xp)
     {
       perror(NULL);
-      exit(EXIT_FAILURE);
+      exit_failure();
     }
 
   xp->left = vp;
@@ -2400,7 +2406,7 @@ smallnode *build_cotree(c_base *cb)
           if(!xp)
             {
               perror(NULL);
-              exit(EXIT_FAILURE);
+              exit_failure();
             }
 
           xp->left = vp;
@@ -2512,13 +2518,15 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
   else
     f = stv.btl;
 
+  printf("Generating network\n");
+
   stv = eval(cb, f, NULL, FALSE, internal_class, 0);
 
   delete_specification(f);
 
-  printf("Generating overall network\n");
-
   cvp = build_cotree(cb);
+
+  printf("Pruning network\n");
 
   purge_smalltree(cb, stv.vp, NULL);
   purge_smalltree(cb, cvp, NULL);
@@ -2596,7 +2604,7 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 int main(int argc, char *argv[])
 {
   char *source_name, *base_name, *state_name, *xref_name, *path, *option, *ext;
-  char default_state_name[MAX_STRLEN], default_xref_name[MAX_STRLEN];
+  char default_state_name[MAX_STRLEN];
   bool seplit, merge, outaux, outint;
   compinfo cperf;
   int i;
@@ -2701,7 +2709,7 @@ int main(int argc, char *argv[])
                   exit(EXIT_FAILURE);
                 }
 
-              if(xref_name && xref_name != default_xref_name)
+              if(xref_name && xref_name != base_name)
                 {
                   fprintf(stderr, "%s: Duplicate option\n", argv[i]);
                   exit(EXIT_FAILURE);
@@ -2744,7 +2752,7 @@ int main(int argc, char *argv[])
 
                       case 'x':
                         if(!xref_name)
-                          xref_name = default_xref_name;
+                          xref_name = base_name;
                       break;
 
                       default:
@@ -2785,9 +2793,6 @@ int main(int argc, char *argv[])
       strcpy(state_name, base_name);
       strcat(state_name, STATE_SUFFIX);
     }
-
-  if(xref_name == default_xref_name)
-    strcpy(xref_name, base_name);
 
   printf("\nTING "VER" - Temporal Inference Network Generator\n"
          "Design & coding by Andrea Giotti, 2017-2018\n\n");
