@@ -60,6 +60,10 @@ DEFINE      "define"
 INCLUDE     "include"
 ITER        "iter"
 
+ANY         "any"
+IPC         "ipc"
+FILE        "file"
+
 LBRACKET    "{"
 RBRACKET    "}"
 SEMICOLON   ";"
@@ -100,7 +104,9 @@ BLANKS      [ \r\n\t]*
 {DEFINE}        { return TOKEN_DEFINE; }
 {INCLUDE}       { return TOKEN_INCLUDE; }
 {ITER}          { return TOKEN_ITER; }
-
+{ANY}           { return TOKEN_ANY; }
+{IPC}           { return TOKEN_IPC; }
+{FILE}          { return TOKEN_FILE; }
 {COMMA}         { return TOKEN_COMMA; }
 {LPAREN}        { return TOKEN_LPAREN; }
 {RPAREN}        { return TOKEN_RPAREN; }
@@ -115,7 +121,6 @@ BLANKS      [ \r\n\t]*
 {ITERATOR}      { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_ITERATOR; }
 {NUMBER}        { sscanf(yytext, TIME_FMT, &yylval->value); return TOKEN_NUMBER; }
 {BLANKS}        {  }
-
 .               { yyerror(yylloc, NULL, yyg, "unknown keyword"); exit(EXIT_FAILURE); }
 
 %%

@@ -72,6 +72,7 @@ typedef struct tracker
   btl_specification *formula;
   btl_specification *interval;
   btl_specification *declaration;
+  btl_specification *io_decl;
   btl_specification *decllist;
   btl_specification *eventlist;
   btl_specification *filelist;
@@ -136,6 +137,9 @@ typedef struct tracker
 %token TOKEN_MINUS
 %token TOKEN_MUL
 %token TOKEN_DIV
+%token TOKEN_ANY
+%token TOKEN_IPC
+%token TOKEN_FILE
 %token <symbol> TOKEN_NAME
 %token <symbol> TOKEN_FILENAME
 %token <symbol> TOKEN_ITERATOR
@@ -149,6 +153,7 @@ typedef struct tracker
 %type <formula> form
 %type <interval> inter
 %type <declaration> decl
+%type <io_decl> iod
 %type <decllist> dlist
 %type <eventlist> elist
 %type <filelist> flist
@@ -228,12 +233,20 @@ inter
     ;
 
 decl
-    : TOKEN_INPUT dlist[A] { $$ = create_operation(op_input, $A, NULL, "input %s"); }
-    | TOKEN_OUTPUT dlist[A] { $$ = create_operation(op_output, $A, NULL, "output %s"); }
+    : TOKEN_INPUT iod[B] dlist[A] { $$ = create_operation(op_input, $A, $B, "input[%2$s] %1$s"); }
+    | TOKEN_INPUT dlist[A] { $$ = create_operation(op_input, $A, create_ground(op_ioqual, "", io_any), "input[%2$s] %1$s"); }
+    | TOKEN_OUTPUT iod[B] dlist[A] { $$ = create_operation(op_output, $A, $B, "output[%2$s] %1$s"); }
+    | TOKEN_OUTPUT dlist[A] { $$ = create_operation(op_output, $A, create_ground(op_ioqual, "", io_any), "output[%2$s] %1$s"); }
     | TOKEN_AUX dlist[A] { $$ = create_operation(op_aux, $A, NULL, "aux %s"); }
     | TOKEN_INIT elist[A] { $$ = create_operation(op_init, $A, NULL, "init %s"); }
     | TOKEN_DEFINE alist[A] { $$ = $A; }
     | TOKEN_INCLUDE flist[A] { $$ = $A; }
+    ;
+
+iod
+    : TOKEN_LSQUARED TOKEN_ANY TOKEN_RSQUARED { $$ = create_ground(op_ioqual, "any", io_any); }
+    | TOKEN_LSQUARED TOKEN_IPC TOKEN_RSQUARED { $$ = create_ground(op_ioqual, "ipc", io_ipc); }
+    | TOKEN_LSQUARED TOKEN_FILE TOKEN_RSQUARED { $$ = create_ground(op_ioqual, "file", io_file); }
     ;
 
 dlist

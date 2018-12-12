@@ -109,8 +109,10 @@ typedef struct config
     bool quiet;
     bool hard;
     bool sturdy;
+    bool busywait;
     bool use_xref;
-    bool seplit;
+    bool seplit_fe;
+    bool seplit_su;
     bool merge;
     bool outaux;
     bool outint;
@@ -132,7 +134,9 @@ typedef struct s_base
     m_time time;
     m_time time_base;
     char fnames[MAX_FILES][MAX_STRLEN];
+    bool ffile_io[MAX_FILES];
     char gnames[MAX_FILES][MAX_STRLEN];
+    bool gfile_io[MAX_FILES];
     bool gaux[MAX_FILES];
     int maxlen;
     file fp[MAX_FILES];
@@ -147,7 +151,7 @@ typedef struct s_base
     char cmd[MAX_STRLEN_IF];
     runstate rs;
     bool term;
-    bool sent;
+    int sent;
     bool regenerate;
     bool changed;
     bool configured;
@@ -164,7 +168,8 @@ typedef struct s_base
     pthread_t tintloop;
     pthread_t tinxpipe;
     pthread_mutex_t mutex_xbuffer;
-    pthread_mutex_t mutex_exec;
+    pthread_mutex_t mutex_button;
+    pthread_mutex_t mutex_sent;
     GtkWindow *window;
     GtkWindow *config_window;
     GtkDrawingArea *drawingarea;
@@ -172,6 +177,7 @@ typedef struct s_base
     GtkButton *run_button;
     GtkButton *save_button;
     GtkButton *erase_button;
+    GtkButton *dummy_button;
     GtkMenuItem *run_menu;
     GtkMenuItem *save_menu;
     GtkMenuItem *erase_menu;
@@ -229,7 +235,7 @@ void print(s_base *sb, char *string, ...);
 void print_add(s_base *sb, char *string, ...);
 pid_t pidof(s_base *sb, char *name);
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool seplit, bool merge, bool outaux, bool outint,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge, bool outaux, bool outint,
          int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, float prob, bool batch_in, bool batch_out, bool draw_undef);
 
 

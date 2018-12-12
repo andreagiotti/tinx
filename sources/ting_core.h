@@ -27,6 +27,7 @@ typedef enum op_type
   op_iterator,
   op_vector,
   op_matrix,
+  op_ioqual,
   op_plus,
   op_minus,
   op_mul,
@@ -113,6 +114,7 @@ typedef struct io_signal
   smallnode *to;
   link_code occurr;
   io_class sclass;
+  io_type stype;
   int signal_id;
 } io_signal;
 
@@ -162,7 +164,8 @@ typedef struct c_base
   int num_nodes[NODE_CLASSES_NUMBER];
   int num_vargen;
   char path[MAX_STRLEN];
-  bool seplit;
+  bool seplit_fe;
+  bool seplit_su;
   bool merge;
   bool outaux;
   bool outint;
@@ -216,7 +219,7 @@ constant *name2constant(c_base *cb, char *name, bool create);
 void add_ic(c_base *cb, char *name, bool neg, d_time t);
 void gensym(c_base *cb, char *symbol, char *type, litval val, bool incr);
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param);
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, d_time t);
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, d_time t);
 void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp);
 void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp);
 void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp);
@@ -232,6 +235,6 @@ void raise_signals(c_base *cb, smallnode *vp);
 smallnode *build_smalltree(c_base *cb, int i, bool neg);
 smallnode *build_twotrees(c_base *cb, int i);
 smallnode *build_cotree(c_base *cb);
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit, bool merge, bool outaux, bool outint);
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit_fe, bool seplit_su, bool merge, bool outaux, bool outint);
 char *opname(op_type ot);
 

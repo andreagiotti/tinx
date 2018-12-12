@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "6.8.2"
-#define VER "2.5.0"
+#define PACK_VER "7.0.0"
+#define VER "3.0.0"
 
 INLINE m_time get_time()
 {
@@ -227,7 +227,7 @@ void tintloop(s_base *sb)
                 {
                   while(tau[i] < sb->t)
                     {
-                      if(sb->cp_file_io)
+                      if(sb->gfile_io[i])
                         {
                           if(get_file(sb->gp[i], &ic) && file_error(sb->gp[i]))
                             {
@@ -287,7 +287,7 @@ void tintloop(s_base *sb)
                 {
                   oc = sb->cfg.alpha[rand() <= sb->cfg.prob * RAND_MAX? true_symbol : false_symbol];
 
-                  if(sb->cp_file_io)
+                  if(sb->ffile_io[i])
                     {
                       if(put_file(sb->fp[i], &oc))
                         {
@@ -318,7 +318,7 @@ void tintloop(s_base *sb)
   while(sb->rs == starting)
     usleep(DELAY);
 
-  pthread_mutex_lock(&sb->mutex_exec);
+  pthread_mutex_lock(&sb->mutex_sent);
 
   if(sb->rs == started && !sb->sent)
     {
@@ -328,10 +328,10 @@ void tintloop(s_base *sb)
   else
     emit = FALSE;
 
-  pthread_mutex_unlock(&sb->mutex_exec);
+  pthread_mutex_unlock(&sb->mutex_sent);
 
   if(emit)
-    g_signal_emit_by_name(sb->run_button, "clicked");
+    g_signal_emit_by_name(sb->dummy_button, "clicked");
 
   pthread_exit(NULL);
 }
@@ -378,7 +378,7 @@ void tinxpipe(s_base *sb)
   while(sb->rs == starting)
     usleep(DELAY);
 
-  pthread_mutex_lock(&sb->mutex_exec);
+  pthread_mutex_lock(&sb->mutex_sent);
 
   if(sb->rs == started && !sb->sent)
     {
@@ -388,15 +388,15 @@ void tinxpipe(s_base *sb)
   else
     emit = FALSE;
 
-  pthread_mutex_unlock(&sb->mutex_exec);
+  pthread_mutex_unlock(&sb->mutex_sent);
 
   if(emit)
-    g_signal_emit_by_name(sb->run_button, "clicked");
+    g_signal_emit_by_name(sb->dummy_button, "clicked");
 
   pthread_exit(NULL);
 }
 
-void run_button_clicked(GtkWidget *widget, s_base *sb)
+void dummy_button_clicked(GtkWidget *widget, s_base *sb)
 {
   FILE *bp;
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
@@ -404,17 +404,14 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
   pthread_attr_t attributes;
   int i, k, len, count, tot_rows, page_rows;
   char c, ic, oc;
+  io_type stype;
   pid_t pid;
   m_time halt;
 
   switch(sb->rs)
     {
       case stopped:
-        pthread_mutex_lock(&sb->mutex_exec);
-
         sb->rs = starting;
-
-        pthread_mutex_unlock(&sb->mutex_exec);
 
         sb->cp_step = sb->cfg.step;
         sb->cp_max_time = sb->cfg.max_time;
@@ -455,7 +452,18 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
             sb->pos = 0;
             sb->maxlen = 0;
 
-            while(fscanf(bp, SKIP_FMT" "OP_FMT" "FUN_FMT, &c, name) == 2)
+            stype = io_any;
+
+            fscanf(bp, " "SKIP_FMT" ");
+
+            if(ferror(bp))
+              {
+                print_error(sb, file_name);
+                sb->rs = stopped;
+                return;
+              }
+
+            while(fscanf(bp, " "OP_FMT" "FUN_FMT" ( %*[^"SEPARATORS"] , %*[^"SEPARATORS"] ) # %*d / %u @ %*ld ", &c, name, &stype) >= 2)
               {
                 switch(c)
                   {
@@ -469,7 +477,9 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                               return;
                             }
 
-                          if(sb->cp_file_io)
+                          sb->ffile_io[sb->fn] = (sb->cp_file_io && stype == io_any) || stype == io_file;
+
+                          if(sb->ffile_io[sb->fn])
                             {
                               if(*sb->cfg.path)
                                 {
@@ -525,7 +535,9 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                               return;
                             }
 
-                          if(sb->cp_file_io)
+                          sb->gfile_io[sb->gn] = (sb->cp_file_io && stype == io_any) || stype == io_file;
+
+                          if(sb->gfile_io[sb->gn])
                             {
                               if(*sb->cfg.path)
                                 {
@@ -563,18 +575,27 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                       sb->rs = stopped;
                     return;
                   }
+
+                stype = io_any;
               }
 
             if(ferror(bp))
               {
-                print_error(sb, name);
+                print_error(sb, file_name);
                 sb->rs = stopped;
                 return;
               }
 
+            if(!feof(bp))
+              {
+                print(sb, "%s: Parser error\n", file_name);
+                sb->rs = stopped;
+                return;
+               }
+
             if(fclose(bp))
               {
-                print_error(sb, name);
+                print_error(sb, file_name);
                 sb->rs = stopped;
                 return;
               }
@@ -598,9 +619,6 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
         strcat(cmd, arg);
 
         sprintf(arg, " -t "REAL_FMT, sb->cfg.step);
-        strcat(cmd, arg);
-
-        sprintf(arg, " -g "ORIGIN_FMT, sb->time_base);
         strcat(cmd, arg);
 
         sprintf(arg, " -z "TIME_FMT, sb->cfg.max_time);
@@ -663,9 +681,15 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
         if(sb->cfg.sturdy)
           strcat(cmd, " -y");
 
+        if(sb->cfg.busywait)
+          strcat(cmd, " -S");
+
         strcat(cmd, " '");
         strcat(cmd, sb->cfg.base_name);
         strcat(cmd, "'");
+
+        sprintf(arg, " -g "ORIGIN_FMT, sb->time_base);
+        strcat(cmd, arg);
 
         strcpy(sb->cmd, cmd);
 
@@ -695,7 +719,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
 
                 for(i = 0; i < sb->gn; i++)
                   {
-                    if(sb->cp_file_io)
+                    if(sb->gfile_io[i])
                       do
                         sb->gp[i] = open_input_file(sb->gnames[i]);
                       while(!sb->term && !is_file_open(sb->gp[i]));
@@ -723,20 +747,11 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
         gtk_button_set_label(sb->run_button, "Stop execution");
         gtk_menu_item_set_label(sb->run_menu, "Stop execution");
 
-        pthread_mutex_lock(&sb->mutex_exec);
-
         sb->rs = started;
-
-        pthread_mutex_unlock(&sb->mutex_exec);
       break;
 
       case started:
-        pthread_mutex_lock(&sb->mutex_exec);
-
         sb->rs = stopping;
-        sb->sent = TRUE;
-
-        pthread_mutex_unlock(&sb->mutex_exec);
 
         if(!sb->cp_quiet)
           {
@@ -750,7 +765,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                   {
                     oc = sb->cfg.alpha[end_symbol];
 
-                    if(sb->cp_file_io)
+                    if(sb->ffile_io[i])
                       {
                         if(sb->fp[i])
                           {
@@ -791,7 +806,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                   {
                     for(i = 0; i < sb->gn; i++)
                       {
-                        if(sb->cp_file_io)
+                        if(sb->gfile_io[i])
                           {
                             if(get_file(sb->gp[i], &ic) && file_error(sb->gp[i]))
                               {
@@ -815,7 +830,7 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
                 while(!sb->term && count < sb->gn * TAIL_LEN && get_time() - halt < MAX_SEC_HALT);
 
                 for(i = 0; i < sb->gn; i++)
-                  if(sb->cp_file_io)
+                  if(sb->gfile_io[i])
                     {
                       if(sb->gp[i] && close_file(sb->gp[i]))
                         {
@@ -859,17 +874,45 @@ void run_button_clicked(GtkWidget *widget, s_base *sb)
         gtk_button_set_label(sb->run_button, "Execute network");
         gtk_menu_item_set_label(sb->run_menu, "Execute network");
 
-        pthread_mutex_lock(&sb->mutex_exec);
-
         sb->rs = stopped;
-        sb->sent = FALSE;
-
-        pthread_mutex_unlock(&sb->mutex_exec);
       break;
 
       default:
       break;
     }
+}
+
+void run_button_clicked(GtkWidget *widget, s_base *sb)
+{
+  bool emit;
+
+  pthread_mutex_lock(&sb->mutex_button);
+
+  if(sb->rs == stopped)
+    {
+      sb->sent = FALSE;
+
+      dummy_button_clicked(widget, sb);
+    }
+  else
+    {
+      pthread_mutex_lock(&sb->mutex_sent);
+
+      if(sb->rs == started && !sb->sent)
+        {
+          sb->sent = TRUE;
+          emit = TRUE;
+        }
+      else
+        emit = FALSE;
+
+      pthread_mutex_unlock(&sb->mutex_sent);
+
+      if(emit)
+        dummy_button_clicked(widget, sb);
+    }
+
+  pthread_mutex_unlock(&sb->mutex_button);
 }
 
 pid_t pidof(s_base *sb, char *name)
@@ -907,6 +950,8 @@ void gen_button_clicked(GtkWidget *widget, s_base *sb)
   char ch[2];
   bool got;
 
+  pthread_mutex_lock(&sb->mutex_button);
+
   strcpy(cmd, CMD_PATH"ting 2>&1 -o '");
   strcat(cmd, sb->cfg.base_name);
   strcat(cmd, "'");
@@ -929,14 +974,20 @@ void gen_button_clicked(GtkWidget *widget, s_base *sb)
       strcat(cmd, "'");
     }
 
-  if(sb->cfg.seplit)
+  if(sb->cfg.seplit_fe)
     strcat(cmd, " -w");
+
+  if(sb->cfg.seplit_su)
+    strcat(cmd, " -W");
 
   if(sb->cfg.merge)
     strcat(cmd, " -u");
 
   if(sb->cfg.outaux)
-    strcat(cmd, sb->cfg.outint? " -B" : " -b");
+    strcat(cmd, " -b");
+
+  if(sb->cfg.outint)
+    strcat(cmd, " -B");
 
   strcat(cmd, " '");
   strcat(cmd, sb->cfg.source_name);
@@ -979,11 +1030,17 @@ void gen_button_clicked(GtkWidget *widget, s_base *sb)
       gtk_image_clear(sb->reg_warning_icon);
       gtk_label_set_markup(sb->reg_warning, NULL);
     }
+
+  pthread_mutex_unlock(&sb->mutex_button);
 }
 
 void about_button_clicked(GtkWidget *widget, s_base *sb)
 {
+  pthread_mutex_lock(&sb->mutex_button);
+
   print(sb, BANNER);
+
+  pthread_mutex_unlock(&sb->mutex_button);
 }
 
 gboolean exit_button_clicked_if(GtkWidget *widget, GdkEvent *event, s_base *sb)
@@ -997,10 +1054,12 @@ void exit_button_clicked(GtkWidget *widget, s_base *sb)
 {
   bool emit;
 
-  while(sb->rs == starting || sb->rs == stopping)
+  pthread_mutex_lock(&sb->mutex_button);
+
+  while(sb->rs == starting)
     usleep(DELAY);
 
-  pthread_mutex_lock(&sb->mutex_exec);
+  pthread_mutex_lock(&sb->mutex_sent);
 
   if(sb->rs == started && !sb->sent)
     {
@@ -1010,17 +1069,24 @@ void exit_button_clicked(GtkWidget *widget, s_base *sb)
   else
     emit = FALSE;
 
-  pthread_mutex_unlock(&sb->mutex_exec);
+  pthread_mutex_unlock(&sb->mutex_sent);
 
   if(emit)
-    run_button_clicked(GTK_WIDGET(sb->run_button), sb);
+    dummy_button_clicked(GTK_WIDGET(sb->run_button), sb);
+
+  while(sb->rs != stopped)
+    usleep(DELAY);
 
   gtk_main_quit();
+
+  pthread_mutex_unlock(&sb->mutex_button);
 }
 
 void save_button_clicked(GtkWidget *widget, s_base *sb)
 {
   FILE *fp;
+
+  pthread_mutex_lock(&sb->mutex_button);
 
   fp = fopen(CONFIG_FILENAME, "w");
   if(fp)
@@ -1039,10 +1105,14 @@ void save_button_clicked(GtkWidget *widget, s_base *sb)
       if(sb->erase_button)
         gtk_widget_set_sensitive(GTK_WIDGET(sb->erase_button), TRUE);
     }
+
+  pthread_mutex_unlock(&sb->mutex_button);
 }
 
 void erase_button_clicked(GtkWidget *widget, s_base *sb)
 {
+  pthread_mutex_lock(&sb->mutex_button);
+
   remove(CONFIG_FILENAME);
 
   sb->changed = TRUE;
@@ -1055,6 +1125,8 @@ void erase_button_clicked(GtkWidget *widget, s_base *sb)
   gtk_widget_set_sensitive(GTK_WIDGET(sb->erase_menu), FALSE);
   if(sb->erase_button)
     gtk_widget_set_sensitive(GTK_WIDGET(sb->erase_button), FALSE);
+
+  pthread_mutex_unlock(&sb->mutex_button);
 }
 
 void load_state_box(GtkWidget *widget, s_base *sb)
@@ -1210,6 +1282,23 @@ void sturdy_box(GtkWidget *widget, s_base *sb)
     }
 }
 
+void busywait_box(GtkWidget *widget, s_base *sb)
+{
+  if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
+    sb->cfg.busywait = TRUE;
+  else
+    sb->cfg.busywait = FALSE;
+
+  if(!sb->changed)
+    {
+      sb->changed = TRUE;
+
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+      if(sb->save_button)
+        gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+    }
+}
+
 void use_xref_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
@@ -1236,12 +1325,36 @@ void use_xref_box(GtkWidget *widget, s_base *sb)
     }
 }
 
-void seplit_box(GtkWidget *widget, s_base *sb)
+void seplit_fe_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-    sb->cfg.seplit = TRUE;
+    sb->cfg.seplit_fe = TRUE;
   else
-    sb->cfg.seplit = FALSE;
+    sb->cfg.seplit_fe = FALSE;
+
+  if(!sb->regenerate)
+    {
+      sb->regenerate = TRUE;
+      gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
+      gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
+    }
+
+  if(!sb->changed)
+    {
+      sb->changed = TRUE;
+
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+      if(sb->save_button)
+        gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+    }
+}
+
+void seplit_su_box(GtkWidget *widget, s_base *sb)
+{
+  if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
+    sb->cfg.seplit_su = TRUE;
+  else
+    sb->cfg.seplit_su = FALSE;
 
   if(!sb->regenerate)
     {
@@ -1315,7 +1428,7 @@ void outint_box(GtkWidget *widget, s_base *sb)
   else
     sb->cfg.outint = FALSE;
 
-  if(!sb->regenerate && sb->cfg.outaux)
+  if(!sb->regenerate)
     {
       sb->regenerate = TRUE;
       gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
@@ -2094,10 +2207,10 @@ void configure(GtkWidget *widget, s_base *sb)
   GtkWidget *window;
   GtkWidget *btn5, *btn6;
   GtkWidget *tabf, *tabk, *tabh, *tabg, *tabs, *tabw;
-  GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15;
+  GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15, *cb16, *cb17;
   GtkWidget *lbl2, *ent2, *lbl3, *ent3, *lbl4, *ent4, *lbl7, *ent7, *lbl10, *ent10, *lbl11, *ent11, *lbl12, *ent12, *lbl13, *ent13, *lbl14, *ent14, *lbl15, *ent15, *lbl16, *ent16, *lbl17, *ent17,
             *lbl18, *ent18, *lbl19, *ent19, *lbl20, *ent20;
-  GtkWidget *fr1, *fr2, *fr3, *fr4;
+  GtkWidget *fr1, *fr2, *fr3, *fr4, *sep1, *sep2;
   GtkWidget *vbox1, *vbox2, *vbox3, *vbox6, *vbox7, *vbox8, *hbox1, *hbox2, *hbox4, *extbox;
   char buf[2];
 
@@ -2226,7 +2339,7 @@ void configure(GtkWidget *widget, s_base *sb)
   g_signal_connect(G_OBJECT(ent13), "changed", G_CALLBACK(prefix_fname), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent13), "draw", G_CALLBACK(prefix_default), (gpointer)sb);
 
-  lbl12 = gtk_label_new("File path ");
+  lbl12 = gtk_label_new("I/O file path ");
   gtk_misc_set_alignment(GTK_MISC(lbl12), 1, 0.5);
   gtk_table_attach_defaults(GTK_TABLE(tabg), lbl12, 0, 1, 1, 2);
   ent12 = gtk_entry_new();
@@ -2302,17 +2415,17 @@ void configure(GtkWidget *widget, s_base *sb)
 
   cb10 = gtk_check_button_new_with_label("External inputs");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb10), sb->cfg.batch_in);
-  gtk_table_attach_defaults(GTK_TABLE(tabw), cb10, 2, 3, 0, 1);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb10, 0, 1, 0, 1);
   g_signal_connect(G_OBJECT(cb10), "clicked", G_CALLBACK(batch_in_box), (gpointer)sb);
 
   cb11 = gtk_check_button_new_with_label("External outputs");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb11), sb->cfg.batch_out);
-  gtk_table_attach_defaults(GTK_TABLE(tabw), cb11, 2, 3, 1, 2);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb11, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(cb11), "clicked", G_CALLBACK(batch_out_box), (gpointer)sb);
 
-  cb9 = gtk_check_button_new_with_label("Sturdy IPC");
+  cb9 = gtk_check_button_new_with_label("Ignore IPC errors");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb9), sb->cfg.sturdy);
-  gtk_table_attach_defaults(GTK_TABLE(tabw), cb9, 2, 3, 2, 3);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb9, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb9), "clicked", G_CALLBACK(sturdy_box), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox7), tabw);
@@ -2374,31 +2487,49 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_container_set_border_width(GTK_CONTAINER(fr3), 5);
   gtk_container_set_border_width(GTK_CONTAINER(vbox3), 5);
 
-  tabh = gtk_table_new(1, 5, FALSE);
+  tabh = gtk_table_new(1, 9, FALSE);
 
-  cb12 = gtk_check_button_new_with_label("Optimize network joints");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb12), sb->cfg.seplit);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb12, 0, 1, 0, 1);
-  g_signal_connect(G_OBJECT(cb12), "clicked", G_CALLBACK(seplit_box), (gpointer)sb);
+  cb16 = gtk_check_button_new_with_label("Optimize joints in intervals");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb16), sb->cfg.seplit_fe);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb16, 0, 1, 0, 1);
+  g_signal_connect(G_OBJECT(cb16), "clicked", G_CALLBACK(seplit_fe_box), (gpointer)sb);
 
-  cb13 = gtk_check_button_new_with_label("Optimize network delays");
+  cb17 = gtk_check_button_new_with_label("Optimize joints in recursive operators");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb17), sb->cfg.seplit_su);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb17, 0, 1, 1, 2);
+  g_signal_connect(G_OBJECT(cb17), "clicked", G_CALLBACK(seplit_su_box), (gpointer)sb);
+
+  cb13 = gtk_check_button_new_with_label("Optimize delays");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb13), sb->cfg.merge);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb13, 0, 1, 1, 2);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb13, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb13), "clicked", G_CALLBACK(merge_box), (gpointer)sb);
 
-  cb14 = gtk_check_button_new_with_label("Internal as auxiliary signals");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sb->cfg.outint);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb14, 0, 1, 2, 3);
-  g_signal_connect(G_OBJECT(cb14), "clicked", G_CALLBACK(outint_box), (gpointer)sb);
+  sep1 = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+  g_object_set(G_OBJECT(sep1), "height-request", 10, NULL);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), sep1, 0, 1, 3, 4);
 
   cb8 = gtk_check_button_new_with_label("Hard real time (root access only)");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb8), sb->cfg.hard);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb8, 0, 1, 3, 4);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb8, 0, 1, 4, 5);
   g_signal_connect(G_OBJECT(cb8), "clicked", G_CALLBACK(hard_box), (gpointer)sb);
+
+  cb12 = gtk_check_button_new_with_label("Wait running");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb12), sb->cfg.busywait);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb12, 0, 1, 5, 6);
+  g_signal_connect(G_OBJECT(cb12), "clicked", G_CALLBACK(busywait_box), (gpointer)sb);
+
+  sep2 = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+  g_object_set(G_OBJECT(sep2), "height-request", 10, NULL);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), sep2, 0, 1, 6, 7);
+
+  cb14 = gtk_check_button_new_with_label("Display internal signals");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sb->cfg.outint);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb14, 0, 1, 7, 8);
+  g_signal_connect(G_OBJECT(cb14), "clicked", G_CALLBACK(outint_box), (gpointer)sb);
 
   cb15 = gtk_check_button_new_with_label("Display unknowns as dots");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb15), sb->cfg.draw_undef);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb15, 0, 1, 4, 5);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb15, 0, 1, 8, 9);
   g_signal_connect(G_OBJECT(cb15), "clicked", G_CALLBACK(draw_undef_box), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox3), tabh);
@@ -2443,14 +2574,14 @@ void configure(GtkWidget *widget, s_base *sb)
 }
 
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool seplit, bool merge, bool outaux, bool outint,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge, bool outaux, bool outint,
          int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, float prob, bool batch_in, bool batch_out, bool draw_undef)
 {
   s_base sbs;
   GtkWidget *window;
   GtkWidget *drawingarea;
   GtkWidget *textarea, *scrollarea;
-  GtkWidget *btn1, *btn2, *btn3, *btn4;
+  GtkWidget *btn1, *btn2, *btn3, *btn4, *btn5;
   GtkWidget *cb0, *cb1, *cb2, *cb3, *cb4, *cb5, *cb6, *cb7, *cb10, *cb14;
   GtkWidget *tabf, *tabi, *tabt, *tabh, *tabx;
   GtkWidget *extbox, *hboxctl1, *hboxctl2;
@@ -2462,6 +2593,8 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   GtkTextIter iter;
   GtkAdjustment *adj;
   FILE *fp;
+
+  memset(&sbs, 0, sizeof(s_base));
 
   fp = fopen(CONFIG_FILENAME, "r");
   if(fp)
@@ -2478,8 +2611,6 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
   if(!sbs.configured)
     {
-      memset(&sbs, 0, sizeof(s_base));
-
       strcpy(sbs.cfg.source_name, source_name);
 
       if(!base_name)
@@ -2539,7 +2670,9 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
       sbs.cfg.quiet = quiet;
       sbs.cfg.hard = hard;
       sbs.cfg.sturdy = sturdy;
-      sbs.cfg.seplit = seplit;
+      sbs.cfg.busywait = busywait;
+      sbs.cfg.seplit_fe = seplit_fe;
+      sbs.cfg.seplit_su = seplit_su;
       sbs.cfg.merge = merge;
       sbs.cfg.outaux = outaux;
       sbs.cfg.outint = outint;
@@ -2919,6 +3052,11 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
   gtk_box_pack_end(GTK_BOX(vbox5), hbox5, FALSE, FALSE, 0);
 
+  btn5 = gtk_button_new();
+  g_signal_connect(G_OBJECT(btn5), "clicked", G_CALLBACK(dummy_button_clicked), (gpointer)&sbs);
+
+  sbs.dummy_button = GTK_BUTTON(btn5);
+
   gtk_box_pack_start(GTK_BOX(extbox), menubar, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(extbox), frgfx, TRUE, TRUE, 0);
   gtk_box_pack_start(GTK_BOX(extbox), frtxt, TRUE, TRUE, 0);
@@ -2930,7 +3068,15 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
   gtk_widget_show_all(window);
 
+  pthread_mutex_init(&sbs.mutex_xbuffer, NULL);
+  pthread_mutex_init(&sbs.mutex_button, NULL);
+  pthread_mutex_init(&sbs.mutex_sent, NULL);
+
   gtk_main();
+
+  pthread_mutex_destroy(&sbs.mutex_xbuffer);
+  pthread_mutex_destroy(&sbs.mutex_button);
+  pthread_mutex_destroy(&sbs.mutex_sent);
 
   return 0;
 }
@@ -2939,7 +3085,7 @@ int main(int argc, char *argv[])
 {
   char *source_name, *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path, *include_path;
   char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
-  bool strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, seplit, merge, outaux, outint, batch_in, batch_out, draw_undef;
+  bool strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, busywait, seplit_fe, seplit_su, merge, outaux, outint, batch_in, batch_out, draw_undef;
   int i, k, n;
   d_time max_time;
   m_time step, default_step;
@@ -2952,7 +3098,7 @@ int main(int argc, char *argv[])
   path = "";
   include_path = "";
   strcpy(alpha, IO_SYMBOLS);
-  strictly_causal = soundness_check = echo_stdout = file_io = quiet = hard = sturdy = seplit = merge = outaux = outint = batch_in = batch_out = draw_undef = FALSE;
+  strictly_causal = soundness_check = echo_stdout = file_io = quiet = hard = sturdy = busywait = seplit_fe = seplit_su = merge = outaux = outint = batch_in = batch_out = draw_undef = FALSE;
   bufexp = DEFAULT_BUFEXP;
   max_time = 0;
   default_step = -1;
@@ -2968,7 +3114,7 @@ int main(int argc, char *argv[])
             {
             case 'h':
               fprintf(stderr,
-              "Usage: %s [-AbBcdfilqsuvwxyYZ] [-a alphabet] [-e prefix] [-I state] [-L log] [-n processes] [-o base] [-p path] [-P path] [-Q probability] [-r core] [-t step] [-X symbols] [-z horizon] [source]\n",
+              "Usage: %s [-AbBcdfilqsSuvwWxyYZ] [-a alphabet] [-e prefix] [-I state] [-L log] [-n processes] [-o base] [-p path] [-P path] [-Q probability] [-r core] [-t step] [-X symbols] [-z horizon] [source]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -3313,7 +3459,6 @@ int main(int argc, char *argv[])
                     break;
 
                     case 'B':
-                      outaux = TRUE;
                       outint = TRUE;
                     break;
 
@@ -3347,6 +3492,10 @@ int main(int argc, char *argv[])
                       hard = TRUE;
                     break;
 
+                    case 'S':
+                      busywait = TRUE;
+                    break;
+
                     case 'u':
                       merge = TRUE;
                     break;
@@ -3356,7 +3505,11 @@ int main(int argc, char *argv[])
                     break;
 
                     case 'w':
-                      seplit = TRUE;
+                      seplit_fe = TRUE;
+                    break;
+
+                    case 'W':
+                      seplit_su = TRUE;
                     break;
 
                     case 'x':
@@ -3428,7 +3581,7 @@ int main(int argc, char *argv[])
     step = default_step;
 
   return execute(source_name, base_name, state_name, logfile_name, xref_name,
-         strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, seplit, merge, outaux, outint,
+         strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sturdy, busywait, seplit_fe, seplit_su, merge, outaux, outint,
          bufexp, max_time, step, prefix, path, include_path, alpha, num_threads, prob, batch_in, batch_out, draw_undef);
 }
 

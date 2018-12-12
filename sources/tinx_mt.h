@@ -213,6 +213,16 @@ typedef struct linkage
 
 #endif
 
+typedef enum io_type
+{
+  io_any,
+  io_ipc,
+  io_file,
+  IO_TYPES_NUMBER
+} io_type;
+
+typedef struct k_base k_base;
+
 struct stream
 {
   char name[MAX_NAMELEN];
@@ -230,6 +240,7 @@ struct stream
   stream *prev_ios;
   bool file_io;
   bool open;
+  bool (* io_perform)(k_base *kb, stream *ios);
 };
 
 typedef enum node_class
@@ -249,9 +260,9 @@ struct node
   char name[MAX_NAMELEN];
   node_class nclass;
   d_time k;
-  char *debug;
   int def_proc;
   linkage pin[LINK_CODES_NUMBER];
+  char *debug;
   node *vp;
 };
 
@@ -375,13 +386,12 @@ typedef struct k_base
   bool echo_debug;
   bool quiet;
   bool sturdy;
+  bool busywait;
   int exiting;
   FILE *logfp;
   m_time time_base;
   m_time step;
   info perf;
-  bool (* input)(k_base *kb, stream *ios);
-  bool (* output)(k_base *kb, stream *ios);
   pthread_mutex_t mutex_barrier;
   node *table[HASH_SIZE][HASH_DEPTH];
 } k_base;
@@ -443,7 +453,7 @@ node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
 void assign_threads(k_base *kb);
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
-                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sturdy,
+                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sturdy, bool busywait,
                   int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads);
 void close_base(k_base *kb);
 int init_state(k_base *kb, char *state_name);
@@ -452,7 +462,7 @@ void trap(void);
 void loops(thread_arg *tp);
 void loops_io(thread_arg *tp);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sturdy,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sturdy, bool busywait,
          int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha, int num_threads);
 
 /* End of protos */

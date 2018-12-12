@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "2.3.1"
+#define VER "3.0.0"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
@@ -411,6 +411,7 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
 
           strcpy(sp->name, name);
           sp->sclass = internal_class;
+          sp->stype = io_any;
           sp->signal_id = cb->num_signals;
 
           cb->num_signals++;
@@ -652,7 +653,8 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       break;
 
       case op_number:
-        stv.btl = create_ground(op_number, "", spec->value);
+      case op_ioqual:
+        stv.btl = create_ground(spec->ot, "", spec->value);
         stv.a = spec->value;
         stv.b = spec->value;
       break;
@@ -735,6 +737,23 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
           stv.btldef = stv_2.btldef;
       break;
 
+      case op_input:
+      case op_output:
+        stv = preval(cb, spec->left, level, param);
+        stv_2 = preval(cb, spec->right, level, param);
+
+        sprintf(debug, "%s[%%2$s] %%1$s", opname(spec->ot));
+        stv.btl = create_operation(spec->ot, stv.btl, stv_2.btl, debug);
+
+        if(stv.btldef)
+          {
+            if(stv_2.btldef)
+              stv.btldef = create_operation(op_and, stv.btldef, stv_2.btldef, "%s ; %s");
+          }
+        else
+          stv.btldef = stv_2.btldef;
+      break;
+
       case op_var_at:
         stv = preval(cb, spec->left, level, param);
         stv_2 = preval(cb, spec->right, level, param);
@@ -758,8 +777,6 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
       case op_not:
       case op_aux:
-      case op_input:
-      case op_output:
       case op_init:
         stv = preval(cb, spec->left, level, param);
 
@@ -895,7 +912,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
             exit_failure();
           }
 
-        if(cb->seplit)
+        if(cb->seplit_fe)
           {
             tail = stv_2.b - stv_2.a;
             r = NULL;
@@ -1057,7 +1074,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
             exit_failure();
           }
 
-        if(cb->seplit)
+        if(cb->seplit_fe)
           {
             tail = stv_2.b - stv_2.a;
             r = NULL;
@@ -1207,7 +1224,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv = preval(cb, spec->left, level, param);
         stv_2 = preval(cb, spec->right, level, param);
 
-        if(cb->seplit)
+        if(cb->seplit_su)
           {
             gensym(cb, symbol, "SN", asserted, FALSE);
             gensym(cb, symbol1, "SN", negated, FALSE);
@@ -1264,7 +1281,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         stv = preval(cb, spec->left, level, param);
         stv_2 = preval(cb, spec->right, level, param);
 
-        if(cb->seplit)
+        if(cb->seplit_su)
           {
             gensym(cb, symbol, "UT", asserted, FALSE);
             gensym(cb, symbol1, "UT", negated, FALSE);
@@ -1557,7 +1574,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
   return stv;
 }
 
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, d_time t)
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, d_time t)
 {
   subtreeval stv, stv_2;
   smallnode *wp;
@@ -1622,6 +1639,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
 
         sp->sclass = sclass;
+        sp->stype = stype;
       break;
 
       case op_iname:
@@ -1629,20 +1647,21 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_number:
+      case op_ioqual:
         stv.a = spec->value;
       break;
 
       case op_join:
-        stv = eval(cb, spec->left, vp, neg, sclass, t);
+        stv = eval(cb, spec->left, vp, neg, sclass, stype, t);
 
         if(stv.vp)
-          eval(cb, spec->right, vp, neg, sclass, t);
+          eval(cb, spec->right, vp, neg, sclass, stype, t);
         else
-          stv = eval(cb, spec->right, vp, neg, sclass, t);
+          stv = eval(cb, spec->right, vp, neg, sclass, stype, t);
       break;
 
       case op_not:
-        stv = eval(cb, spec->left, vp, !neg, sclass, t);
+        stv = eval(cb, spec->left, vp, !neg, sclass, stype, t);
       break;
 
       case op_and:
@@ -1654,8 +1673,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
 
         wp->up = vp;
-        wp->left = eval(cb, spec->left, wp, neg, sclass, t).vp;
-        wp->right = eval(cb, spec->right, wp, neg, sclass, t).vp;
+        wp->left = eval(cb, spec->left, wp, neg, sclass, stype, t).vp;
+        wp->right = eval(cb, spec->right, wp, neg, sclass, stype, t).vp;
 
         if(neg)
           sprintf(wp->debug, "~ (%s)", spec->debug);
@@ -1674,8 +1693,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
 
         wp->up = vp;
-        wp->left = eval(cb, spec->left, wp, neg, sclass, t).vp;
-        wp->right = eval(cb, spec->right, wp, neg, sclass, t).vp;
+        wp->left = eval(cb, spec->left, wp, neg, sclass, stype, t).vp;
+        wp->right = eval(cb, spec->right, wp, neg, sclass, stype, t).vp;
 
         if(neg)
           sprintf(wp->debug, "~ (%s)", spec->debug);
@@ -1688,8 +1707,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       case op_delay:
         if(cb->merge && vp && vp->nclass == delay)
           {
-            stv = eval(cb, spec->left, vp, neg, sclass, t);
-            stv.a += eval(cb, spec->right, vp, neg, sclass, t).a;
+            stv = eval(cb, spec->left, vp, neg, sclass, stype, t);
+            stv.a += eval(cb, spec->right, vp, neg, sclass, stype, t).a;
           }
         else
           {
@@ -1700,11 +1719,11 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
                 exit_failure();
               }
 
-            stv_2 = eval(cb, spec->left, wp, neg, sclass, t);
+            stv_2 = eval(cb, spec->left, wp, neg, sclass, stype, t);
 
             wp->up = vp;
             wp->left = stv_2.vp;
-            wp->k = - (stv_2.a + eval(cb, spec->right, wp, neg, sclass, t).a);
+            wp->k = - (stv_2.a + eval(cb, spec->right, wp, neg, sclass, stype, t).a);
 
             if(cb->merge && !wp->k)
               {
@@ -1723,23 +1742,23 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_var_at:
-        stv = eval(cb, spec->left, vp, neg, sclass, eval(cb, spec->right, vp, neg, sclass, t).a);
+        stv = eval(cb, spec->left, vp, neg, sclass, stype, eval(cb, spec->right, vp, neg, sclass, stype, t).a);
       break;
 
       case op_aux:
-        stv = eval(cb, spec->left, vp, neg, aux_class, t);
+        stv = eval(cb, spec->left, vp, neg, aux_class, stype, t);
       break;
 
       case op_input:
-        stv = eval(cb, spec->left, vp, neg, input_class, t);
+        stv = eval(cb, spec->left, vp, neg, input_class, eval(cb, spec->right, vp, neg, sclass, stype, t).a, t);
       break;
 
       case op_output:
-        stv = eval(cb, spec->left, vp, neg, output_class, t);
+        stv = eval(cb, spec->left, vp, neg, output_class, eval(cb, spec->right, vp, neg, sclass, stype, t).a, t);
       break;
 
       case op_init:
-        stv = eval(cb, spec->left, vp, neg, sclass, t);
+        stv = eval(cb, spec->left, vp, neg, sclass, stype, t);
       break;
 
       default:
@@ -2097,23 +2116,23 @@ int save_signals(c_base *cb, FILE *fp)
           switch(sp->sclass)
             {
               case input_class:
-                rv = fprintf(fp, "! %s (%s, %s) # %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr);
+                rv = fprintf(fp, "! %s (%s, %s) # %d / %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype);
               break;
 
               case output_class:
-                rv = fprintf(fp, "? %s (%s, %s) # %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr);
+                rv = fprintf(fp, "? %s (%s, %s) # %d / %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype);
               break;
 
               case aux_class:
                 if(cb->outaux)
-                  rv = fprintf(fp, ". %s (%s, %s) # %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr);
+                  rv = fprintf(fp, ". %s (%s, %s) # %d / %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype);
                 else
                   rv = 0;
               break;
 
               case internal_class:
                 if(cb->outint)
-                  rv = fprintf(fp, ". %s (%s, %s) # %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr);
+                  rv = fprintf(fp, ". %s (%s, %s) # %d / %d\n", sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype);
                 else
                   rv = 0;
               break;
@@ -2439,7 +2458,7 @@ smallnode *build_cotree(c_base *cb)
   return xp;
 }
 
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit, bool merge, bool outaux, bool outint)
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit_fe, bool seplit_su, bool merge, bool outaux, bool outint)
 {
   c_base *cb;
   btl_specification *e, *f;
@@ -2475,7 +2494,8 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
   else
     *(cb->path) = '\0';
 
-  cb->seplit = seplit;
+  cb->seplit_fe = seplit_fe;
+  cb->seplit_su = seplit_su;
   cb->merge = merge;
   cb->outaux = outaux;
   cb->outint = outint;
@@ -2520,7 +2540,7 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   printf("Generating network\n");
 
-  stv = eval(cb, f, NULL, FALSE, internal_class, 0);
+  stv = eval(cb, f, NULL, FALSE, internal_class, io_any, 0);
 
   delete_specification(f);
 
@@ -2605,13 +2625,13 @@ int main(int argc, char *argv[])
 {
   char *source_name, *base_name, *state_name, *xref_name, *path, *option, *ext;
   char default_state_name[MAX_STRLEN];
-  bool seplit, merge, outaux, outint;
+  bool seplit_fe, seplit_su, merge, outaux, outint;
   compinfo cperf;
   int i;
 
   source_name = base_name = state_name = xref_name = NULL;
   path = "";
-  seplit = merge = outaux = outint = FALSE;
+  seplit_fe = seplit_su = merge = outaux = outint = FALSE;
 
   for(i = 1; i < argc; i++)
     {
@@ -2621,7 +2641,7 @@ int main(int argc, char *argv[])
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-bBuwx] [-I state] [-o base] [-P path] [-X symbols] [source]\n",
+              fprintf(stderr, "Usage: %s [-bBuwWx] [-I state] [-o base] [-P path] [-X symbols] [source]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -2738,7 +2758,6 @@ int main(int argc, char *argv[])
                       break;
 
                       case 'B':
-                        outaux = TRUE;
                         outint = TRUE;
                       break;
 
@@ -2747,7 +2766,11 @@ int main(int argc, char *argv[])
                       break;
 
                       case 'w':
-                        seplit = TRUE;
+                        seplit_fe = TRUE;
+                      break;
+
+                      case 'W':
+                        seplit_su = TRUE;
                       break;
 
                       case 'x':
@@ -2797,7 +2820,7 @@ int main(int argc, char *argv[])
   printf("\nTING "VER" - Temporal Inference Network Generator\n"
          "Design & coding by Andrea Giotti, 2017-2018\n\n");
 
-  cperf = compile(source_name, base_name, state_name, xref_name, path, seplit, merge, outaux, outint);
+  cperf = compile(source_name, base_name, state_name, xref_name, path, seplit_fe, seplit_su, merge, outaux, outint);
 
   if(cperf.ok)
     printf("Network generated -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d signals, %d initial conditions\n",

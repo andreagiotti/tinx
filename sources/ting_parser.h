@@ -98,10 +98,13 @@ typedef struct tracker
     TOKEN_ONE = 288,
     TOKEN_UNIQUE = 289,
     TOKEN_EQUAL = 290,
-    TOKEN_NAME = 291,
-    TOKEN_FILENAME = 292,
-    TOKEN_ITERATOR = 293,
-    TOKEN_NUMBER = 294
+    TOKEN_ANY = 291,
+    TOKEN_IPC = 292,
+    TOKEN_FILE = 293,
+    TOKEN_NAME = 294,
+    TOKEN_FILENAME = 295,
+    TOKEN_ITERATOR = 296,
+    TOKEN_NUMBER = 297
   };
 #endif
 
@@ -122,6 +125,7 @@ union YYSTYPE
   btl_specification *formula;
   btl_specification *interval;
   btl_specification *declaration;
+  btl_specification *io_decl;
   btl_specification *decllist;
   btl_specification *eventlist;
   btl_specification *filelist;
@@ -137,7 +141,7 @@ union YYSTYPE
   btl_specification *expression;
   btl_specification *number;
 
-#line 141 "ting_parser.h" /* yacc.c:1909  */
+#line 145 "ting_parser.h" /* yacc.c:1909  */
 };
 
 typedef union YYSTYPE YYSTYPE;

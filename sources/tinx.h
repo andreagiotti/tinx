@@ -206,6 +206,16 @@ typedef struct linkage
 
 #endif
 
+typedef enum io_type
+{
+  io_any,
+  io_ipc,
+  io_file,
+  IO_TYPES_NUMBER
+} io_type;
+
+typedef struct k_base k_base;
+
 struct stream
 {
   char name[MAX_NAMELEN];
@@ -223,6 +233,7 @@ struct stream
   stream *prev_ios;
   bool file_io;
   bool open;
+  bool (* io_perform)(k_base *kb, stream *ios);
 };
 
 typedef enum node_class
@@ -317,15 +328,14 @@ typedef struct k_base
   bool trace_focus;
   bool echo_stdout;
   bool quiet;
-  bool io_busy;
   bool sturdy;
+  bool busywait;
+  bool io_busy;
   bool exiting;
   FILE *logfp;
   m_time time_base;
   m_time step;
   info perf;
-  bool (* input)(k_base *kb, stream *ios);
-  bool (* output)(k_base *kb, stream *ios);
   node *table[HASH_SIZE][HASH_DEPTH];
 } k_base;
 
@@ -376,14 +386,14 @@ void free_node(node *vp);
 node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
-                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sturdy,
+                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sturdy, bool busywait,
                   int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha);
 void close_base(k_base *kb);
 int init_state(k_base *kb, char *state_name);
 
 void trap(void);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool busywait,
          int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha);
 
 /* End of protos */
