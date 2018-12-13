@@ -92,6 +92,7 @@ typedef struct tracker
 %left TOKEN_SEMICOLON
 %left TOKEN_EQV
 %left TOKEN_IMPLY
+%left TOKEN_INVIMPLY
 %left TOKEN_OR
 %left TOKEN_AND
 %left TOKEN_HAPPEN
@@ -121,6 +122,7 @@ typedef struct tracker
 %token TOKEN_INIT
 %token TOKEN_EQV
 %token TOKEN_IMPLY
+%token TOKEN_INVIMPLY
 %token TOKEN_OR
 %token TOKEN_AND
 %token TOKEN_FORALL
@@ -220,6 +222,7 @@ form
     | TOKEN_ONE TOKEN_LPAREN form[L] TOKEN_COMMA expr[M] TOKEN_COMMA expr[R] TOKEN_RPAREN { $$ = create_operation(op_one, $L, create_operation(op_interval_1, $M, $R, "%s , %s"), "one(%s , %s)"); }
     | TOKEN_UNIQUE TOKEN_LPAREN form[L] TOKEN_COMMA expr[R] TOKEN_RPAREN { $$ = create_operation(op_unique, $L, $R, "unique(%s , %s)"); }
     | form[L] TOKEN_IMPLY form[R] { $$ = create_operation(op_imply, $L, $R, "%s --> %s"); }
+    | form[L] TOKEN_INVIMPLY form[R] { $$ = create_operation(op_imply, $R, $L, "%2$s <-- %1$s"); }
     | form[L] TOKEN_EQV form[R] { $$ = create_operation(op_eqv, $L, $R, "%s == %s"); }
     | TOKEN_LPAREN form[F] TOKEN_RPAREN { $$ = $F; }
     | name[A] { $$ = $A; }

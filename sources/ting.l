@@ -26,12 +26,6 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
 
 %option yylineno bison-locations noinput nounput
 
-EQUAL       "="
-PLUS        "+"
-MINUS       "-"
-MUL         "*"
-DIV         "/"
-
 NOT         "~"
 AND         "&"
 OR          "|"
@@ -44,7 +38,14 @@ EXISTS      "exists"
 ONE         "one"
 UNIQUE      "unique"
 IMPLY       "-->"
+INVIMPLY    "<--"
 EQV         "=="
+
+EQUAL       "="
+PLUS        "+"
+MINUS       "-"
+MUL         "*"
+DIV         "/"
 
 LPAREN      "("
 RPAREN      ")"
@@ -76,8 +77,8 @@ BLANKS      [ \r\n\t]*
 
 %%
 
-^"//".*         {  }
-^"/*"[^*]*"*"+([^*/][^*]*"*"+)*"/" {  }
+"//".*         {  }
+"/*"([^*]|("*"[^/]))*"*/" {  }
 
 {NOT}           { return TOKEN_NOT; }
 {AND}           { return TOKEN_AND; }
@@ -91,6 +92,7 @@ BLANKS      [ \r\n\t]*
 {ONE}           { return TOKEN_ONE; }
 {UNIQUE}        { return TOKEN_UNIQUE; }
 {IMPLY}         { return TOKEN_IMPLY; }
+{INVIMPLY}      { return TOKEN_INVIMPLY; }
 {EQV}           { return TOKEN_EQV; }
 {EQUAL}         { return TOKEN_EQUAL; }
 {PLUS}          { return TOKEN_PLUS; }
@@ -112,9 +114,9 @@ BLANKS      [ \r\n\t]*
 {RPAREN}        { return TOKEN_RPAREN; }
 {LSQUARED}      { return TOKEN_LSQUARED; }
 {RSQUARED}      { return TOKEN_RSQUARED; }
-{SEMICOLON}     { return TOKEN_SEMICOLON; }
 {LBRACKET}      { return TOKEN_LBRACKET; }
 {RBRACKET}      { return TOKEN_RBRACKET; }
+{SEMICOLON}     { return TOKEN_SEMICOLON; }
 
 {NAME}          { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_NAME; }
 {FILENAME}      { sscanf(yytext, FILENAME_FMT, yylval->symbol); return TOKEN_FILENAME; }

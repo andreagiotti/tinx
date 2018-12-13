@@ -13,7 +13,7 @@
 
 #include "tinx.h"
 
-#define VER "7.0.0 (single core)"
+#define VER "7.0.1 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -299,72 +299,36 @@ INLINE void process(k_base *kb, event s)
     }
 }
 
-INLINE void scan_inputs(k_base *kb)
+INLINE void scan_ios(k_base *kb, stream_class sclass)
 {
   stream *ios;
 
   assert(kb);
 
-  if(kb->io_stream[input_stream])
-    {
-      if(kb->curr_time < kb->io_stream[input_stream]->deadline)
-        kb->io_stream[input_stream] = kb->io_stream[input_stream]->next_ios;
-      else
-        if(kb->io_stream[input_stream]->io_perform(kb, kb->io_stream[input_stream]))
-          {
-            kb->io_stream[input_stream]->deadline++;
-            kb->io_count[input_stream]--;
+  ios = kb->io_stream[sclass];
 
-            kb->io_stream[input_stream] = kb->io_stream[input_stream]->next_ios;
+  if(ios)
+    {
+      if(kb->curr_time < ios->deadline)
+        kb->io_stream[sclass] = ios->next_ios;
+      else
+        if(ios->io_perform(kb, ios))
+          {
+            ios->deadline++;
+            kb->io_count[sclass]--;
+
+            kb->io_stream[sclass] = ios->next_ios;
           }
         else
-          if(kb->io_stream[input_stream]->open)
-            kb->io_stream[input_stream] = kb->io_stream[input_stream]->next_ios;
+          if(ios->open)
+            kb->io_stream[sclass] = ios->next_ios;
           else
             {
-              ios = kb->io_stream[input_stream];
-              remove_stream(&kb->io_stream[input_stream]);
+              remove_stream(&kb->io_stream[sclass]);
               close_stream(ios, kb->alpha);
 
-              kb->io_num[input_stream]--;
-              kb->io_count[input_stream]--;
-              kb->io_open--;
-
-              if(!kb->io_open)
-                kb->quiet = TRUE;
-            }
-    }
-}
-
-INLINE void scan_outputs(k_base *kb)
-{
-  stream *ios;
-
-  assert(kb);
-
-  if(kb->io_stream[output_stream])
-    {
-      if(kb->curr_time < kb->io_stream[output_stream]->deadline)
-        kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-      else
-        if(kb->io_stream[output_stream]->io_perform(kb, kb->io_stream[output_stream]))
-          {
-            kb->io_stream[output_stream]->deadline++;
-            kb->io_count[output_stream]--;
-
-            kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-          }
-        else
-          if(kb->io_stream[output_stream]->open)
-            kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-          else
-            {
-              ios = kb->io_stream[output_stream];
-              remove_stream(&kb->io_stream[output_stream]);
-              close_stream(ios, kb->alpha);
-
-              kb->io_num[output_stream]--;
-              kb->io_count[output_stream]--;
+              kb->io_num[sclass]--;
+              kb->io_count[sclass]--;
               kb->io_open--;
 
               if(!kb->io_open)
@@ -400,8 +364,8 @@ INLINE bool loop(k_base *kb)
 
   if(!valid(kb->focus) || kb->curr_time - kb->focus.t < kb->bsd4)
     {
-      scan_inputs(kb);
-      scan_outputs(kb);
+      scan_ios(kb, input_stream);
+      scan_ios(kb, output_stream);
 
       if(!kb->io_count[input_stream] && !kb->io_count[output_stream])
         {

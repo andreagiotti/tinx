@@ -341,7 +341,7 @@ extern int yylex \
 #undef YY_DECL
 #endif
 
-#line 126 "ting.l"
+#line 128 "ting.l"
 
 
 #line 348 "ting_lexer.h"

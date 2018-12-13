@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "7.0.0"
-#define VER "3.0.0"
+#define PACK_VER "7.0.1"
+#define VER "3.0.1"
 
 INLINE m_time get_time()
 {
@@ -2210,7 +2210,7 @@ void configure(GtkWidget *widget, s_base *sb)
   GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15, *cb16, *cb17;
   GtkWidget *lbl2, *ent2, *lbl3, *ent3, *lbl4, *ent4, *lbl7, *ent7, *lbl10, *ent10, *lbl11, *ent11, *lbl12, *ent12, *lbl13, *ent13, *lbl14, *ent14, *lbl15, *ent15, *lbl16, *ent16, *lbl17, *ent17,
             *lbl18, *ent18, *lbl19, *ent19, *lbl20, *ent20;
-  GtkWidget *fr1, *fr2, *fr3, *fr4, *sep1, *sep2;
+  GtkWidget *fr1, *fr2, *fr3, *fr4, *sep1;
   GtkWidget *vbox1, *vbox2, *vbox3, *vbox6, *vbox7, *vbox8, *hbox1, *hbox2, *hbox4, *extbox;
   char buf[2];
 
@@ -2411,7 +2411,7 @@ void configure(GtkWidget *widget, s_base *sb)
   vbox7 = gtk_vbox_new(FALSE, 0);
   gtk_container_set_border_width(GTK_CONTAINER(vbox7), 5);
 
-  tabw = gtk_table_new(1, 3, FALSE);
+  tabw = gtk_table_new(1, 5, FALSE);
 
   cb10 = gtk_check_button_new_with_label("External inputs");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb10), sb->cfg.batch_in);
@@ -2427,6 +2427,16 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb9), sb->cfg.sturdy);
   gtk_table_attach_defaults(GTK_TABLE(tabw), cb9, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb9), "clicked", G_CALLBACK(sturdy_box), (gpointer)sb);
+
+  cb14 = gtk_check_button_new_with_label("Display internal signals");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sb->cfg.outint);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb14, 0, 1, 3, 4);
+  g_signal_connect(G_OBJECT(cb14), "clicked", G_CALLBACK(outint_box), (gpointer)sb);
+
+  cb15 = gtk_check_button_new_with_label("Display unknowns as dots");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb15), sb->cfg.draw_undef);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb15, 0, 1, 4, 5);
+  g_signal_connect(G_OBJECT(cb15), "clicked", G_CALLBACK(draw_undef_box), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox7), tabw);
   gtk_box_pack_end(GTK_BOX(hbox4), vbox7, TRUE, TRUE, 0);
@@ -2487,7 +2497,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_container_set_border_width(GTK_CONTAINER(fr3), 5);
   gtk_container_set_border_width(GTK_CONTAINER(vbox3), 5);
 
-  tabh = gtk_table_new(1, 9, FALSE);
+  tabh = gtk_table_new(1, 6, FALSE);
 
   cb16 = gtk_check_button_new_with_label("Optimize joints in intervals");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb16), sb->cfg.seplit_fe);
@@ -2517,20 +2527,6 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb12), sb->cfg.busywait);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb12, 0, 1, 5, 6);
   g_signal_connect(G_OBJECT(cb12), "clicked", G_CALLBACK(busywait_box), (gpointer)sb);
-
-  sep2 = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
-  g_object_set(G_OBJECT(sep2), "height-request", 10, NULL);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), sep2, 0, 1, 6, 7);
-
-  cb14 = gtk_check_button_new_with_label("Display internal signals");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sb->cfg.outint);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb14, 0, 1, 7, 8);
-  g_signal_connect(G_OBJECT(cb14), "clicked", G_CALLBACK(outint_box), (gpointer)sb);
-
-  cb15 = gtk_check_button_new_with_label("Display unknowns as dots");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb15), sb->cfg.draw_undef);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb15, 0, 1, 8, 9);
-  g_signal_connect(G_OBJECT(cb15), "clicked", G_CALLBACK(draw_undef_box), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox3), tabh);
   gtk_container_add(GTK_CONTAINER(fr3), vbox3);

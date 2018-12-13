@@ -13,7 +13,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "7.0.0 MT (multiple cores)"
+#define VER "7.0.1 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -333,72 +333,36 @@ INLINE void process(k_base *kb, event s)
     }
 }
 
-INLINE void scan_inputs(k_base *kb)
+INLINE void scan_ios(k_base *kb, stream_class sclass)
 {
   stream *ios;
 
   assert(kb);
 
-  if(kb->io_stream[input_stream])
-    {
-      if(kb->curr_time < kb->io_stream[input_stream]->deadline)
-        kb->io_stream[input_stream] = kb->io_stream[input_stream]->next_ios;
-      else
-        if(kb->io_stream[input_stream]->io_perform(kb, kb->io_stream[input_stream]))
-          {
-            kb->io_stream[input_stream]->deadline++;
-            kb->io_count[input_stream]--;
+  ios = kb->io_stream[sclass];
 
-            kb->io_stream[input_stream] = kb->io_stream[input_stream]->next_ios;
+  if(ios)
+    {
+      if(kb->curr_time < ios->deadline)
+        kb->io_stream[sclass] = ios->next_ios;
+      else
+        if(ios->io_perform(kb, ios))
+          {
+            ios->deadline++;
+            kb->io_count[sclass]--;
+
+            kb->io_stream[sclass] = ios->next_ios;
           }
         else
-          if(kb->io_stream[input_stream]->open)
-            kb->io_stream[input_stream] = kb->io_stream[input_stream]->next_ios;
+          if(ios->open)
+            kb->io_stream[sclass] = ios->next_ios;
           else
             {
-              ios = kb->io_stream[input_stream];
-              remove_stream(&kb->io_stream[input_stream]);
+              remove_stream(&kb->io_stream[sclass]);
               close_stream(ios, kb->alpha);
 
-              kb->io_num[input_stream]--;
-              kb->io_count[input_stream]--;
-              kb->io_open--;
-
-              if(!kb->io_open)
-                kb->quiet = TRUE;
-            }
-    }
-}
-
-INLINE void scan_outputs(k_base *kb)
-{
-  stream *ios;
-
-  assert(kb);
-
-  if(kb->io_stream[output_stream])
-    {
-      if(kb->curr_time < kb->io_stream[output_stream]->deadline)
-        kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-      else
-        if(kb->io_stream[output_stream]->io_perform(kb, kb->io_stream[output_stream]))
-          {
-            kb->io_stream[output_stream]->deadline++;
-            kb->io_count[output_stream]--;
-
-            kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-          }
-        else
-          if(kb->io_stream[output_stream]->open)
-            kb->io_stream[output_stream] = kb->io_stream[output_stream]->next_ios;
-          else
-            {
-              ios = kb->io_stream[output_stream];
-              remove_stream(&kb->io_stream[output_stream]);
-              close_stream(ios, kb->alpha);
-
-              kb->io_num[output_stream]--;
-              kb->io_count[output_stream]--;
+              kb->io_num[sclass]--;
+              kb->io_count[sclass]--;
               kb->io_open--;
 
               if(!kb->io_open)
@@ -444,8 +408,8 @@ INLINE bool loop_io(k_base *kb)
 
   if(kb->curr_time - kb->anchor_time < kb->bsd4)
     {
-      scan_inputs(kb);
-      scan_outputs(kb);
+      scan_ios(kb, input_stream);
+      scan_ios(kb, output_stream);
 
       if(!kb->io_count[input_stream] && !kb->io_count[output_stream])
         {
@@ -1920,9 +1884,9 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
   kb = open_base(base_name, logfile_name, xref_name,
                  strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, sturdy, busywait, bufexp, max_time, step, prefix, path, alpha, num_threads);
 
-  printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d inputs, %d outputs, %d shared edges (%.3f %%)\n",
+  printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d inputs, %d outputs, %d shared edges (%.3f %%) between %d cores\n",
          kb->perf.edges, kb->perf.nodes, kb->perf.num_nodes[gate], kb->perf.num_nodes[joint], kb->perf.num_nodes[delay], kb->io_num[input_stream], kb->io_num[output_stream], kb->perf.shared,
-         kb->perf.edges? 100.0 * kb->perf.shared / kb->perf.edges : 0);
+         kb->perf.edges? 100.0 * kb->perf.shared / kb->perf.edges : 0, kb->num_threads);
 
   if(state_name)
     {

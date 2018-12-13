@@ -367,8 +367,7 @@ unsigned long int hashnode(char *name);
 INLINE void state(k_base *kb, event s);
 INLINE event choose(k_base *kb);
 INLINE void process(k_base *kb, event s);
-INLINE void scan_inputs(k_base *kb);
-INLINE void scan_outputs(k_base *kb);
+INLINE void scan_ios(k_base *kb, stream_class sclass);
 INLINE bool loop(k_base *kb);
 
 bool input_f(k_base *kb, stream *ios);
