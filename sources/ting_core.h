@@ -219,6 +219,8 @@ constant *name2constant(c_base *cb, char *name, bool create);
 void add_ic(c_base *cb, char *name, bool neg, d_time t);
 void gensym(c_base *cb, char *symbol, char *type, litval val, bool incr);
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param);
+subtreeval at_happen(c_base *cb, btl_specification *spec, int level, int param, bool dual);
+subtreeval since_until(c_base *cb, btl_specification *spec, int level, int param, bool dual);
 subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, d_time t);
 void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp);
 void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp);
