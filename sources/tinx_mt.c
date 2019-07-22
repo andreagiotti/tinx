@@ -8,12 +8,10 @@
 #define INLINE inline
 #define ANSI_FILE_IO
 /* #define UNIX_FILE_IO */
-#define POSIX_IPC_IO
-/* #define UNIX_IPC_IO */
 
 #include "tinx_mt.h"
 
-#define VER "7.0.2 MT (multiple cores)"
+#define VER "7.1.0 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -579,16 +577,82 @@ bool input_f(k_base *kb, stream *ios)
     return FALSE;
 }
 
-bool input_m(k_base *kb, stream *ios)
+bool input_m_posix(k_base *kb, stream *ios)
 {
   event s;
   char c;
 
   s.t = kb->curr_time;
 
-  if(read_message(ios->chan, &c))
+  if(read_message_posix(ios->chan, &c))
     {
       if(errno != EAGAIN)
+        {
+          perror(ios->chan_name);
+          irq = TRUE;
+          return FALSE;
+        }
+
+      ios->errors++;
+    }
+  else
+    ios->errors = 0;
+
+  switch(strchr(kb->alpha, c) - kb->alpha)
+    {
+    case eof_symbol:
+      return FALSE;
+    break;
+
+    case unknown_symbol:
+      return TRUE;
+    break;
+
+    case false_symbol:
+      s.e = ios->ne;
+    break;
+
+    case true_symbol:
+      s.e = ios->e;
+    break;
+
+    case end_symbol:
+      ios->open = FALSE;
+      return FALSE;
+    break;
+
+    case term_symbol:
+      irq = TRUE;
+      return FALSE;
+    break;
+
+    default:
+      fprintf(stderr, "%s, %c (dec %d): Invalid character in stream\n",
+              ios->chan_name, c, c);
+      irq = TRUE;
+      return FALSE;
+    }
+
+  if(valid(s))
+    {
+      safe_state(kb, s);
+
+      return TRUE;
+    }
+  else
+    return FALSE;
+}
+
+bool input_m_sys5(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+
+  s.t = kb->curr_time;
+
+  if(read_message_sys5(ios->chan5, &c))
+    {
+      if(errno != ENOMSG)
         {
           perror(ios->chan_name);
           irq = TRUE;
@@ -703,7 +767,7 @@ bool output_f(k_base *kb, stream *ios)
   return TRUE;
 }
 
-bool output_m(k_base *kb, stream *ios)
+bool output_m_posix(k_base *kb, stream *ios)
 {
   event s;
   char c;
@@ -744,7 +808,74 @@ bool output_m(k_base *kb, stream *ios)
         }
     }
 
-  if(send_message(ios->chan, &c))
+  if(send_message_posix(ios->chan, &c))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->chan_name);
+          irq = TRUE;
+          return FALSE;
+        }
+
+      ios->errors++;
+
+      if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+        {
+          ios->open = FALSE;
+
+          fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+        }
+
+      return FALSE;
+    }
+  else
+    ios->errors = 0;
+
+  return TRUE;
+}
+
+bool output_m_sys5(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+
+  s.t = kb->curr_time;
+  s.e = ios->ne;
+
+  if(is_stated(kb, s))
+    {
+      ios->fails = 0;
+      c = kb->alpha[false_symbol];
+    }
+  else
+    {
+      s.e = ios->e;
+
+      if(is_stated(kb, s))
+        {
+          ios->fails = 0;
+          c = kb->alpha[true_symbol];
+        }
+      else
+        {
+          if(kb->last_far != kb->curr_time)
+            return FALSE;
+          else
+            {
+              ios->fails++;
+
+              if(!kb->max_time && ios->fails > kb->bsd4)
+                {
+                  ios->open = FALSE;
+                  return FALSE;
+                }
+
+              c = kb->alpha[unknown_symbol];
+            }
+        }
+    }
+
+  if(send_message_sys5(ios->chan5, &c))
     {
       if(errno != EAGAIN)
         {
@@ -847,7 +978,7 @@ void trace(k_base *kb, event s, int tid)
       }
 }
 
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, char *prefix, char *path)
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5, char *prefix, char *path)
 {
   stream *ios;
   linkage *pin;
@@ -912,22 +1043,41 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
       strcpy(ios->chan_name, prefix);
       strcat(ios->chan_name, name);
 
-      if(sclass == input_stream)
-        ios->io_perform = &input_m;
-      else
-        ios->io_perform = &output_m;
-
-      ios->chan = add_queue(ios->chan_name, sclass);
-
-      if(failed_queue(ios->chan))
+      if(!sys5)
         {
-          perror(ios->chan_name);
-          exit(EXIT_FAILURE);
+          if(sclass == input_stream)
+            ios->io_perform = &input_m_posix;
+          else
+            ios->io_perform = &output_m_posix;
+
+          ios->chan = add_queue_posix(ios->chan_name, sclass);
+
+          if(failed_queue_posix(ios->chan))
+            {
+              perror(ios->chan_name);
+              exit(EXIT_FAILURE);
+            }
+        }
+      else
+        {
+          if(sclass == input_stream)
+            ios->io_perform = &input_m_sys5;
+          else
+            ios->io_perform = &output_m_sys5;
+
+          ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
+
+          if(failed_queue_sys5(ios->chan5))
+            {
+              perror(ios->chan_name);
+              exit(EXIT_FAILURE);
+            }
         }
     }
 
   ios->deadline = offset;
   ios->file_io = file_io;
+  ios->sys5 = sys5;
   ios->fails = 0;
   ios->errors = 0;
   ios->open = TRUE;
@@ -952,22 +1102,26 @@ void close_stream(stream *ios, char *alpha)
         }
     }
   else
-    {
+    if(!ios->sys5)
+      {
+        if(ios->sclass == output_stream)
+          send_message_posix(ios->chan, &alpha[end_symbol]);
+
+        if(commit_queue_posix(ios->chan))
+          {
+            perror(ios->chan_name);
+            exit(EXIT_FAILURE);
+          }
+
+        if(remove_queue_posix(ios->chan_name))
+          {
+            perror(ios->chan_name);
+            exit(EXIT_FAILURE);
+          }
+      }
+    else
       if(ios->sclass == output_stream)
-        send_message(ios->chan, &alpha[end_symbol]);
-
-      if(commit_queue(ios->chan))
-        {
-          perror(ios->chan_name);
-          exit(EXIT_FAILURE);
-        }
-
-      if(remove_queue(ios->chan_name))
-        {
-          perror(ios->chan_name);
-          exit(EXIT_FAILURE);
-        }
-    }
+        send_message_sys5(ios->chan5, &alpha[end_symbol]);
 
   free(ios);
 }
@@ -1324,8 +1478,8 @@ void assign_threads(k_base *kb)
   kb->perf.shared /= 2;
 }
 
-k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sturdy, bool busywait,
-                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads)
+k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sys5, bool sturdy,
+                  bool busywait, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads)
 {
   k_base *kb;
   FILE *fp;
@@ -1534,7 +1688,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
                 exit(EXIT_FAILURE);
             }
 
-          ios = open_stream(name, sclass, e, kb->offset, (file_io && stype == io_any) || stype == io_file, prefix, path);
+          ios = open_stream(name, sclass, e, kb->offset, (file_io && stype == io_any) || stype == io_file, sys5, prefix, path);
 
           kb->io_num[sclass]++;
           kb->io_open++;
@@ -1648,6 +1802,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->trace_focus = echo_stdout || echo_debug || logfile_name;
   kb->echo_stdout = echo_stdout || echo_debug;
   kb->echo_debug = echo_debug;
+  kb->sys5 = sys5;
   kb->sturdy = sturdy;
   kb->busywait = busywait;
 
@@ -1695,6 +1850,7 @@ void close_base(k_base *kb)
   node *vp, *wp;
   stream *ios, *next_ios;
   stream_class sclass;
+  bool file_io;
   int tid;
 
   for(tid = 0; tid < kb->num_threads; tid++)
@@ -1712,20 +1868,27 @@ void close_base(k_base *kb)
     }
 
   if(!kb->quiet)
-    for(sclass = 0; sclass < STREAM_CLASSES_NUMBER; sclass++)
-      {
-        ios = kb->io_stream[sclass];
-        if(ios)
-          do
-            {
-              next_ios = ios->next_ios;
+    {
+      file_io = TRUE;
+      for(sclass = 0; sclass < STREAM_CLASSES_NUMBER; sclass++)
+        {
+          ios = kb->io_stream[sclass];
+          if(ios)
+            do
+              {
+                next_ios = ios->next_ios;
 
-              close_stream(ios, kb->alpha);
+                file_io &= ios->file_io;
+                close_stream(ios, kb->alpha);
 
-              ios = next_ios;
-            }
-          while(ios != kb->io_stream[sclass]);
-      }
+                ios = next_ios;
+              }
+            while(ios != kb->io_stream[sclass]);
+        }
+
+      if(!file_io && kb->sys5)
+        delete_queues_sys5();
+    }
 
   vp = kb->network;
   while(vp)
@@ -1867,7 +2030,7 @@ void loops_io(thread_arg *tp)
 }
 
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sturdy, bool busywait,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait,
          int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha, int num_threads)
 {
   k_base *kb;
@@ -1882,7 +2045,7 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
   int i, n;
 
   kb = open_base(base_name, logfile_name, xref_name,
-                 strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, sturdy, busywait, bufexp, max_time, step, prefix, path, alpha, num_threads);
+                 strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, sys5, sturdy, busywait, bufexp, max_time, step, prefix, path, alpha, num_threads);
 
   printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d inputs, %d outputs, %d shared edges (%.3f %%) between %d cores\n",
          kb->perf.edges, kb->perf.nodes, kb->perf.num_nodes[gate], kb->perf.num_nodes[joint], kb->perf.num_nodes[delay], kb->io_num[input_stream], kb->io_num[output_stream], kb->perf.shared,
@@ -2008,7 +2171,7 @@ int main(int argc, char **argv)
 {
   char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path;
   char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
-  bool strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sturdy, busywait;
+  bool strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sys5, sturdy, busywait;
   int i, k, n;
   info perf;
   d_time max_time;
@@ -2017,7 +2180,7 @@ int main(int argc, char **argv)
   int num_threads;
 
   base_name = state_name = logfile_name = xref_name = NULL;
-  strictly_causal = soundness_check = echo_stdout = echo_debug = file_io = quiet = hard = sturdy = busywait = FALSE;
+  strictly_causal = soundness_check = echo_stdout = echo_debug = file_io = quiet = hard = sys5 = sturdy = busywait = FALSE;
   bufexp = DEFAULT_BUFEXP;
   max_time = 0;
   origin = 0;
@@ -2035,7 +2198,7 @@ int main(int argc, char **argv)
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-cdDfilqsSvxy] [-a alphabet] [-e prefix] [-g origin] [-I state] [-L log] [-n processes] [-p path] [-r core] [-t step] [-X symbols] [-z horizon] [base]\n",
+              fprintf(stderr, "Usage: %s [-cdDfilqsSvVxy] [-a alphabet] [-e prefix] [-g origin] [-I state] [-L log] [-n processes] [-p path] [-r core] [-t step] [-X symbols] [-z horizon] [base]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -2367,6 +2530,10 @@ int main(int argc, char **argv)
                       soundness_check = TRUE;
                     break;
 
+                    case 'V':
+                      sys5 = TRUE;
+                    break;
+
                     case 'x':
                       if(!xref_name)
                         xref_name = default_xref_name;
@@ -2430,7 +2597,7 @@ int main(int argc, char **argv)
   fflush(stdout);
 
   perf = run(base_name, state_name, logfile_name, xref_name,
-      strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sturdy, busywait, bufexp, max_time, step, origin, prefix, path, alpha, num_threads);
+      strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sys5, sturdy, busywait, bufexp, max_time, step, origin, prefix, path, alpha, num_threads);
 
   printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.3f seconds, %.3f KLIPS, %lu depth (avg %.3f), %lu halts (%.3f %%)\n",
 	irq? "Execution interrupted" : "End of execution",

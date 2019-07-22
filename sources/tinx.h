@@ -22,16 +22,12 @@
 #include <unistd.h>
 #include <sched.h>
 
-#if defined POSIX_IPC_IO
-  #include <mqueue.h>
-#endif
+#include <mqueue.h>
 
-#if defined UNIX_FILE_IO || defined UNIX_IPC_IO
-  #include <fcntl.h>
-  #include <sys/types.h>
-  #include <sys/ipc.h>
-  #include <sys/msg.h>
-#endif
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 
 typedef char bool;
 
@@ -151,60 +147,53 @@ typedef struct linkage
 
 #endif
 
-#if defined POSIX_IPC_IO
+#define MAGIC_NAME "TINX"
+#define MAGIC_PREFIX "/"MAGIC_NAME":"
+#define PERMS 0660
+#define MAX_MESSAGES 10
+#define MSG_SIZE 128
 
-  typedef mqd_t channel;
+#define MAGIC_TOKEN_I 'G'
+#define MAGIC_TOKEN_O 'H'
+#define FAKE_BASE_BITS 2    /* b = 4 = 2^2 bits (should be 36 for exact behaviour), n = 15 (lenght), 2 * b^n - 1 == LONG_MAX */
 
-  channel add_queue(char *name, stream_class sclass);
-  int send_message(channel c, char *a);
-  int read_message(channel c, char *a);
+#define IO_ERR_LIMIT 1000000
 
-  #define failed_queue(C) ((C) < 0)
-  #define commit_queue(C) mq_close(C)
-  #define remove_queue(A) mq_unlink(A)
+typedef mqd_t channel_posix;
 
-  #define MAGIC_NAME "TINX"
-  #define MAGIC_PREFIX "/"MAGIC_NAME":"
-  #define PERMS 0660
-  #define MAX_MESSAGES 10
-  #define MSG_SIZE 128
+channel_posix add_queue_posix(char *name, stream_class sclass);
+int send_message_posix(channel_posix c, char *a);
+int read_message_posix(channel_posix c, char *a);
 
-  #define IO_ERR_LIMIT 1000000
+#define failed_queue_posix(C) ((C) < 0)
+#define commit_queue_posix(C) mq_close(C)
+#define remove_queue_posix(A) mq_unlink(A)
+#define delete_queues_posix() FALSE
 
-#elif defined UNIX_IPC_IO
-
-  typedef struct channel
+typedef struct channel_sys5
   {
     int paddr;
     long int saddr;
-  } channel;
+  } channel_sys5;
 
-  typedef struct message
+typedef struct message
   {
     long mtype;
-    char mtext[1];
+    char mtext;
   } message;
 
-  channel add_queue(char *name, stream_class sclass);
-  int send_message(channel c, char *a);
-  int read_message(channel c, char *a);
+channel_sys5 add_queue_sys5(char *name, stream_class sclass);
+int send_message_sys5(channel_sys5 c, char *a);
+int read_message_sys5(channel_sys5 c, char *a);
+int delete_queues_sys5(void);
 
-  #define failed_queue(C) ((C).paddr < 0)
-  #define commit_queue(C) FALSE
+#define failed_queue_sys5(C) ((C).paddr < 0)
+#define commit_queue_sys5(C) FALSE
+#define remove_queue_sys5(C) FALSE
 
-  int remove_queue(char *name);
+int delete_queues(void);
 
-  #define MAGIC_PREFIX ""
-  #define MAGIC_TOKEN 'G'
-  #define PERMS 0660
-
-  #define FAKE_BASE_BITS 2    /* b = 4 = 2^2 bits (should be 36 for exact behaviour), n = 15 (lenght), 2 * b^n - 1 == LONG_MAX */
-
-  long int queue_key(char *name);
-
-  #define IO_ERR_LIMIT 1000000
-
-#endif
+long int queue_key(char *name);
 
 typedef enum io_type
 {
@@ -226,12 +215,14 @@ struct stream
   char file_name[MAX_STRLEN];
   char chan_name[MAX_STRLEN];
   file fp;
-  channel chan;
+  channel_posix chan;
+  channel_sys5 chan5;
   int fails;
   int errors;
   stream *next_ios;
   stream *prev_ios;
   bool file_io;
+  bool sys5;
   bool open;
   bool (* io_perform)(k_base *kb, stream *ios);
 };
@@ -328,6 +319,7 @@ typedef struct k_base
   bool trace_focus;
   bool echo_stdout;
   bool quiet;
+  bool sys5;
   bool sturdy;
   bool busywait;
   bool io_busy;
@@ -375,7 +367,7 @@ bool output_f(k_base *kb, stream *ios);
 bool input_m(k_base *kb, stream *ios);
 bool output_m(k_base *kb, stream *ios);
 void trace(k_base *kb, event s);
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, char *prefix, char *path);
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5, char *prefix, char *path);
 void close_stream(stream *ios, char *alpha);
 void remove_stream(stream **handle);
 
@@ -385,14 +377,14 @@ void free_node(node *vp);
 node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
-                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sturdy, bool busywait,
+                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sys5, bool sturdy, bool busywait,
                   int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha);
 void close_base(k_base *kb);
 int init_state(k_base *kb, char *state_name);
 
 void trap(void);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool busywait,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait,
          int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha);
 
 /* End of protos */

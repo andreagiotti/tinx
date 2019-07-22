@@ -3,8 +3,9 @@
   Design & coding by Andrea Giotti, 2017
 */
 
-#define ANSI_FILE_IO
-#define POSIX_IPC_IO
+#if !defined UNIX_FILE_IO
+  #define ANSI_FILE_IO
+#endif
 
 #include "tinx_mt.h"
 

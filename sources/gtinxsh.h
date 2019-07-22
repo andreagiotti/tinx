@@ -38,6 +38,7 @@
 
 #define TITLE "Temporal Inference Network eXecutor Suite"
 #define CONFIG_TITLE "Configuration"
+#define PROB_TITLE "Probabilities"
 #define BANNER "Temporal Inference Network eXecutor Suite "PACK_VER", graphical shell "VER"\n" \
                "Design & coding by Andrea Giotti, 1998-1999, 2016-2018\n\n" \
                "A real time inference engine for temporal logic specifications, which is able to process and generate any binary signal through POSIX IPC or files.\n" \
@@ -54,6 +55,8 @@
 #define WINDOW_HEIGHT 512
 #define CONFIG_WINDOW_WIDTH 512
 #define CONFIG_WINDOW_HEIGHT 512
+#define PROB_WINDOW_WIDTH 128
+#define PROB_WINDOW_HEIGHT 64
 
 #define GRAPHICS_HEIGHT (WINDOW_HEIGHT / 2)
 #define TEXT_HEIGHT (WINDOW_HEIGHT / 3)
@@ -108,6 +111,7 @@ typedef struct config
     bool file_io;
     bool quiet;
     bool hard;
+    bool sys5;
     bool sturdy;
     bool busywait;
     bool use_xref;
@@ -121,6 +125,9 @@ typedef struct config
     bool draw_undef;
     int horizon_size;
     int display_rows;
+    char editor_name[MAX_STRLEN];
+    float inprob[MAX_FILES];
+    int fn;
   } config;
 
 typedef struct s_base
@@ -141,8 +148,10 @@ typedef struct s_base
     int maxlen;
     file fp[MAX_FILES];
     file gp[MAX_FILES];
-    channel cp[MAX_FILES];
-    channel dp[MAX_FILES];
+    channel_posix cp[MAX_FILES];
+    channel_posix dp[MAX_FILES];
+    channel_sys5 cp5[MAX_FILES];
+    channel_sys5 dp5[MAX_FILES];
     char xbuffer[XBUFSIZE];
     int xstart;
     int xend;
@@ -155,12 +164,14 @@ typedef struct s_base
     bool regenerate;
     bool changed;
     bool configured;
+    bool changeprob;
     config cfg;
     m_time cp_step;
     d_time cp_max_time;
     bool cp_echo_stdout;
     bool cp_file_io;
     bool cp_quiet;
+    bool cp_sys5;
     bool cp_batch_in;
     bool cp_batch_out;
     int cp_horizon_size;
@@ -172,12 +183,15 @@ typedef struct s_base
     pthread_mutex_t mutex_sent;
     GtkWindow *window;
     GtkWindow *config_window;
+    GtkWindow *prob_window;
     GtkDrawingArea *drawingarea;
     GtkTextView *textarea;
     GtkButton *run_button;
     GtkButton *save_button;
     GtkButton *erase_button;
     GtkButton *dummy_button;
+    GtkButton *edit_button;
+    GtkButton *clear_button;
     GtkMenuItem *run_menu;
     GtkMenuItem *save_menu;
     GtkMenuItem *erase_menu;
@@ -185,6 +199,7 @@ typedef struct s_base
     GtkLabel *timer;
     GtkLabel *reg_warning;
     GtkImage *reg_warning_icon;
+    GtkWidget *inprob_widget[MAX_FILES];
   } s_base;
 
 /* Protos */
@@ -235,7 +250,8 @@ void print(s_base *sb, char *string, ...);
 void print_add(s_base *sb, char *string, ...);
 pid_t pidof(s_base *sb, char *name);
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge, bool outaux, bool outint,
-         int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, float prob, bool batch_in, bool batch_out, bool draw_undef);
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge,
+         bool outaux, bool outint, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, float prob,
+         bool batch_in, bool batch_out, bool draw_undef);
 
 

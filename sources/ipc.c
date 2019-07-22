@@ -1,18 +1,15 @@
 
 /* Linux IPC interface */
 
-#define ANSI_FILE_IO
-/* #define UNIX_FILE_IO */
-#define POSIX_IPC_IO
-/* #define UNIX_IPC_IO */
+#if !defined UNIX_FILE_IO
+  #define ANSI_FILE_IO
+#endif
 
 #include "tinx.h"
 
-#if defined POSIX_IPC_IO
-
-channel add_queue(char *name, stream_class sclass)
+channel_posix add_queue_posix(char *name, stream_class sclass)
 {
-  channel c;
+  channel_posix c;
   struct mq_attr attr;
 
   attr.mq_flags = O_NONBLOCK;
@@ -25,7 +22,7 @@ channel add_queue(char *name, stream_class sclass)
   return c;
 }
 
-int send_message(channel c, char *a)
+int send_message_posix(channel_posix c, char *a)
 {
   char buffer[MSG_SIZE];
 
@@ -34,7 +31,7 @@ int send_message(channel c, char *a)
   return mq_send(c, buffer, MSG_SIZE, 0);
 }
 
-int read_message(channel c, char *a)
+int read_message_posix(channel_posix c, char *a)
 {
   char buffer[MSG_SIZE];
 
@@ -50,8 +47,6 @@ int read_message(channel c, char *a)
   return 0;
 }
 
-#elif defined UNIX_IPC_IO
-
 long int queue_key(char *name)
   {
     long int k;
@@ -63,10 +58,10 @@ long int queue_key(char *name)
         k <<= FAKE_BASE_BITS;
 
         if(isdigit(*name))
-          k += *name - '0';
+          k ^= *name - '0';
         else
           if(isalpha(*name))
-            k += toupper(*name) - 'A' + 10;
+            k ^= toupper(*name) - 'A' + 10;
 
         name++;
       }
@@ -74,38 +69,38 @@ long int queue_key(char *name)
     return k;
   }
 
-channel add_queue(char *name, stream_class sclass)
+channel_sys5 add_queue_sys5(char *name, stream_class sclass)
 {
-  channel c;
+  channel_sys5 c;
 
-  c.paddr = msgget(ftok(".", MAGIC_TOKEN), IPC_CREAT | PERMS);
+  c.paddr = msgget(ftok(".", sclass == input_stream? MAGIC_TOKEN_I : MAGIC_TOKEN_O), IPC_CREAT | PERMS);
   c.saddr = queue_key(name) % LONG_MAX;
 
   return c;
 }
 
-int send_message(channel c, char *a)
+int send_message_sys5(channel_sys5 c, char *a)
 {
   message qbuf;
 
   qbuf.mtype = c.saddr;
-  *qbuf.mtext = *a;
+  qbuf.mtext = *a;
 
-  return msgsnd(c.paddr, (message *)&qbuf, 1, 0);
+  return msgsnd(c.paddr, &qbuf, 1, IPC_NOWAIT);
 }
 
-int read_message(channel c, char *a)
+int read_message_sys5(channel_sys5 c, char *a)
 {
   message qbuf;
   int rv;
 
   qbuf.mtype = c.saddr;
 
-  rv = msgrcv(c.paddr, (message *)&qbuf, 1, c.saddr, IPC_NOWAIT);
+  rv = msgrcv(c.paddr, &qbuf, 1, c.saddr, IPC_NOWAIT);
 
   if(rv == 1)
     {
-      *a = *qbuf.mtext;
+      *a = qbuf.mtext;
 
       return 0;
     }
@@ -115,16 +110,26 @@ int read_message(channel c, char *a)
   return rv;
 }
 
-int remove_queue(char *name)
+int delete_queues_sys5()
 {
-  int paddr;
+  int paddr, rv;
 
-  paddr = msgget(ftok(".", MAGIC_TOKEN), IPC_CREAT | PERMS);
+  paddr = msgget(ftok(".", MAGIC_TOKEN_I), IPC_CREAT | PERMS);
   if(paddr < 0)
     return paddr;
 
-  return msgctl(paddr, IPC_RMID, 0);
-}
+  rv = msgctl(paddr, IPC_RMID, NULL);
+  if(rv)
+    return rv;
 
-#endif
+  paddr = msgget(ftok(".", MAGIC_TOKEN_O), IPC_CREAT | PERMS);
+  if(paddr < 0)
+    return paddr;
+
+  rv = msgctl(paddr, IPC_RMID, NULL);
+  if(rv)
+    return rv;
+
+  return 0;
+}
 
