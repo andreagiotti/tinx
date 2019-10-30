@@ -1,0 +1,39 @@
+/*
+  Display simulator by Andrea Giotti v1.1
+*/
+
+define len = 45;
+
+input switch;
+aux active, up_active, keep_active;
+
+iter(k on 8)
+	output [packed] out(k);
+
+iter(i on len)
+{
+aux state(i);
+iter(k on 8)
+	aux seq1(i, k);
+}
+
+iter(k on 8) aux seq2(0, k);
+
+init ~ active @ 0;
+
+up_active == ~ active & switch;
+keep_active == active & ~ switch;
+
+active @ 1 == up_active | keep_active;
+
+iter(i on len - 1)
+	state(i + 1) @ 1 <-- state(i) & keep_active;
+state(0) @ 1 <-- (state(len - 1) & keep_active) | up_active;
+
+forall(state(i) --> forall(out(k) == seq1(i, k), k on 8), i on len);
+~ active --> forall(out(k) == seq2(0, k), k on 8);
+
+code(seq1, " The quick brown fox jumps over the lazy dog ");
+code(seq2, "*");
+
+

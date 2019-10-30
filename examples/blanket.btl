@@ -1,0 +1,44 @@
+/*
+  Advanced sequence recognizer by Andrea Giotti v1.0
+*/
+
+define l = 2, m = 2, n = 7;
+
+iter(k on 8)
+{
+	input [packed] instream(k);
+	output [packed] echostream(k), outstream(k);
+
+	init ~ instream(k) @ [-l, 0);
+
+	iter(i on l)
+		aux beginstr(i, k);
+
+	iter(j on m)
+		aux endstr(j, k);
+
+	iter(h on n)
+		aux substr(h, k);
+}
+
+aux begin, end, match, phase;
+
+init ~ match @ -l;
+
+begin == forall(forall(instream(k) == beginstr(i, k), k on 8) @ i - (l - 1), i on l);
+end == forall(forall(instream(k) == endstr(j, k), k on 8) @ j - (l + m - 1), j on m);
+
+match == since(begin, ~ end);
+
+phase <-- (~ match @ -1 & match) | (match @ [-n, 0] & phase @ -n);
+phase --> forall((match @ [-h, 0] --> forall(outstream(k) == substr(h, k), k on 8)) @ h, h on n);
+
+~ match --> forall(outstream(k) == instream(k) @ - (l - 1), k on 8);
+
+forall(echostream(k) == instream(k), k on 8);
+
+code(beginstr, "/*");
+code(endstr, "*/");
+code(substr, "_BLANK_");
+
+
