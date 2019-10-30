@@ -2,7 +2,7 @@
 /*
   GTINXSH - Temporal Inference Network eXecutor Suite
   Design & coding by Andrea Giotti, 1998-1999
-  Revised 2016-2018
+  Revised 2016-2019
 */
 
 #define NDEBUG
@@ -14,8 +14,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "7.3.1"
-#define VER "3.3.1"
+#define PACK_VER "8.3.1"
+#define VER "3.7.3"
 
 INLINE m_time get_time()
 {
@@ -26,33 +26,47 @@ INLINE m_time get_time()
   return ts.tv_sec + 0.000000001 * ts.tv_nsec;
 }
 
-void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int width, int height, char truth)
+void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int width, int height, char truth, bool text)
 {
-  float rectw, recth;
+  float rectw, recth, fonth;
+  char buffer[2];
 
   recth = (float)height / min(sb->fn + sb->gn, sb->cp_display_rows);
   rectw = (float)width / (sb->cp_horizon_size - 1);
 
-  switch(truth)
-   {
-     case DISPLAY_HI_CHAR:
-       cairo_rectangle(cr, round(offset_x + (x + BORDER_TRUE) * rectw), round(offset_y + (y + BORDER_TRUE) * recth), round((1 - 2 * BORDER_TRUE) * rectw), round((1 - 2 * BORDER_TRUE) * recth));
-     break;
+  if(!text)
+    {
+      switch(truth)
+       {
+         case DISPLAY_HI_CHAR:
+           cairo_rectangle(cr, round(offset_x + (x + BORDER_TRUE) * rectw), round(offset_y + (y + BORDER_TRUE) * recth), round((1 - 2 * BORDER_TRUE) * rectw), round((1 - 2 * BORDER_TRUE) * recth));
+         break;
 
-     case DISPLAY_LO_CHAR:
-       cairo_rectangle(cr, round(offset_x + (x + BORDER_FALSE) * rectw), round(offset_y + (y + BORDER_FALSE) * recth), round((1 - 2 * BORDER_FALSE) * rectw), round((1 - 2 * BORDER_FALSE) * recth));
-     break;
+         case DISPLAY_LO_CHAR:
+           cairo_rectangle(cr, round(offset_x + (x + BORDER_FALSE) * rectw), round(offset_y + (y + BORDER_FALSE) * recth), round((1 - 2 * BORDER_FALSE) * rectw), round((1 - 2 * BORDER_FALSE) * recth));
+         break;
 
-     case DISPLAY_UNKNOWN_CHAR:
-       if(sb->cfg.draw_undef)
-         cairo_rectangle(cr, round(offset_x + (x + 0.5) * rectw - 0.5), round(offset_y + (y + 0.5) * recth - 0.5), 1, 1);
-     break;
+         case DISPLAY_UNKNOWN_CHAR:
+           if(sb->cfg.draw_undef)
+             cairo_rectangle(cr, round(offset_x + (x + 0.5) * rectw - 0.5), round(offset_y + (y + 0.5) * recth - 0.5), 1, 1);
+         break;
 
-     case DISPLAY_EMPTY_CHAR:
-     break;
-   }
+         case DISPLAY_EMPTY_CHAR:
+         break;
+       }
 
-  cairo_fill(cr);
+      cairo_fill(cr);
+    }
+  else
+    if(isprint(truth))
+      {
+        fonth = min(FONT_SIZE * recth, MAX_FONT_PIXELS);
+        buffer[0] = truth;
+        buffer[1] = '\0';
+
+        cairo_move_to(cr, round(offset_x + x * rectw), round(offset_y + (y + 0.5) * recth + fonth / 4));
+        cairo_show_text(cr, buffer);
+      }
 }
 
 gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
@@ -111,14 +125,17 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
   cairo_rectangle(dr, 0, 0, width, height);
   cairo_fill(dr);
 
-  cairo_set_source_rgb(dr, 1, 0, 0);
-
   row = 0;
   for(i = 0; i < fn1; i++)
     {
+      if(!sb->fpacked[fpos + i])
+        cairo_set_source_rgb(dr, 1, 0, 0);
+      else
+        cairo_set_source_rgb(dr, 1, 0.5, 0);
+
       col = 0;
       for(k = t; k < t + (sb->cp_horizon_size - 1); k++)
-        plot(dr, sb, col++, row, round(offset), round(offset), round(offset_x1 - offset), round(height - 2 * offset), sb->memory_f[fpos + i][k % sb->cp_horizon_size]);
+        plot(dr, sb, col++, row, round(offset), round(offset), round(offset_x1 - offset), round(height - 2 * offset), sb->memory_f[fpos + i][k % sb->cp_horizon_size], sb->fpacked[fpos + i]);
 
       cairo_move_to(dr, round(offset_x2), round(offset + (row + 0.5) * recth + fonth / 4));
       cairo_show_text(dr, sb->fnames[fpos + i]);
@@ -131,25 +148,28 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
       if(sb->gaux[gpos + i])
         cairo_set_source_rgb(dr, 0, 0.75, 0.75);
       else
-        cairo_set_source_rgb(dr, 0, 1, 0);
+        if(!sb->gpacked[gpos + i])
+          cairo_set_source_rgb(dr, 0, 1, 0);
+        else
+          cairo_set_source_rgb(dr, 1, 1, 0);
 
       col = 0;
       for(k = t; k < t + (sb->cp_horizon_size - 1); k++)
-        plot(dr, sb, col++, row, round(offset), round(offset), round(offset_x1 - offset), round(height - 2 * offset), sb->memory_g[gpos + i][k % sb->cp_horizon_size]);
+        plot(dr, sb, col++, row, round(offset), round(offset), round(offset_x1 - offset), round(height - 2 * offset), sb->memory_g[gpos + i][k % sb->cp_horizon_size], sb->gpacked[gpos + i]);
 
       cairo_move_to(dr, round(offset_x2), round(offset + (row + 0.5) * recth + fonth / 4));
       cairo_show_text(dr, sb->gnames[gpos + i]);
 
       c = sb->memory_g[gpos + i][(t + (sb->cp_horizon_size - 2)) % sb->cp_horizon_size];
 
-      if(c == DISPLAY_EMPTY_CHAR || c == DISPLAY_UNKNOWN_CHAR)
+      if(!sb->gsync[gpos + i] || (!sb->gpacked[gpos + i] && c == DISPLAY_UNKNOWN_CHAR))
         {
           cairo_set_source_rgb(dr, 1, 1, 0);
 
           cairo_arc(dr, round((offset_x1 + offset_x2) / 2), round(offset + (row + 0.5) * recth), round(BALL_RATIO * fonth / 2), 0, 2 * G_PI);
           cairo_fill(dr);
 
-          if(c == DISPLAY_UNKNOWN_CHAR)
+          if(!sb->gpacked[gpos + i] && c == DISPLAY_UNKNOWN_CHAR)
             {
               cairo_set_source_rgb(dr, 0, 0, 0);
 
@@ -206,6 +226,7 @@ void update_drawing(s_base *sb)
 
 void tintloop(s_base *sb)
 {
+  bool sync_char[MAX_FILES][MAX_HORIZON_SIZE];
   d_time tau_f[MAX_FILES], tau_g[MAX_FILES];
   char ic, oc;
   int i;
@@ -224,10 +245,13 @@ void tintloop(s_base *sb)
       sb->time = get_time() - sb->time_base;
       if(sb->time >= sb->t * sb->cp_step * (1 + sb->cfg.correction))
         {
-          for(i = 0; i < sb->gn; i++)
-            sb->memory_g[i][sb->t % sb->cp_horizon_size] = DISPLAY_EMPTY_CHAR;
-
           sb->t++;
+
+          for(i = 0; i < sb->gn; i++)
+            {
+              sb->memory_g[i][(sb->t + (sb->cp_horizon_size - 1)) % sb->cp_horizon_size] = DISPLAY_EMPTY_CHAR;
+              sync_char[i][(sb->t + (sb->cp_horizon_size - 1)) % sb->cp_horizon_size] = FALSE;
+            }
         }
 
       if(!sb->cp_batch_in)
@@ -266,7 +290,10 @@ void tintloop(s_base *sb)
 
                   if(oc != EOF)
                     {
-                      sb->memory_f[i][tau_f[i] % sb->cp_horizon_size] = (oc == sb->cfg.alpha[false_symbol])? DISPLAY_LO_CHAR : DISPLAY_HI_CHAR;
+                      if(!sb->fpacked[i])
+                        sb->memory_f[i][tau_f[i] % sb->cp_horizon_size] = (oc == sb->cfg.alpha[false_symbol])? DISPLAY_LO_CHAR : DISPLAY_HI_CHAR;
+                      else
+                        sb->memory_f[i][tau_f[i] % sb->cp_horizon_size] = oc;
 
                       tau_f[i]++;
                     }
@@ -302,33 +329,42 @@ void tintloop(s_base *sb)
 
                   if(ic != EOF)
                     {
-                      switch(strchr(sb->cfg.alpha, ic) - sb->cfg.alpha)
+                      if(!sb->gpacked[i])
                         {
-                          case unknown_symbol:
-                            sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CHAR;
-                          break;
+                          switch(strchr(sb->cfg.alpha, ic) - sb->cfg.alpha)
+                            {
+                              case unknown_symbol:
+                                sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CHAR;
+                              break;
 
-                          case false_symbol:
-                            sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = DISPLAY_LO_CHAR;
-                          break;
+                              case false_symbol:
+                                sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = DISPLAY_LO_CHAR;
+                              break;
 
-                          case true_symbol:
-                            sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = DISPLAY_HI_CHAR;
-                          break;
+                              case true_symbol:
+                                sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = DISPLAY_HI_CHAR;
+                              break;
 
-                          case end_symbol:
-                            sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = DISPLAY_EMPTY_CHAR;
-                          break;
+                              case end_symbol:
+                                sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = DISPLAY_EMPTY_CHAR;
+                              break;
 
-                          default:
-                            print(sb, "%s, %c (dec %d): Invalid character in stream\n", sb->gnames[i], ic, ic);
-                            pthread_exit(NULL);
-                          break;
+                              default:
+                                print(sb, "%s, %c (dec %d): Invalid character in stream\n", sb->gnames[i], ic, ic);
+                                pthread_exit(NULL);
+                              break;
+                            }
                         }
+                      else
+                        sb->memory_g[i][tau_g[i] % sb->cp_horizon_size] = ic;
+
+                      sync_char[i][tau_g[i] % sb->cp_horizon_size] = TRUE;
 
                       tau_g[i]++;
                     }
                 }
+
+              sb->gsync[i] = sync_char[i][(sb->t + (sb->cp_horizon_size - 2)) % sb->cp_horizon_size];
             }
         }
     }
@@ -420,7 +456,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
   char cmd[MAX_STRLEN_IF], arg[MAX_STRLEN_IF];
   pthread_attr_t attributes;
-  int i, k, len, count, tot_rows, page_rows;
+  int i, k, len, count, tot_rows, page_rows, packed, packedbit;
   char c, ic, oc;
   io_type stype;
   pid_t pid;
@@ -472,11 +508,14 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
                 return;
               }
 
-            sb->fn = sb->gn = 0;
+            sb->fn = 0;
+            sb->gn = 0;
             sb->pos = 0;
             sb->maxlen = 0;
 
             stype = io_any;
+            packed = 0;
+            packedbit = 0;
 
             fscanf(bp, " "SKIP_FMT" ");
 
@@ -488,108 +527,116 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
               }
 
             file_io = TRUE;
-            while(fscanf(bp, " "OP_FMT" "FUN_FMT" ( %*[^"SEPARATORS"] , %*[^"SEPARATORS"] ) # %*d / %u @ %*ld ", &c, name, &stype) >= 2)
+            while(fscanf(bp, " "OP_FMT" "FUN_FMT" ( %*[^"SEPARATORS"] , %*[^"SEPARATORS"] ) # %*d / %u , %u , %u , %*u @ %*ld ", &c, name, &stype, &packed, &packedbit) >= 2)
               {
-                switch(c)
+                if(!packed || !packedbit)
                   {
-                    case '!':
-                      if(!sb->cp_batch_in)
-                        {
-                          if(sb->fn >= MAX_FILES)
+                    switch(c)
+                      {
+                        case '!':
+                          if(!sb->cp_batch_in)
                             {
-                              print(sb, "%s: Too many input signals\n", file_name);
-                              sb->rs = stopped;
-                              return;
-                            }
-
-                          sb->ffile_io[sb->fn] = (sb->cp_file_io && stype == io_any) || stype == io_file;
-                          file_io &= sb->ffile_io[sb->fn];
-
-                          if(sb->ffile_io[sb->fn])
-                            {
-                              if(*sb->cfg.path)
+                              if(sb->fn >= MAX_FILES)
                                 {
-                                  strcpy(sb->fnames[sb->fn], sb->cfg.path);
-                                  strcat(sb->fnames[sb->fn], "/");
+                                  print(sb, "%s: Too many input signals\n", file_name);
+                                  sb->rs = stopped;
+                                  return;
+                                }
+
+                              sb->ffile_io[sb->fn] = (sb->cp_file_io && stype == io_any) || stype == io_file;
+                              file_io &= sb->ffile_io[sb->fn];
+
+                              if(sb->ffile_io[sb->fn])
+                                {
+                                  if(*sb->cfg.path)
+                                    {
+                                      strcpy(sb->fnames[sb->fn], sb->cfg.path);
+                                      strcat(sb->fnames[sb->fn], "/");
+                                    }
+                                  else
+                                    *sb->fnames[sb->fn] = '\0';
+
+                                  strcat(sb->fnames[sb->fn], name);
+                                  strcat(sb->fnames[sb->fn], STREAM_EXT);
                                 }
                               else
-                                *sb->fnames[sb->fn] = '\0';
-
-                              strcat(sb->fnames[sb->fn], name);
-                              strcat(sb->fnames[sb->fn], STREAM_EXT);
-                            }
-                          else
-                            {
-                              strcpy(sb->fnames[sb->fn], sb->cfg.prefix);
-                              strcat(sb->fnames[sb->fn], name);
-
-                              if(!sb->cp_sys5)
-                                remove_queue_posix(sb->fnames[sb->fn]);
-                            }
-
-                          len = strlen(sb->fnames[sb->fn]);
-                          if(sb->maxlen < len)
-                            sb->maxlen = len;
-
-                          sb->fn++;
-                        }
-                    break;
-
-                    case '?':
-                    case '.':
-                      if(!sb->cp_batch_out)
-                        {
-                          if(sb->gn >= MAX_FILES)
-                            {
-                              print(sb, "%s: Too many output signals\n", file_name);
-                              sb->rs = stopped;
-                              return;
-                            }
-
-                          sb->gfile_io[sb->gn] = (sb->cp_file_io && stype == io_any) || stype == io_file;
-                          file_io &= sb->gfile_io[sb->gn];
-
-                          if(sb->gfile_io[sb->gn])
-                            {
-                              if(*sb->cfg.path)
                                 {
-                                  strcpy(sb->gnames[sb->gn], sb->cfg.path);
-                                  strcat(sb->gnames[sb->gn], "/");
+                                  strcpy(sb->fnames[sb->fn], sb->cfg.prefix);
+                                  strcat(sb->fnames[sb->fn], name);
+
+                                  if(!sb->cp_sys5)
+                                    remove_queue_posix(sb->fnames[sb->fn]);
+                                }
+
+                              sb->fpacked[sb->fn] = packed;
+
+                              len = strlen(sb->fnames[sb->fn]);
+                              if(sb->maxlen < len)
+                                sb->maxlen = len;
+
+                              sb->fn++;
+                            }
+                        break;
+
+                        case '?':
+                        case '.':
+                          if(!sb->cp_batch_out)
+                            {
+                              if(sb->gn >= MAX_FILES)
+                                {
+                                  print(sb, "%s: Too many output signals\n", file_name);
+                                  sb->rs = stopped;
+                                  return;
+                                }
+
+                              sb->gfile_io[sb->gn] = (sb->cp_file_io && stype == io_any) || stype == io_file;
+                              file_io &= sb->gfile_io[sb->gn];
+
+                              if(sb->gfile_io[sb->gn])
+                                {
+                                  if(*sb->cfg.path)
+                                    {
+                                      strcpy(sb->gnames[sb->gn], sb->cfg.path);
+                                      strcat(sb->gnames[sb->gn], "/");
+                                    }
+                                  else
+                                    *sb->gnames[sb->gn] = '\0';
+
+                                  strcat(sb->gnames[sb->gn], name);
+                                  strcat(sb->gnames[sb->gn], STREAM_EXT);
+
+                                  clean_file(sb->gnames[sb->gn]);
                                 }
                               else
-                                *sb->gnames[sb->gn] = '\0';
+                                {
+                                  strcpy(sb->gnames[sb->gn], sb->cfg.prefix);
+                                  strcat(sb->gnames[sb->gn], name);
 
-                              strcat(sb->gnames[sb->gn], name);
-                              strcat(sb->gnames[sb->gn], STREAM_EXT);
+                                  if(!sb->cp_sys5)
+                                    remove_queue_posix(sb->gnames[sb->gn]);
+                                }
 
-                              clean_file(sb->gnames[sb->gn]);
+                              sb->gpacked[sb->gn] = packed;
+                              sb->gaux[sb->gn] = (c == '.');
+
+                              len = strlen(sb->gnames[sb->gn]);
+                              if(sb->maxlen < len)
+                                sb->maxlen = len;
+
+                              sb->gn++;
                             }
-                          else
-                            {
-                              strcpy(sb->gnames[sb->gn], sb->cfg.prefix);
-                              strcat(sb->gnames[sb->gn], name);
+                        break;
 
-                              if(!sb->cp_sys5)
-                                remove_queue_posix(sb->gnames[sb->gn]);
-                            }
-
-                          sb->gaux[sb->gn] = (c == '.');
-
-                          len = strlen(sb->gnames[sb->gn]);
-                          if(sb->maxlen < len)
-                            sb->maxlen = len;
-
-                          sb->gn++;
-                        }
-                    break;
-
-                    default:
-                      print(sb, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
-                      sb->rs = stopped;
-                    return;
+                        default:
+                          print(sb, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
+                          sb->rs = stopped;
+                        return;
+                      }
                   }
 
                 stype = io_any;
+                packed = 0;
+                packedbit = 0;
               }
 
             if(ferror(bp))
@@ -840,7 +887,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
                       {
                         if(sb->fp[i])
                           {
-                            if(put_file(sb->fp[i], &oc))
+                            if(!sb->fpacked[i] && put_file(sb->fp[i], &oc))
                               {
                                 print_error(sb, sb->fnames[i]);
                                 break;
@@ -858,7 +905,8 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
                         {
                           if(!failed_queue_posix(sb->cp[i]))
                             {
-                              send_message_posix(sb->cp[i], &oc);
+                              if(!sb->fpacked[i])
+                                send_message_posix(sb->cp[i], &oc);
 
                               if(commit_queue_posix(sb->cp[i]))
                                 {
@@ -868,7 +916,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
                             }
                         }
                       else
-                        if(!failed_queue_sys5(sb->cp5[i]))
+                        if(!failed_queue_sys5(sb->cp5[i]) && !sb->fpacked[i])
                           send_message_sys5(sb->cp5[i], &oc);
                   }
               }
@@ -883,14 +931,17 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
                       {
                         if(sb->gfile_io[i])
                           {
-                            if(get_file(sb->gp[i], &ic) && file_error(sb->gp[i]))
+                            if(sb->gp[i])
                               {
-                                print_error(sb, sb->gnames[i]);
-                                break;
-                              }
+                                if(get_file(sb->gp[i], &ic) && file_error(sb->gp[i]))
+                                  {
+                                    print_error(sb, sb->gnames[i]);
+                                    break;
+                                  }
 
-                            if(ic == EOF)
-                              reset_file(sb->gp[i]);
+                                if(ic == EOF)
+                                  reset_file(sb->gp[i]);
+                              }
                           }
                         else
                           if(!sb->cp_sys5)
@@ -898,7 +949,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
                           else
                             read_message_sys5(sb->dp5[i], &ic);
 
-                        if(ic == sb->cfg.alpha[end_symbol])
+                        if(!sb->gpacked[i] && ic == sb->cfg.alpha[end_symbol])
                           count += TAIL_LEN;
                         else
                           if(ic != EOF)
@@ -1059,6 +1110,9 @@ void gen_button_clicked(GtkWidget *widget, s_base *sb)
   if(sb->cfg.merge)
     strcat(cmd, " -u");
 
+  if(sb->cfg.constout)
+    strcat(cmd, " -k");
+
   if(sb->cfg.outaux)
     strcat(cmd, " -b");
 
@@ -1171,6 +1225,24 @@ void edit_button_clicked(GtkWidget *widget, s_base *sb)
       strcat(cmd, " '");
       strcat(cmd, sb->cfg.source_name);
       strcat(cmd, SOURCE_EXT"' &");
+
+      system(cmd);
+    }
+
+  pthread_mutex_unlock(&sb->mutex_button);
+}
+
+void help_button_clicked(GtkWidget *widget, s_base *sb)
+{
+  char cmd[MAX_STRLEN_IF];
+
+  pthread_mutex_lock(&sb->mutex_button);
+
+  if(*sb->cfg.viewer_name)
+    {
+      strcpy(cmd, CMD_PATH);
+      strcat(cmd, sb->cfg.viewer_name);
+      strcat(cmd, " "HELP_FILE" &");
 
       system(cmd);
     }
@@ -1510,6 +1582,30 @@ void merge_box(GtkWidget *widget, s_base *sb)
     }
 }
 
+void constout_box(GtkWidget *widget, s_base *sb)
+{
+  if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
+    sb->cfg.constout = TRUE;
+  else
+    sb->cfg.constout = FALSE;
+
+  if(!sb->regenerate)
+    {
+      sb->regenerate = TRUE;
+      gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
+      gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
+    }
+
+  if(!sb->changed)
+    {
+      sb->changed = TRUE;
+
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+      if(sb->save_button)
+        gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+    }
+}
+
 void outaux_box(GtkWidget *widget, s_base *sb)
 {
   if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
@@ -1768,6 +1864,31 @@ void editor_fname(GtkWidget *widget, s_base *sb)
     }
 }
 
+void viewer_fname(GtkWidget *widget, s_base *sb)
+{
+  strcpy(sb->cfg.viewer_name, gtk_entry_get_text(GTK_ENTRY(widget)));
+
+  if(*sb->cfg.viewer_name)
+    {
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->help_button), TRUE);
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->help_menu), TRUE);
+    }
+  else
+    {
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->help_button), FALSE);
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->help_menu), FALSE);
+    }
+
+  if(!sb->changed)
+    {
+      sb->changed = TRUE;
+
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+      if(sb->save_button)
+        gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+    }
+}
+
 void false_sym(GtkWidget *widget, s_base *sb)
 {
   strncpy(&sb->cfg.alpha[false_symbol], gtk_entry_get_text(GTK_ENTRY(widget)), 1);
@@ -1883,6 +2004,13 @@ gboolean include_path_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 gboolean editor_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
   gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.editor_name);
+
+  return FALSE;
+}
+
+gboolean viewer_default(GtkWidget *widget, cairo_t *cr, s_base *sb)
+{
+  gtk_entry_set_text(GTK_ENTRY(widget), sb->cfg.viewer_name);
 
   return FALSE;
 }
@@ -2402,7 +2530,7 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
   FILE *bp;
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
   char fnames[MAX_FILES][MAX_STRLEN];
-  int fn, i;
+  int fn, i, packed, packedbit;
   char c;
   GtkWidget *window;
   GtkWidget *tabdyn;
@@ -2432,6 +2560,9 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
 
   fn = 0;
 
+  packed = 0;
+  packedbit = 0;
+
   fscanf(bp, " "SKIP_FMT" ");
 
   if(ferror(bp))
@@ -2441,31 +2572,38 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
       return;
     }
 
-  while(fscanf(bp, " "OP_FMT" "FUN_FMT" ( %*[^"SEPARATORS"] , %*[^"SEPARATORS"] ) # %*d / %*u @ %*ld ", &c, name) >= 2)
+  while(fscanf(bp, " "OP_FMT" "FUN_FMT" ( %*[^"SEPARATORS"] , %*[^"SEPARATORS"] ) # %*d / %*u , %u , %u , %*u @ %*ld ", &c, name, &packed, &packedbit) >= 2)
     {
-      switch(c)
+      if(!packed || !packedbit)
         {
-          case '!':
-            if(fn >= MAX_FILES)
-              {
-                print(sb, "%s: Too many input signals\n", file_name);
+          switch(c)
+            {
+              case '!':
+                if(fn >= MAX_FILES)
+                  {
+                    print(sb, "%s: Too many input signals\n", file_name);
+                    pthread_mutex_unlock(&sb->mutex_button);
+                    return;
+                  }
+
+                strcpy(fnames[fn], name);
+
+                fn++;
+              break;
+
+              case '?':
+              case '.':
+              break;
+
+              default:
+                print(sb, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
                 pthread_mutex_unlock(&sb->mutex_button);
-                return;
-              }
-
-            strcpy(fnames[fn], name);
-            fn++;
-          break;
-
-          case '?':
-          case '.':
-          break;
-
-          default:
-            print(sb, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
-            pthread_mutex_unlock(&sb->mutex_button);
-          return;
+              return;
+            }
         }
+
+      packed = 0;
+      packedbit = 0;
     }
 
   if(ferror(bp))
@@ -2566,11 +2704,11 @@ void configure(GtkWidget *widget, s_base *sb)
   GtkWidget *window;
   GtkWidget *btn5, *btn6, *btn7;
   GtkWidget *tabf, *tabk, *tabh, *tabg, *tabs, *tabw;
-  GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15, *cb16, *cb17, *cb18;
+  GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15, *cb16, *cb17, *cb18, *cb19;
   GtkWidget *lbl2, *ent2, *lbl3, *ent3, *lbl4, *ent4, *lbl7, *ent7, *lbl10, *ent10, *lbl11, *ent11, *lbl12, *ent12, *lbl13, *ent13, *lbl14, *ent14, *lbl15, *ent15, *lbl16, *ent16, *lbl17, *ent17,
-            *lbl18, *ent18, *lbl19, *ent19, *lbl20, *ent20, *lbl21, *ent21;
-  GtkWidget *fr1, *fr2, *fr3, *fr4, *sep1;
-  GtkWidget *vbox1, *vbox2, *vbox3, *vbox6, *vbox7, *vbox8, *hbox1, *hbox2, *hbox4, *extbox;
+            *lbl18, *ent18, *lbl19, *ent19, *lbl20, *ent20, *lbl21, *ent21, *lbl22, *ent22;
+  GtkWidget *fr1, *fr2, *fr3, *fr4;
+  GtkWidget *vbox1, *vbox2, *vbox3, *vbox6, *vbox7, *vbox8, *hbox1, *hbox2, *hbox4, *extbox, *winbox;
   char buf[2];
 
   pthread_mutex_lock(&sb->mutex_button);
@@ -2587,14 +2725,17 @@ void configure(GtkWidget *widget, s_base *sb)
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
   gtk_window_set_default_size(GTK_WINDOW(window), CONFIG_WINDOW_WIDTH, CONFIG_WINDOW_HEIGHT);
-  gtk_container_set_border_width(GTK_CONTAINER(window), 10);
+  gtk_container_set_border_width(GTK_CONTAINER(window), 0);
   gtk_window_set_title(GTK_WINDOW(window), CONFIG_TITLE);
   gtk_window_set_icon_name(GTK_WINDOW(window), "tinx");
   g_signal_connect(G_OBJECT(window), "destroy", G_CALLBACK(end_configure), (gpointer)sb);
 
   sb->config_window = GTK_WINDOW(window);
 
+  winbox = gtk_vbox_new(FALSE, 0);
   extbox = gtk_vbox_new(FALSE, 0);
+
+  gtk_container_set_border_width(GTK_CONTAINER(extbox), 10);
 
   fr1 = gtk_frame_new("Files");
   gtk_label_set_markup(GTK_LABEL(gtk_frame_get_label_widget(GTK_FRAME(fr1))), "<b>Files</b>");
@@ -2602,7 +2743,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_container_set_border_width(GTK_CONTAINER(fr1), 5);
   gtk_container_set_border_width(GTK_CONTAINER(vbox1), 5);
 
-  tabf = gtk_table_new(2, 6, FALSE);
+  tabf = gtk_table_new(2, 7, FALSE);
 
   lbl2 = gtk_label_new("Network object file name ");
   gtk_misc_set_alignment(GTK_MISC(lbl2), 1, 0.5);
@@ -2685,6 +2826,18 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_table_attach_defaults(GTK_TABLE(tabf), ent21, 1, 2, 5, 6);
   g_signal_connect(G_OBJECT(ent21), "changed", G_CALLBACK(editor_fname), (gpointer)sb);
   g_signal_connect(G_OBJECT(ent21), "draw", G_CALLBACK(editor_default), (gpointer)sb);
+
+  lbl22 = gtk_label_new("Default help viewer ");
+  gtk_misc_set_alignment(GTK_MISC(lbl22), 1, 0.5);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), lbl22, 0, 1, 6, 7);
+  ent22 = gtk_entry_new();
+  gtk_entry_set_max_length(GTK_ENTRY(ent22), 0);
+  gtk_entry_set_width_chars(GTK_ENTRY(ent22), 50);
+  gtk_entry_set_max_width_chars(GTK_ENTRY(ent22), 50);
+  gtk_entry_set_text(GTK_ENTRY(ent22), sb->cfg.viewer_name);
+  gtk_table_attach_defaults(GTK_TABLE(tabf), ent22, 1, 2, 6, 7);
+  g_signal_connect(G_OBJECT(ent22), "changed", G_CALLBACK(viewer_fname), (gpointer)sb);
+  g_signal_connect(G_OBJECT(ent22), "draw", G_CALLBACK(viewer_default), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox1), tabf);
   gtk_container_add(GTK_CONTAINER(fr1), vbox1);
@@ -2785,7 +2938,7 @@ void configure(GtkWidget *widget, s_base *sb)
   vbox7 = gtk_vbox_new(FALSE, 0);
   gtk_container_set_border_width(GTK_CONTAINER(vbox7), 5);
 
-  tabw = gtk_table_new(1, 6, FALSE);
+  tabw = gtk_table_new(2, 3, FALSE);
 
   cb10 = gtk_check_button_new_with_label("External inputs");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb10), sb->cfg.batch_in);
@@ -2794,27 +2947,27 @@ void configure(GtkWidget *widget, s_base *sb)
 
   cb11 = gtk_check_button_new_with_label("External outputs");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb11), sb->cfg.batch_out);
-  gtk_table_attach_defaults(GTK_TABLE(tabw), cb11, 0, 1, 1, 2);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb11, 1, 2, 0, 1);
   g_signal_connect(G_OBJECT(cb11), "clicked", G_CALLBACK(batch_out_box), (gpointer)sb);
 
   cb18 = gtk_check_button_new_with_label("System V IPC");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb18), sb->cfg.sys5);
-  gtk_table_attach_defaults(GTK_TABLE(tabw), cb18, 0, 1, 2, 3);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb18, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(cb18), "clicked", G_CALLBACK(sys5_box), (gpointer)sb);
 
   cb9 = gtk_check_button_new_with_label("Ignore IPC errors");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb9), sb->cfg.sturdy);
-  gtk_table_attach_defaults(GTK_TABLE(tabw), cb9, 0, 1, 3, 4);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb9, 1, 2, 1, 2);
   g_signal_connect(G_OBJECT(cb9), "clicked", G_CALLBACK(sturdy_box), (gpointer)sb);
 
   cb14 = gtk_check_button_new_with_label("Display internal signals");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb14), sb->cfg.outint);
-  gtk_table_attach_defaults(GTK_TABLE(tabw), cb14, 0, 1, 4, 5);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb14, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb14), "clicked", G_CALLBACK(outint_box), (gpointer)sb);
 
   cb15 = gtk_check_button_new_with_label("Display unknowns as dots");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb15), sb->cfg.draw_undef);
-  gtk_table_attach_defaults(GTK_TABLE(tabw), cb15, 0, 1, 5, 6);
+  gtk_table_attach_defaults(GTK_TABLE(tabw), cb15, 1, 2, 2, 3);
   g_signal_connect(G_OBJECT(cb15), "clicked", G_CALLBACK(draw_undef_box), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox7), tabw);
@@ -2876,35 +3029,36 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_container_set_border_width(GTK_CONTAINER(fr3), 5);
   gtk_container_set_border_width(GTK_CONTAINER(vbox3), 5);
 
-  tabh = gtk_table_new(1, 6, FALSE);
+  tabh = gtk_table_new(2, 3, FALSE);
 
   cb16 = gtk_check_button_new_with_label("Optimize joints in intervals");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb16), sb->cfg.seplit_fe);
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb16, 0, 1, 0, 1);
   g_signal_connect(G_OBJECT(cb16), "clicked", G_CALLBACK(seplit_fe_box), (gpointer)sb);
 
-  cb17 = gtk_check_button_new_with_label("Optimize joints in recursive operators");
+  cb17 = gtk_check_button_new_with_label("Optimize joints in recursions");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb17), sb->cfg.seplit_su);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb17, 0, 1, 1, 2);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb17, 1, 2, 0, 1);
   g_signal_connect(G_OBJECT(cb17), "clicked", G_CALLBACK(seplit_su_box), (gpointer)sb);
 
   cb13 = gtk_check_button_new_with_label("Optimize delays");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb13), sb->cfg.merge);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb13, 0, 1, 2, 3);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb13, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(cb13), "clicked", G_CALLBACK(merge_box), (gpointer)sb);
 
-  sep1 = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
-  g_object_set(G_OBJECT(sep1), "height-request", 10, NULL);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), sep1, 0, 1, 3, 4);
+  cb19 = gtk_check_button_new_with_label("Generate constant signals");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb19), sb->cfg.constout);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb19, 1, 2, 1, 2);
+  g_signal_connect(G_OBJECT(cb19), "clicked", G_CALLBACK(constout_box), (gpointer)sb);
 
   cb8 = gtk_check_button_new_with_label("Hard real time (root access only)");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb8), sb->cfg.hard);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb8, 0, 1, 4, 5);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb8, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb8), "clicked", G_CALLBACK(hard_box), (gpointer)sb);
 
   cb12 = gtk_check_button_new_with_label("Wait running");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb12), sb->cfg.busywait);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb12, 0, 1, 5, 6);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb12, 1, 2, 2, 3);
   g_signal_connect(G_OBJECT(cb12), "clicked", G_CALLBACK(busywait_box), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox3), tabh);
@@ -2948,7 +3102,9 @@ void configure(GtkWidget *widget, s_base *sb)
 
   gtk_box_pack_end(GTK_BOX(extbox), vbox6, FALSE, FALSE, 0);
 
-  gtk_container_add(GTK_CONTAINER(window), extbox);
+  gtk_container_add(GTK_CONTAINER(winbox), extbox);
+
+  gtk_container_add(GTK_CONTAINER(window), winbox);
 
   gtk_widget_show_all(window);
 
@@ -2964,14 +3120,14 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   GtkWidget *window;
   GtkWidget *drawingarea;
   GtkWidget *textarea, *scrollarea;
-  GtkWidget *btn1, *btn2, *btn3, *btn4, *btn5, *btn6;
+  GtkWidget *btn1, *btn2, *btn3, *btn4, *btn5, *btn6, *btn7;
   GtkWidget *cb0, *cb1, *cb2, *cb3, *cb4, *cb5, *cb6, *cb7, *cb10, *cb14;
   GtkWidget *tabf, *tabi, *tabt, *tabh, *tabx;
-  GtkWidget *extbox, *hboxctl1, *hboxctl2;
+  GtkWidget *extbox, *winbox, *hboxctl1, *hboxctl2;
   GtkWidget *ent0, *lbl1, *ent1, *lbl5, *ent5, *lbl6, *ent6, *lbl8, *ent8, *lbl9, *ent9;
   GtkWidget *frgfx, *hboxgfx, *frtxt, *vboxtxt, *fr1, *vbox1, *fr2, *vbox2, *fr3, *vbox3, *fr4, *vbox4, *fr6, *vbox6;
   GtkWidget *vbox5, *hbox3, *hbox5, *hbox6, *lbl0, *lblt, *lblg, *icng;
-  GtkWidget *menubar, *menu_items, *project_menu, *open_menu, *gen_menu, *run_menu, *config_menu, *save_menu, *erase_menu, *about_menu, *quit_menu, *sep1, *sep2, *sep3;
+  GtkWidget *menubar, *menu_items, *project_menu, *open_menu, *gen_menu, *run_menu, *config_menu, *save_menu, *erase_menu, *help_menu, *about_menu, *quit_menu, *sep1, *sep2, *sep3;
   GtkTextBuffer *textbuffer;
   GtkTextIter iter;
   GtkAdjustment *adj;
@@ -3110,7 +3266,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
   gtk_window_set_default_size(GTK_WINDOW(window), WINDOW_WIDTH, WINDOW_HEIGHT);
-  gtk_container_set_border_width(GTK_CONTAINER(window), 10);
+  gtk_container_set_border_width(GTK_CONTAINER(window), 0);
   gtk_window_set_title(GTK_WINDOW(window), TITLE);
   gtk_window_set_icon_name(GTK_WINDOW(window), "tinx");
   g_signal_connect(G_OBJECT(window), "destroy", G_CALLBACK(exit_button_clicked), (gpointer)&sbs);
@@ -3119,11 +3275,14 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   sbs.window = GTK_WINDOW(window);
   sbs.config_window = NULL;
   sbs.prob_window = NULL;
+
   sbs.save_button = NULL;
   sbs.erase_button = NULL;
   sbs.clear_button = NULL;
+  sbs.edit_button = NULL;
+  sbs.help_button = NULL;
 
-  extbox = gtk_vbox_new(FALSE, 0);
+  winbox = gtk_vbox_new(FALSE, 0);
 
   menubar = gtk_menu_bar_new();
 
@@ -3160,6 +3319,15 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
   sep3 = gtk_separator_menu_item_new();
 
+  help_menu = gtk_menu_item_new_with_label("Help...");
+
+  sbs.help_menu = GTK_MENU_ITEM(help_menu);
+
+  if(*sbs.cfg.viewer_name)
+    gtk_widget_set_sensitive(help_menu, TRUE);
+  else
+    gtk_widget_set_sensitive(help_menu, FALSE);
+
   about_menu = gtk_menu_item_new_with_label("About");
   quit_menu = gtk_menu_item_new_with_label("Exit");
 
@@ -3172,6 +3340,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items), save_menu);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items), erase_menu);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items), sep3);
+  gtk_menu_shell_append(GTK_MENU_SHELL(menu_items), help_menu);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items), about_menu);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items), quit_menu);
 
@@ -3181,8 +3350,15 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   g_signal_connect(config_menu, "activate", G_CALLBACK(configure), (gpointer)&sbs);
   g_signal_connect(save_menu, "activate", G_CALLBACK(save_button_clicked), (gpointer)&sbs);
   g_signal_connect(erase_menu, "activate", G_CALLBACK(erase_button_clicked), (gpointer)&sbs);
+  g_signal_connect(help_menu, "activate", G_CALLBACK(help_button_clicked), (gpointer)&sbs);
   g_signal_connect(about_menu, "activate", G_CALLBACK(about_button_clicked), (gpointer)&sbs);
   g_signal_connect(quit_menu, "activate", G_CALLBACK(exit_button_clicked), (gpointer)&sbs);
+
+  gtk_box_pack_start(GTK_BOX(winbox), menubar, FALSE, FALSE, 0);
+
+  extbox = gtk_vbox_new(FALSE, 0);
+
+  gtk_container_set_border_width(GTK_CONTAINER(extbox), 10);
 
   frgfx = gtk_frame_new("History of input and output signals");
   gtk_label_set_markup(GTK_LABEL(gtk_frame_get_label_widget(GTK_FRAME(frgfx))), "<b>History of input and output signals</b>");
@@ -3459,6 +3635,18 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   gtk_box_pack_end(GTK_BOX(hbox5), btn4, FALSE, FALSE, 0);
   g_signal_connect(G_OBJECT(btn4), "clicked", G_CALLBACK(configure), (gpointer)&sbs);
 
+  btn7 = gtk_button_new_with_label("Help...");
+  gtk_widget_set_size_request(btn7, 70, 30);
+  gtk_box_pack_end(GTK_BOX(hbox5), btn7, FALSE, FALSE, 0);
+  g_signal_connect(G_OBJECT(btn7), "clicked", G_CALLBACK(help_button_clicked), (gpointer)&sbs);
+
+  sbs.help_button = GTK_BUTTON(btn7);
+
+  if(*sbs.cfg.viewer_name)
+    gtk_widget_set_sensitive(btn7, TRUE);
+  else
+    gtk_widget_set_sensitive(btn7, FALSE);
+
   gtk_box_pack_end(GTK_BOX(vbox5), hbox5, FALSE, FALSE, 0);
 
   btn5 = gtk_button_new();
@@ -3466,14 +3654,15 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 
   sbs.dummy_button = GTK_BUTTON(btn5);
 
-  gtk_box_pack_start(GTK_BOX(extbox), menubar, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(extbox), frgfx, TRUE, TRUE, 0);
   gtk_box_pack_start(GTK_BOX(extbox), frtxt, TRUE, TRUE, 0);
   gtk_box_pack_start(GTK_BOX(extbox), hboxctl1, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(extbox), hboxctl2, FALSE, FALSE, 0);
   gtk_box_pack_end(GTK_BOX(extbox), vbox5, FALSE, FALSE, 0);
 
-  gtk_container_add(GTK_CONTAINER(window), extbox);
+  gtk_box_pack_end(GTK_BOX(winbox), extbox, TRUE, TRUE, 0);
+
+  gtk_container_add(GTK_CONTAINER(window), winbox);
 
   gtk_widget_show_all(window);
 

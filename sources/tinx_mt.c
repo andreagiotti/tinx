@@ -1,17 +1,17 @@
 /*
   TINX - Temporal Inference Network eXecutor
   Design & coding by Andrea Giotti, 1998-1999
-  Revised 2016-2017
+  Revised 2016-2019
 */
 
 #define NDEBUG
-#define INLINE inline
+#define INLINE static inline
 #define ANSI_FILE_IO
 /* #define UNIX_FILE_IO */
 
 #include "tinx_mt.h"
 
-#define VER "7.1.0 MT (multiple cores)"
+#define VER "7.5.1 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -341,31 +341,25 @@ INLINE void scan_ios(k_base *kb, stream_class sclass)
 
   if(ios)
     {
-      if(kb->curr_time < ios->deadline)
-        kb->io_stream[sclass] = ios->next_ios;
+      if(ios->io_perform(kb, ios))
+        {
+          remove_stream(&kb->io_stream[sclass]);
+          add_stream(&kb->io_stream_2[sclass], ios);
+        }
       else
-        if(ios->io_perform(kb, ios))
-          {
-            ios->deadline++;
-            kb->io_count[sclass]--;
-
-            kb->io_stream[sclass] = ios->next_ios;
-          }
+        if(ios->open)
+          kb->io_stream[sclass] = ios->next_ios;
         else
-          if(ios->open)
-            kb->io_stream[sclass] = ios->next_ios;
-          else
-            {
-              remove_stream(&kb->io_stream[sclass]);
-              close_stream(ios, kb->alpha);
+          {
+            remove_stream(&kb->io_stream[sclass]);
+            close_stream(ios, kb->alpha);
 
-              kb->io_num[sclass]--;
-              kb->io_count[sclass]--;
-              kb->io_open--;
+            kb->io_num[sclass]--;
+            kb->io_open--;
 
-              if(!kb->io_open)
-                kb->quiet = TRUE;
-            }
+            if(!kb->io_open)
+              kb->quiet = TRUE;
+          }
     }
 }
 
@@ -409,7 +403,7 @@ INLINE bool loop_io(k_base *kb)
       scan_ios(kb, input_stream);
       scan_ios(kb, output_stream);
 
-      if(!kb->io_count[input_stream] && !kb->io_count[output_stream])
+      if(!kb->io_stream[input_stream] && !kb->io_stream[output_stream])
         {
           if(kb->quiet && kb->last_empty == kb->curr_time)
             term = TRUE;
@@ -419,8 +413,11 @@ INLINE bool loop_io(k_base *kb)
 
               if(delta_time >= 0)
                 {
-                  kb->io_count[input_stream] = kb->io_num[input_stream];
-                  kb->io_count[output_stream] = kb->io_num[output_stream];
+                  kb->io_stream[input_stream] = kb->io_stream_2[input_stream];
+                  kb->io_stream_2[input_stream] = NULL;
+
+                  kb->io_stream[output_stream] = kb->io_stream_2[output_stream];
+                  kb->io_stream_2[output_stream] = NULL;
 
                   kb->curr_time++;
 
@@ -503,7 +500,7 @@ INLINE void broadcast_barrier(k_base *kb)
           }
       }
 
-  if(!kb->io_count[input_stream])
+  if(!kb->io_stream[input_stream])
     {
       if(all_empty)
         kb->last_empty = kb->curr_time;
@@ -539,7 +536,13 @@ bool input_f(k_base *kb, stream *ios)
     break;
 
     case unknown_symbol:
-      return TRUE;
+      if(ios->defaultval == false_symbol)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == true_symbol)
+          s.e = ios->e;
+        else
+          return TRUE;
     break;
 
     case false_symbol:
@@ -567,14 +570,56 @@ bool input_f(k_base *kb, stream *ios)
       return FALSE;
     }
 
-  if(valid(s))
-    {
-      safe_state(kb, s);
+  safe_state(kb, s);
 
-      return TRUE;
-    }
+  return TRUE;
+}
+
+bool input_packed_f(k_base *kb, stream *ios)
+{
+  event s;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
   else
-    return FALSE;
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit / (8 * sizeof(char));
+  k = ios->pack.packedbit - h * (8 * sizeof(char));
+
+  s.t = kb->curr_time;
+
+  if(pack->packedcount == pack->packedtot)
+    {
+      if(mget_file(ios->fp, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))) && file_error(ios->fp))
+        {
+          perror(ios->file_name);
+          irq = TRUE;
+          return FALSE;
+        }
+
+      if(feof(ios->fp))
+        {
+          reset_file(ios->fp);
+          return FALSE;
+        }
+    }
+
+  if(!(pack->packedchar[h] & (1 << k)))
+    s.e = ios->ne;
+  else
+    s.e = ios->e;
+
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    pack->packedcount = pack->packedtot;
+
+  safe_state(kb, s);
+
+  return TRUE;
 }
 
 bool input_m_posix(k_base *kb, stream *ios)
@@ -605,7 +650,13 @@ bool input_m_posix(k_base *kb, stream *ios)
     break;
 
     case unknown_symbol:
-      return TRUE;
+      if(ios->defaultval == false_symbol)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == true_symbol)
+          s.e = ios->e;
+        else
+          return TRUE;
     break;
 
     case false_symbol:
@@ -633,14 +684,59 @@ bool input_m_posix(k_base *kb, stream *ios)
       return FALSE;
     }
 
-  if(valid(s))
-    {
-      safe_state(kb, s);
+  safe_state(kb, s);
 
-      return TRUE;
-    }
+  return TRUE;
+}
+
+bool input_packed_m_posix(k_base *kb, stream *ios)
+{
+  event s;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
   else
-    return FALSE;
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit / (8 * sizeof(char));
+  k = ios->pack.packedbit - h * (8 * sizeof(char));
+
+  s.t = kb->curr_time;
+
+  if(pack->packedcount == pack->packedtot)
+    {
+      if(mread_message_posix(ios->chan, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+        {
+          if(errno != EAGAIN)
+            {
+              perror(ios->chan_name);
+              irq = TRUE;
+              return FALSE;
+            }
+
+          ios->errors++;
+
+          return FALSE;
+        }
+      else
+        ios->errors = 0;
+    }
+
+  if(!(pack->packedchar[h] & (1 << k)))
+    s.e = ios->ne;
+  else
+    s.e = ios->e;
+
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    pack->packedcount = pack->packedtot;
+
+  safe_state(kb, s);
+
+  return TRUE;
 }
 
 bool input_m_sys5(k_base *kb, stream *ios)
@@ -671,7 +767,13 @@ bool input_m_sys5(k_base *kb, stream *ios)
     break;
 
     case unknown_symbol:
-      return TRUE;
+      if(ios->defaultval == false_symbol)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == true_symbol)
+          s.e = ios->e;
+        else
+          return TRUE;
     break;
 
     case false_symbol:
@@ -699,14 +801,59 @@ bool input_m_sys5(k_base *kb, stream *ios)
       return FALSE;
     }
 
-  if(valid(s))
-    {
-      safe_state(kb, s);
+  safe_state(kb, s);
 
-      return TRUE;
-    }
+  return TRUE;
+}
+
+bool input_packed_m_sys5(k_base *kb, stream *ios)
+{
+  event s;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
   else
-    return FALSE;
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit / (8 * sizeof(char));
+  k = ios->pack.packedbit - h * (8 * sizeof(char));
+
+  s.t = kb->curr_time;
+
+  if(pack->packedcount == pack->packedtot)
+    {
+      if(mread_message_sys5(ios->chan5, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+        {
+          if(errno != ENOMSG)
+            {
+              perror(ios->chan_name);
+              irq = TRUE;
+              return FALSE;
+            }
+
+          ios->errors++;
+
+          return FALSE;
+        }
+      else
+        ios->errors = 0;
+    }
+
+  if(!(pack->packedchar[h] & (1 << k)))
+    s.e = ios->ne;
+  else
+    s.e = ios->e;
+
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    pack->packedcount = pack->packedtot;
+
+  safe_state(kb, s);
+
+  return TRUE;
 }
 
 bool output_f(k_base *kb, stream *ios)
@@ -714,38 +861,43 @@ bool output_f(k_base *kb, stream *ios)
   event s;
   char c;
 
-  s.t = kb->curr_time;
-  s.e = ios->ne;
-
-  if(is_stated(kb, s))
-    {
-      ios->fails = 0;
-      c = kb->alpha[false_symbol];
-    }
+  if(!ios->e.vp)
+    c = kb->alpha[ios->defaultval];
   else
     {
-      s.e = ios->e;
+      s.t = kb->curr_time;
+      s.e = ios->ne;
 
       if(is_stated(kb, s))
         {
           ios->fails = 0;
-          c = kb->alpha[true_symbol];
+          c = kb->alpha[false_symbol];
         }
       else
         {
-          if(kb->last_far != kb->curr_time)
-            return FALSE;
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              ios->fails = 0;
+              c = kb->alpha[true_symbol];
+            }
           else
             {
-              ios->fails++;
-
-              if(!kb->max_time && ios->fails > kb->bsd4)
+              if(kb->last_far != kb->curr_time)
+                return FALSE;
+              else
                 {
-                  ios->open = FALSE;
-                  return FALSE;
-                }
+                  ios->fails++;
 
-              c = kb->alpha[unknown_symbol];
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  c = kb->alpha[ios->defaultval];
+                }
             }
         }
     }
@@ -767,43 +919,141 @@ bool output_f(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool output_packed_f(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
+  else
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit / (8 * sizeof(char));
+  k = ios->pack.packedbit - h * (8 * sizeof(char));
+
+  c = pack->packedchar[h];
+
+  if(!ios->e.vp)
+    {
+      if(ios->defaultval == false_symbol)
+        c &= ~ (1 << k);
+       else
+         if(ios->defaultval == true_symbol)
+           c |= (1 << k);
+    }
+  else
+   {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_stated(kb, s))
+        {
+          ios->fails = 0;
+          c &= ~ (1 << k);
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              ios->fails = 0;
+              c |= (1 << k);
+            }
+          else
+            {
+              if(kb->last_far != kb->curr_time)
+                return FALSE;
+              else
+                {
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  if(ios->defaultval == false_symbol)
+                    c &= ~ (1 << k);
+                  else
+                    if(ios->defaultval == true_symbol)
+                      c |= (1 << k);
+                }
+            }
+        }
+    }
+
+  pack->packedchar[h] = c;
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    {
+      if(mput_file(ios->fp, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+        {
+          perror(ios->file_name);
+          irq = TRUE;
+          return FALSE;
+        }
+
+      if(sync_file(ios->fp))
+        {
+          perror(ios->file_name);
+          irq = TRUE;
+          return FALSE;
+        }
+
+      pack->packedcount = pack->packedtot;
+    }
+
+  return TRUE;
+}
+
 bool output_m_posix(k_base *kb, stream *ios)
 {
   event s;
   char c;
 
-  s.t = kb->curr_time;
-  s.e = ios->ne;
-
-  if(is_stated(kb, s))
-    {
-      ios->fails = 0;
-      c = kb->alpha[false_symbol];
-    }
+  if(!ios->e.vp)
+    c = kb->alpha[ios->defaultval];
   else
     {
-      s.e = ios->e;
+      s.t = kb->curr_time;
+      s.e = ios->ne;
 
       if(is_stated(kb, s))
         {
           ios->fails = 0;
-          c = kb->alpha[true_symbol];
+          c = kb->alpha[false_symbol];
         }
       else
         {
-          if(kb->last_far != kb->curr_time)
-            return FALSE;
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              ios->fails = 0;
+              c = kb->alpha[true_symbol];
+            }
           else
             {
-              ios->fails++;
-
-              if(!kb->max_time && ios->fails > kb->bsd4)
+              if(kb->last_far != kb->curr_time)
+                return FALSE;
+              else
                 {
-                  ios->open = FALSE;
-                  return FALSE;
-                }
+                  ios->fails++;
 
-              c = kb->alpha[unknown_symbol];
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  c = kb->alpha[ios->defaultval];
+                }
             }
         }
     }
@@ -834,43 +1084,152 @@ bool output_m_posix(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool output_packed_m_posix(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
+  else
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit / (8 * sizeof(char));
+  k = ios->pack.packedbit - h * (8 * sizeof(char));
+
+  c = pack->packedchar[h];
+
+  if(!ios->e.vp)
+    {
+      if(ios->defaultval == false_symbol)
+        c &= ~ (1 << k);
+       else
+         if(ios->defaultval == true_symbol)
+           c |= (1 << k);
+    }
+   else
+    {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_stated(kb, s))
+        {
+          ios->fails = 0;
+          c &= ~ (1 << k);
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              ios->fails = 0;
+              c |= (1 << k);
+            }
+          else
+            {
+              if(kb->last_far != kb->curr_time)
+                return FALSE;
+              else
+                {
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  if(ios->defaultval == false_symbol)
+                    c &= ~ (1 << k);
+                  else
+                    if(ios->defaultval == true_symbol)
+                      c |= (1 << k);
+                }
+            }
+        }
+    }
+
+  pack->packedchar[h] = c;
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    {
+      if(msend_message_posix(ios->chan, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+        {
+          if(errno != EAGAIN)
+            {
+              perror(ios->chan_name);
+              irq = TRUE;
+              return FALSE;
+            }
+
+          ios->errors++;
+
+          if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+            {
+              ios->open = FALSE;
+
+              fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+            }
+
+          (pack->packedcount)++;
+
+          return FALSE;
+        }
+      else
+        ios->errors = 0;
+
+      pack->packedcount = pack->packedtot;
+    }
+
+  return TRUE;
+}
+
 bool output_m_sys5(k_base *kb, stream *ios)
 {
   event s;
   char c;
 
-  s.t = kb->curr_time;
-  s.e = ios->ne;
-
-  if(is_stated(kb, s))
-    {
-      ios->fails = 0;
-      c = kb->alpha[false_symbol];
-    }
+  if(!ios->e.vp)
+    c = kb->alpha[ios->defaultval];
   else
     {
-      s.e = ios->e;
+      s.t = kb->curr_time;
+      s.e = ios->ne;
 
       if(is_stated(kb, s))
         {
           ios->fails = 0;
-          c = kb->alpha[true_symbol];
+          c = kb->alpha[false_symbol];
         }
       else
         {
-          if(kb->last_far != kb->curr_time)
-            return FALSE;
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              ios->fails = 0;
+              c = kb->alpha[true_symbol];
+            }
           else
             {
-              ios->fails++;
-
-              if(!kb->max_time && ios->fails > kb->bsd4)
+              if(kb->last_far != kb->curr_time)
+                return FALSE;
+              else
                 {
-                  ios->open = FALSE;
-                  return FALSE;
-                }
+                  ios->fails++;
 
-              c = kb->alpha[unknown_symbol];
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  c = kb->alpha[ios->defaultval];
+                }
             }
         }
     }
@@ -901,6 +1260,110 @@ bool output_m_sys5(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool output_packed_m_sys5(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
+  else
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit / (8 * sizeof(char));
+  k = ios->pack.packedbit - h * (8 * sizeof(char));
+
+  c = pack->packedchar[h];
+
+  if(!ios->e.vp)
+    {
+      if(ios->defaultval == false_symbol)
+        c &= ~ (1 << k);
+       else
+         if(ios->defaultval == true_symbol)
+           c |= (1 << k);
+    }
+   else
+    {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_stated(kb, s))
+        {
+          ios->fails = 0;
+          c &= ~ (1 << k);
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              ios->fails = 0;
+              c |= (1 << k);
+            }
+          else
+            {
+              if(kb->last_far != kb->curr_time)
+                return FALSE;
+              else
+                {
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  if(ios->defaultval == false_symbol)
+                    c &= ~ (1 << k);
+                  else
+                    if(ios->defaultval == true_symbol)
+                      c |= (1 << k);
+                }
+            }
+        }
+    }
+
+  pack->packedchar[h] = c;
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    {
+      if(msend_message_sys5(ios->chan5, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+        {
+          if(errno != EAGAIN)
+            {
+              perror(ios->chan_name);
+              irq = TRUE;
+              return FALSE;
+            }
+
+          ios->errors++;
+
+          if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+            {
+              ios->open = FALSE;
+
+              fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+            }
+
+          (pack->packedcount)++;
+
+          return FALSE;
+        }
+      else
+        ios->errors = 0;
+
+      pack->packedcount = pack->packedtot;
+    }
+
+  return TRUE;
+}
+
 void trace(k_base *kb, event s, int tid)
 {
   char buffer[MAX_STRLEN], buffer2[MAX_STRLEN], debug[2 * DEBUG_STRLEN + 16];
@@ -917,7 +1380,7 @@ void trace(k_base *kb, event s, int tid)
 
       *debug = '\0';
       if(e1.vp->debug && e2.vp->debug)
-        sprintf(debug, ": %s(%s) --> %s(%s)", e1.lc? "" : "~ ", e1.vp->debug, e2.lc? "~ " : "", e2.vp->debug);
+        sprintf(debug, ": %s%s --> %s%s", e1.lc? "" : "~ ", e1.vp->debug, e2.lc? "~ " : "", e2.vp->debug);
 
       if(kb->echo_stdout)
         {
@@ -978,7 +1441,7 @@ void trace(k_base *kb, event s, int tid)
       }
 }
 
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5, char *prefix, char *path)
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5, char *prefix, char *path, io_symbol defaultval, int packed, int packedbit, stream *packed_ios)
 {
   stream *ios;
   linkage *pin;
@@ -993,15 +1456,17 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   strcpy(ios->name, name);
   ios->sclass = sclass;
 
-  pin = &link_of(e);
-
-  ios->e = e;
-  ios->ne = pin->e;
-
-  if(sclass == input_stream)
+  if(e.vp)
     {
-      pin->shared = TRUE;
-      link_of(pin->e).shared = TRUE;
+      pin = &link_of(e);
+
+      ios->e = e;
+      ios->ne = pin->e;
+    }
+  else
+    {
+      ios->e = e;
+      ios->ne = e;
     }
 
   if(file_io)
@@ -1019,17 +1484,43 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 
       if(sclass == input_stream)
         {
-          ios->io_perform = &input_f;
+          if(!packed)
+            {
+              ios->io_perform = &input_f;
 
-          ios->fp = open_input_file(ios->file_name);
+              ios->fp = open_input_file(ios->file_name);
+            }
+          else
+            {
+              ios->io_perform = &input_packed_f;
+
+              if(!packed_ios)
+                ios->fp = open_input_file(ios->file_name);
+              else
+                ios->fp = packed_ios->fp;
+            }
         }
       else
         {
-          ios->io_perform = &output_f;
+          if(!packed)
+            {
+              ios->io_perform = &output_f;
 
-          clean_file(ios->file_name);
+              clean_file(ios->file_name);
+              ios->fp = open_output_file(ios->file_name);
+            }
+          else
+            {
+              ios->io_perform = &output_packed_f;
 
-          ios->fp = open_output_file(ios->file_name);
+              if(!packed_ios)
+                {
+                  clean_file(ios->file_name);
+                  ios->fp = open_output_file(ios->file_name);
+                }
+              else
+                ios->fp = packed_ios->fp;
+            }
         }
 
       if(!is_file_open(ios->fp))
@@ -1046,11 +1537,41 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
       if(!sys5)
         {
           if(sclass == input_stream)
-            ios->io_perform = &input_m_posix;
-          else
-            ios->io_perform = &output_m_posix;
+            {
+              if(!packed)
+                {
+                  ios->io_perform = &input_m_posix;
 
-          ios->chan = add_queue_posix(ios->chan_name, sclass);
+                  ios->chan = add_queue_posix(ios->chan_name, sclass);
+                }
+              else
+                {
+                  ios->io_perform = &input_packed_m_posix;
+
+                  if(!packed_ios)
+                    ios->chan = add_queue_posix(ios->chan_name, sclass);
+                  else
+                    ios->chan = packed_ios->chan;
+                }
+            }
+          else
+            {
+              if(!packed)
+                {
+                  ios->io_perform = &output_m_posix;
+
+                  ios->chan = add_queue_posix(ios->chan_name, sclass);
+                }
+              else
+                {
+                  ios->io_perform = &output_packed_m_posix;
+
+                  if(!packed_ios)
+                    ios->chan = add_queue_posix(ios->chan_name, sclass);
+                  else
+                    ios->chan = packed_ios->chan;
+                }
+            }
 
           if(failed_queue_posix(ios->chan))
             {
@@ -1061,11 +1582,41 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
       else
         {
           if(sclass == input_stream)
-            ios->io_perform = &input_m_sys5;
-          else
-            ios->io_perform = &output_m_sys5;
+            {
+              if(!packed)
+                {
+                  ios->io_perform = &input_m_sys5;
 
-          ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
+                  ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
+                }
+              else
+                {
+                  ios->io_perform = &input_packed_m_sys5;
+
+                  if(!packed_ios)
+                    ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
+                  else
+                    ios->chan5 = packed_ios->chan5;
+                }
+            }
+          else
+            {
+              if(!packed)
+                {
+                  ios->io_perform = &output_m_sys5;
+
+                  ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
+                }
+              else
+                {
+                  ios->io_perform = &output_packed_m_sys5;
+
+                  if(!packed_ios)
+                    ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
+                  else
+                    ios->chan5 = packed_ios->chan5;
+                }
+            }
 
           if(failed_queue_sys5(ios->chan5))
             {
@@ -1075,9 +1626,15 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
         }
     }
 
-  ios->deadline = offset;
+  ios->defaultval = defaultval;
   ios->file_io = file_io;
   ios->sys5 = sys5;
+  ios->pack.packed = packed;
+  memset(ios->pack.packedchar, 0, sizeof(char) * IOS_BUFFER_SIZE);
+  ios->pack.packedcount = 0;
+  ios->pack.packedtot = 0;
+  ios->pack.packedbit = packedbit;
+  ios->packed_ios = packed_ios;
   ios->fails = 0;
   ios->errors = 0;
   ios->open = TRUE;
@@ -1089,44 +1646,118 @@ void close_stream(stream *ios, char *alpha)
 {
   if(ios->file_io)
     {
-      if(ios->sclass == output_stream && put_file(ios->fp, &alpha[end_symbol]))
+      if(!ios->pack.packed)
         {
-          perror(ios->file_name);
-          exit(EXIT_FAILURE);
-        }
+          if(ios->sclass == output_stream && put_file(ios->fp, &alpha[end_symbol]))
+            {
+              perror(ios->file_name);
+              exit(EXIT_FAILURE);
+            }
 
-      if(close_file(ios->fp))
-        {
-          perror(ios->file_name);
-          exit(EXIT_FAILURE);
+          if(close_file(ios->fp))
+            {
+              perror(ios->file_name);
+              exit(EXIT_FAILURE);
+            }
         }
+      else
+        if(!ios->packed_ios)
+          {
+            ios->pack.packedcount = 0;
+            ios->pack.packedtot--;
+
+            if(close_file(ios->fp))
+              {
+                perror(ios->file_name);
+                exit(EXIT_FAILURE);
+              }
+          }
+        else
+          ios->packed_ios->pack.packedtot--;
     }
   else
     if(!ios->sys5)
       {
-        if(ios->sclass == output_stream)
-          send_message_posix(ios->chan, &alpha[end_symbol]);
-
-        if(commit_queue_posix(ios->chan))
+        if(!ios->pack.packed)
           {
-            perror(ios->chan_name);
-            exit(EXIT_FAILURE);
-          }
+            if(ios->sclass == output_stream)
+              send_message_posix(ios->chan, &alpha[end_symbol]);
 
-        if(remove_queue_posix(ios->chan_name))
-          {
-            perror(ios->chan_name);
-            exit(EXIT_FAILURE);
+            if(commit_queue_posix(ios->chan))
+              {
+                perror(ios->chan_name);
+                exit(EXIT_FAILURE);
+              }
+
+            if(remove_queue_posix(ios->chan_name))
+              {
+                perror(ios->chan_name);
+                exit(EXIT_FAILURE);
+              }
           }
+        else
+          if(!ios->packed_ios)
+            {
+              ios->pack.packedcount = 0;
+              ios->pack.packedtot--;
+
+              if(commit_queue_posix(ios->chan))
+                {
+                  perror(ios->chan_name);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(remove_queue_posix(ios->chan_name))
+                {
+                  perror(ios->chan_name);
+                  exit(EXIT_FAILURE);
+                }
+            }
+          else
+            ios->packed_ios->pack.packedtot--;
       }
     else
-      if(ios->sclass == output_stream)
-        send_message_sys5(ios->chan5, &alpha[end_symbol]);
+      {
+        if(!ios->pack.packed && ios->sclass == output_stream)
+          send_message_sys5(ios->chan5, &alpha[end_symbol]);
+        else
+          if(!ios->packed_ios)
+            {
+              ios->pack.packedcount = 0;
+              ios->pack.packedtot--;
+            }
+          else
+            ios->packed_ios->pack.packedtot--;
+      }
 
-  free(ios);
+  if(ios->packed_ios && !ios->packed_ios->pack.packedtot)
+    free(ios->packed_ios);
+
+  if(!ios->pack.packed || ios->packed_ios || !ios->pack.packedtot)
+    free(ios);
 }
 
-void remove_stream(stream **handle)
+INLINE void add_stream(stream **handle, stream *ios)
+{
+  ios->next_ios = (*handle);
+
+  if(ios->next_ios)
+    {
+      ios->prev_ios = ios->next_ios->prev_ios;
+
+      ios->next_ios->prev_ios = ios;
+      ios->prev_ios->next_ios = ios;
+    }
+  else
+    {
+      ios->next_ios = ios;
+      ios->prev_ios = ios;
+    }
+
+   (*handle) = ios;
+}
+
+INLINE void remove_stream(stream **handle)
 {
   stream *next_ios;
 
@@ -1492,12 +2123,15 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   node *vp, *wp;
   node_class nclass;
   stream *ios;
+  stream *packed_ios[MAX_IOS];
   stream_class sclass;
   io_type stype;
+  int packed, packedbit;
+  io_symbol defaultval;
   arc e;
   int bufsiz;
   link_code lc;
-  int tid;
+  int i, tid;
 
   kb = malloc(sizeof(k_base));
   if(!kb)
@@ -1534,6 +2168,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
   memset(kb->table, 0, sizeof(node *) * HASH_SIZE * HASH_DEPTH);
   memset(kb->io_stream, 0, sizeof(stream *) * STREAM_CLASSES_NUMBER);
+  memset(kb->io_stream_2, 0, sizeof(stream *) * STREAM_CLASSES_NUMBER);
 
   strcpy(file_name, base_name);
   strcat(file_name, NETWORK_EXT);
@@ -1552,7 +2187,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
                    NAME_FMT" , "NAME_FMT" ",
                name, type, up, left, right) >= 3)
     {
-      if(strlen(name) > MAX_NAMELEN)
+      if(strlen(name) >= MAX_NAMELEN)
         {
           fprintf(stderr, "%s, %s: Name too long\n",
                   file_name, name);
@@ -1615,37 +2250,64 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
   offset = NULL_TIME;
   ios = NULL;
+  for(i = 0; i < MAX_IOS; i++)
+    packed_ios[i] = NULL;
 
   lc = no_link;
   stype = io_any;
+  packed = 0;
+  packedbit = 0;
+  defaultval = unknown_symbol;
   k = 0;
 
-  while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) # %d / %u @ "TIME_FMT" ",
-               &c, name, name_v, name_w, &lc, &stype, &k) >= 4)
+  while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) # %d / %u , %u , %u , %u @ "TIME_FMT" ",
+               &c, name, name_v, name_w, &lc, &stype, &packed, &packedbit, &defaultval, &k) >= 4)
     {
-      if(strlen(name) > MAX_NAMELEN)
+      if(strlen(name) >= MAX_NAMELEN)
         {
           fprintf(stderr, "%s, %s: Name too long\n",
                   file_name, name);
           exit(EXIT_FAILURE);
         }
 
-      vp = name2node(kb, name_v, FALSE);
-      wp = name2node(kb, name_w, FALSE);
-
-      if(!vp || !wp)
+      if(packed >= MAX_IOS)
         {
-          fprintf(stderr, "%s, %s: Undefined node\n",
-                  file_name, !vp? name_v : name_w);
+          fprintf(stderr, "%s, %d: Too many packed signals\n",
+                  file_name, packed);
           exit(EXIT_FAILURE);
         }
 
-      e = arc_between(vp, wp, lc);
-      if(e.lc < 0)
+      if(packedbit >= (8 * sizeof(char) * IOS_BUFFER_SIZE))
         {
-          fprintf(stderr, "%s, (%s, %s) # %d: Undefined edge\n",
-                  file_name, name_v, name_w, lc);
+          fprintf(stderr, "%s, %d: too many characters for I/O buffer size\n",
+                  file_name, packedbit);
           exit(EXIT_FAILURE);
+        }
+
+      if(!strcmp(name_v, "*") && !strcmp(name_w, "*"))
+        {
+          e.vp = NULL;
+          e.lc = no_link;
+        }
+      else
+        {
+          vp = name2node(kb, name_v, FALSE);
+          wp = name2node(kb, name_w, FALSE);
+
+          if(!vp || !wp)
+            {
+              fprintf(stderr, "%s, %s: Undefined node\n",
+                      file_name, !vp? name_v : name_w);
+              exit(EXIT_FAILURE);
+            }
+
+          e = arc_between(vp, wp, lc);
+          if(e.lc < 0)
+            {
+              fprintf(stderr, "%s, (%s, %s) # %d: Undefined edge\n",
+                      file_name, name_v, name_w, lc);
+              exit(EXIT_FAILURE);
+            }
         }
 
       if(offset == NULL_TIME)
@@ -1688,31 +2350,28 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
                 exit(EXIT_FAILURE);
             }
 
-          ios = open_stream(name, sclass, e, kb->offset, (file_io && stype == io_any) || stype == io_file, sys5, prefix, path);
+          ios = open_stream(name, sclass, e, kb->offset, (file_io && stype == io_any) || stype == io_file, sys5, prefix, path, defaultval, packed, packedbit, packed_ios[packed]);
 
           kb->io_num[sclass]++;
           kb->io_open++;
 
-          ios->next_ios = kb->io_stream[sclass];
+          add_stream(&kb->io_stream[sclass], ios);
 
-          if(ios->next_ios)
+          if(packed)
             {
-              ios->prev_ios = ios->next_ios->prev_ios;
+              if(!packed_ios[packed])
+                packed_ios[packed] = ios;
 
-              ios->next_ios->prev_ios = ios;
-              ios->prev_ios->next_ios = ios;
+              packed_ios[packed]->pack.packedtot++;
+              packed_ios[packed]->pack.packedcount = packed_ios[packed]->pack.packedtot;
             }
-          else
-            {
-              ios->next_ios = ios;
-              ios->prev_ios = ios;
-            }
-
-          kb->io_stream[sclass] = ios;
         }
 
       lc = no_link;
       stype = io_any;
+      packed = 0;
+      packedbit = 0;
+      defaultval = unknown_symbol;
       k = 0;
     }
 
@@ -1747,13 +2406,13 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
       while(fscanf(fp, " "NAME_FMT" : %[^\n]\n", name, debug) == 2)
         {
-          if(strlen(name) > MAX_NAMELEN)
+          if(strlen(name) >= MAX_NAMELEN)
             {
               fprintf(stderr, "%s, %s: Name too long\n", file_name, name);
               exit(EXIT_FAILURE);
             }
 
-          if(strlen(debug) > DEBUG_STRLEN)
+          if(strlen(debug) >= DEBUG_STRLEN)
             {
               fprintf(stderr, "%s, %s: Symbol too long\n", file_name, debug);
               exit(EXIT_FAILURE);
@@ -1818,9 +2477,6 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
         }
     }
 
-  kb->io_count[input_stream] = kb->io_num[input_stream];
-  kb->io_count[output_stream] = kb->io_num[output_stream];
-
   kb->barrier_count = 0;
 
   kb->curr_time = kb->offset;
@@ -1884,6 +2540,19 @@ void close_base(k_base *kb)
                 ios = next_ios;
               }
             while(ios != kb->io_stream[sclass]);
+
+          ios = kb->io_stream_2[sclass];
+          if(ios)
+            do
+              {
+                next_ios = ios->next_ios;
+
+                file_io &= ios->file_io;
+                close_stream(ios, kb->alpha);
+
+                ios = next_ios;
+              }
+            while(ios != kb->io_stream_2[sclass]);
         }
 
       if(!file_io && kb->sys5)
@@ -2592,7 +3261,7 @@ int main(int argc, char **argv)
     step = default_step;
 
   printf("\nTINX "VER" - Temporal Inference Network eXecutor\n"
-         "Design & coding by Andrea Giotti, 1998-1999, 2016-2018\n\n");
+         "Design & coding by Andrea Giotti, 1998-1999, 2016-2019\n\n");
 
   fflush(stdout);
 

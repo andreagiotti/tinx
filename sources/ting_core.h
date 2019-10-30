@@ -11,9 +11,9 @@
 
 #define SOURCE_EXT ".btl"
 
-#define VARSEP "][)(}{"BLANKS"~&|@?,;*/+-#"
+#define VARSEP "][)(}{"BLANKS"~&|@?,;:*/+-"
 #define VARNAME_FMT "%"MAX_NAMEBUF_C"[^"VARSEP"]"
-#define FILENAME_FMT "\"%[^\"]\""
+#define STRING_FMT "\"%[^\"]\""
 
 typedef enum op_type
 {
@@ -24,11 +24,18 @@ typedef enum op_type
   op_cname,
   op_fname,
   op_number,
+  op_string,
   op_constant,
   op_iterator,
   op_vector,
   op_matrix,
-  op_ioqual,
+  op_ioqual1,
+  op_ioqual2,
+  op_ioqual3,
+  op_ioqual12,
+  op_ioqual23,
+  op_ioqual13,
+  op_ioqual123,
   op_plus,
   op_minus,
   op_mul,
@@ -49,17 +56,24 @@ typedef enum op_type
   op_forall,
   op_exists,
   op_one,
+  op_one_check,
   op_unique,
   op_imply,
   op_eqv,
+  op_code,
+  op_code_num,
   op_input,
   op_output,
   op_aux,
   op_init,
   op_var_at,
   op_join,
-  op_iter,
+  op_join_qual,
   op_define,
+  op_iter,
+  op_when,
+  op_in,
+  op_neg_range,
   op_include,
   OP_TYPES_NUMBER
 } op_type;
@@ -67,7 +81,7 @@ typedef enum op_type
 typedef struct btl_specification
 {
   op_type ot;
-  char symbol[MAX_NAMELEN];
+  char symbol[MAX_STRLEN];
   d_time value;
   struct btl_specification *left;
   struct btl_specification *right;
@@ -95,8 +109,11 @@ typedef struct subtreeval
   btl_specification *btl;
   btl_specification *btldef;
   smallnode *vp;
+  op_type ot;
   d_time a;
   d_time b;
+  d_time *extra;
+  bool neg;
 } subtreeval;
 
 typedef enum io_class
@@ -111,11 +128,15 @@ typedef enum io_class
 typedef struct io_signal
 {
   char name[MAX_NAMELEN];
+  char root[MAX_NAMELEN];
   smallnode *from;
   smallnode *to;
   link_code occurr;
   io_class sclass;
   io_type stype;
+  int packed;
+  int packedbit;
+  io_symbol defaultval;
   int signal_id;
 } io_signal;
 
@@ -125,6 +146,12 @@ typedef struct constant
   d_time value;
   int integer_id;
 } constant;
+
+typedef struct group
+{
+  char name[MAX_NAMELEN];
+  int group_id;
+} group;
 
 typedef struct initial_condition
 {
@@ -161,6 +188,9 @@ typedef struct c_base
   constant inttab[NUM_INTEGERS];
   constant *intptr[SYMTAB_SIZE][SYMTAB_DEPTH];
   int num_integers;
+  group grptab[NUM_LITERALS];
+  group *grpptr[SYMTAB_SIZE][SYMTAB_DEPTH];
+  int num_groups;
   int iterator[NUM_LEVELS];
   int num_nodes[NODE_CLASSES_NUMBER];
   int num_vargen;
@@ -168,6 +198,7 @@ typedef struct c_base
   bool seplit_fe;
   bool seplit_su;
   bool merge;
+  bool constout;
   bool outaux;
   bool outint;
   smallnode *network;
@@ -185,7 +216,6 @@ typedef struct compinfo
 
 typedef enum direction
 {
-  dir_back,
   dir_left,
   dir_right
 } direction;
@@ -199,8 +229,8 @@ typedef enum litval
 
 #define genup(VP) ((VP)->up? &((VP)->up) : &((VP)->up_2))
 
-#define CREATE_IMPLY(P, Q) create_operation(op_or, create_operation(op_not, P, NULL, "~ %s"), Q, "%s | %s")
-#define CREATE_EQV(P, Q) create_operation(op_and, CREATE_IMPLY(P, Q), CREATE_IMPLY(copy_specification(Q), copy_specification(P)), "%s & %s")
+#define CREATE_IMPLY(P, Q) create_operation(op_or, create_operation(op_not, P, NULL, "(~ %s)"), Q, "(%s | %s)")
+#define CREATE_EQV(P, Q) create_operation(op_and, CREATE_IMPLY(P, Q), CREATE_IMPLY(copy_specification(Q), copy_specification(P)), "(%s & %s)")
 
 btl_specification *alloc_syntnode(void);
 btl_specification *create_ground(op_type ot, char *symbol, d_time value);
@@ -222,12 +252,12 @@ void gensym(c_base *cb, char *symbol, char *type, litval val, bool incr);
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param);
 subtreeval at_happen(c_base *cb, btl_specification *spec, int level, int param, bool dual);
 subtreeval since_until(c_base *cb, btl_specification *spec, int level, int param, bool dual);
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, d_time t);
-void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp);
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, io_type2 packed, io_type3 defaultval, d_time t);
+void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, bool neg);
 void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp);
 void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp);
 void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp);
-smallnode *gendir(smallnode *vp, smallnode *bp, direction dir);
+smallnode **gendir(smallnode *vp, smallnode *bp, direction dir);
 smallnode **get_neighbor_handle(smallnode *vp, smallnode *wp);
 int save_smalltree(c_base *cb, FILE *fp);
 int save_signals(c_base *cb, FILE *fp);
@@ -238,6 +268,6 @@ void raise_signals(c_base *cb, smallnode *vp);
 smallnode *build_smalltree(c_base *cb, int i, bool neg);
 smallnode *build_twotrees(c_base *cb, int i);
 smallnode *build_cotree(c_base *cb);
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit_fe, bool seplit_su, bool merge, bool outaux, bool outint);
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit_fe, bool seplit_su, bool merge, bool constant, bool outaux, bool outint);
 char *opname(op_type ot);
 

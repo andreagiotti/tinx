@@ -1,7 +1,7 @@
 /*
 	Name:	Resource management
 	Author:	Andrea Giotti, 2018
-	Release: 1.2
+	Release: 1.4
 
 	Description:
 	A mutually exclusive resource is granted to one task on <numtasks> while following requests
@@ -15,70 +15,54 @@ define	numtasks = 4,
 	mintime = 8,
 	maxtime = 32;
 
-iter(numtasks)
+iter(i on numtasks)
 {
-	input req(^), rel(^);
-	output gnt(^);
-}
+	input req(i), rel(i);
+	output gnt(i);
 
-iter(numpos)
-{
-	aux free(^);
-}
-
-iter(numtasks)
-{
-	define i = ^;
-
-	iter(numpos)
-		{
-			define	j = ^;
-
+	iter(j on numpos)
 			aux queued(i, j), begin(i, j), end(i, j), up(i, j), down(i, j);
+}
 
+iter(j on numpos)
+{
+	aux free(j);
+
+	free(j) == ~ exists(queued(h, j), h on numtasks);
+}
+
+iter(i on numtasks)
+	iter(j on numpos)
+		{
                         init ~ up(i, j) @ 0, down(i, j) @ 0;
 
 			queued(i, j) == since(up(i, j), ~ down(i, j));
 
-			begin(i, j) == (free(j) & one(req(^) & ~ rel(^), i, numtasks)) @ -1;
+			begin(i, j) == (free(j) & one(req(h) & ~ rel(h), i, h on numtasks)) @ -1;
 			end(i, j) == (queued(i, j) & ~ req(i) & rel(i)) @ -1;
+
+			when(j in 0 : numpos - 2)
+				{
+					aux roll(i, j);
+
+					roll(i, j) == (free(j) & queued(i, j + 1)) @ -1;
+				}
 		}
 
-	iter(numpos - 1)
-		{
-			define	j = ^;
-
-			aux roll(i, j);
-
-			roll(i, j) == (free(j) & queued(i, j + 1)) @ -1;
-		}
-}
-
-iter(numpos)
+iter(i on numtasks)
 {
-	define	j = ^;
-
-	free(j) == ~ exists(queued(^, j), numtasks);
-}
-
-iter(numtasks)
-{
-	define	i = ^;
-
-	up(i, 0) == roll(i, 0) | (begin(i, 0) & ~ exists(roll(^, 0), numtasks));
+	up(i, 0) == roll(i, 0) | (begin(i, 0) & ~ exists(roll(h, 0), h on numtasks));
 	down(i, 0) == (end(i, 0) ? (- mintime, 0] & queued(i, 0) @ [- mintime, 0)) | queued(i, 0) @ [- maxtime, 0);
 
 	gnt(i) == queued(i, 0);
 
-	iter(numpos - 2)
+	iter(j in 1 : numpos - 2)
 		{
-			define	j = ^ + 1;
-
-			up(i, j) == roll(i, j) | (begin(i, j) & ~ exists(roll(^, j), numtasks) & ~ exists(queued(i, ^) | free(^), j));
+			up(i, j) == roll(i, j) | (begin(i, j) & ~ exists(roll(h, j), h on numtasks) & ~ exists(queued(i, k) | free(k), k on j));
 			down(i, j) == roll(i, j - 1) | end(i, j);
 		}
 
-	up(i, numpos - 1) == begin(i, numpos - 1) & ~ exists(queued(i, ^) | free(^), numpos - 1);
+	up(i, numpos - 1) == begin(i, numpos - 1) & ~ exists(queued(i, k) | free(k), k on numpos - 1);
 	down(i, numpos - 1) == roll(i, numpos - 2) | end(i, numpos - 1);
 }
 

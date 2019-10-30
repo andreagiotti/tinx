@@ -22,16 +22,16 @@ channel_posix add_queue_posix(char *name, stream_class sclass)
   return c;
 }
 
-int send_message_posix(channel_posix c, char *a)
+int msend_message_posix(channel_posix c, char *a, int n)
 {
   char buffer[MSG_SIZE];
 
-  *buffer = *a;
+  memcpy(buffer, a, n);
 
   return mq_send(c, buffer, MSG_SIZE, 0);
 }
 
-int read_message_posix(channel_posix c, char *a)
+int mread_message_posix(channel_posix c, char *a, int n)
 {
   char buffer[MSG_SIZE];
 
@@ -42,7 +42,7 @@ int read_message_posix(channel_posix c, char *a)
       return -1;
     }
 
-  *a = *buffer;
+  memcpy(a, buffer, n);
 
   return 0;
 }
@@ -79,28 +79,28 @@ channel_sys5 add_queue_sys5(char *name, stream_class sclass)
   return c;
 }
 
-int send_message_sys5(channel_sys5 c, char *a)
+int msend_message_sys5(channel_sys5 c, char *a, int n)
 {
   message qbuf;
 
   qbuf.mtype = c.saddr;
-  qbuf.mtext = *a;
+  memcpy(qbuf.mtext, a, n);
 
-  return msgsnd(c.paddr, &qbuf, 1, IPC_NOWAIT);
+  return msgsnd(c.paddr, &qbuf, MSG_SIZE, IPC_NOWAIT);
 }
 
-int read_message_sys5(channel_sys5 c, char *a)
+int mread_message_sys5(channel_sys5 c, char *a, int n)
 {
   message qbuf;
   int rv;
 
   qbuf.mtype = c.saddr;
 
-  rv = msgrcv(c.paddr, &qbuf, 1, c.saddr, IPC_NOWAIT);
+  rv = msgrcv(c.paddr, &qbuf, MSG_SIZE, c.saddr, IPC_NOWAIT);
 
-  if(rv == 1)
+  if(rv == MSG_SIZE)
     {
-      *a = qbuf.mtext;
+      memcpy(a, qbuf.mtext, n);
 
       return 0;
     }

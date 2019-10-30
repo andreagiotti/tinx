@@ -1,8 +1,9 @@
-/* A Bison parser, made by GNU Bison 3.0.4.  */
+/* A Bison parser, made by GNU Bison 3.4.1.  */
 
 /* Bison interface for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2015 Free Software Foundation, Inc.
+   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2019 Free Software Foundation,
+   Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -30,6 +31,9 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
+/* Undocumented macros, especially those whose name start with YY_,
+   are private implementation details.  Do not rely on them.  */
+
 #ifndef YY_YY_TING_PARSER_H_INCLUDED
 # define YY_YY_TING_PARSER_H_INCLUDED
 /* Debug traces.  */
@@ -40,7 +44,7 @@
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 34 "ting.y" /* yacc.c:1909  */
+#line 34 "ting.y"
 
 #ifndef YY_TYPEDEF_YY_SCANNER_T
 #define YY_TYPEDEF_YY_SCANNER_T
@@ -58,7 +62,7 @@ typedef struct tracker
     int idx;
   } tracker;
 
-#line 62 "ting_parser.h" /* yacc.c:1909  */
+#line 66 "ting_parser.h"
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -87,34 +91,46 @@ typedef struct tracker
     TOKEN_LSQUARED = 277,
     TOKEN_RSQUARED = 278,
     TOKEN_COMMA = 279,
-    TOKEN_ITER = 280,
-    TOKEN_DEFINE = 281,
-    TOKEN_INCLUDE = 282,
-    TOKEN_INPUT = 283,
-    TOKEN_OUTPUT = 284,
-    TOKEN_AUX = 285,
-    TOKEN_INIT = 286,
-    TOKEN_FORALL = 287,
-    TOKEN_EXISTS = 288,
-    TOKEN_ONE = 289,
-    TOKEN_UNIQUE = 290,
-    TOKEN_EQUAL = 291,
-    TOKEN_ANY = 292,
-    TOKEN_IPC = 293,
-    TOKEN_FILE = 294,
-    TOKEN_NAME = 295,
-    TOKEN_FILENAME = 296,
-    TOKEN_ITERATOR = 297,
-    TOKEN_NUMBER = 298
+    TOKEN_COLON = 280,
+    TOKEN_ITER = 281,
+    TOKEN_WHEN = 282,
+    TOKEN_ELSE = 283,
+    TOKEN_DEFINE = 284,
+    TOKEN_INCLUDE = 285,
+    TOKEN_INPUT = 286,
+    TOKEN_OUTPUT = 287,
+    TOKEN_AUX = 288,
+    TOKEN_INIT = 289,
+    TOKEN_CODE = 290,
+    TOKEN_FORALL = 291,
+    TOKEN_EXISTS = 292,
+    TOKEN_ONE = 293,
+    TOKEN_UNIQUE = 294,
+    TOKEN_EQUAL = 295,
+    TOKEN_ON = 296,
+    TOKEN_IN = 297,
+    TOKEN_IS = 298,
+    TOKEN_NEG = 299,
+    TOKEN_ANY = 300,
+    TOKEN_IPC = 301,
+    TOKEN_FILE = 302,
+    TOKEN_BINARY = 303,
+    TOKEN_PACKED = 304,
+    TOKEN_UNKNOWN = 305,
+    TOKEN_FALSE = 306,
+    TOKEN_TRUE = 307,
+    TOKEN_NAME = 308,
+    TOKEN_STRING = 309,
+    TOKEN_ITERATOR = 310,
+    TOKEN_NUMBER = 311
   };
 #endif
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-
 union YYSTYPE
 {
-#line 64 "ting.y" /* yacc.c:1909  */
+#line 64 "ting.y"
 
   char symbol[MAX_NAMELEN];
   d_time value;
@@ -127,12 +143,14 @@ union YYSTYPE
   btl_specification *interval;
   btl_specification *declaration;
   btl_specification *io_decl;
+  btl_specification *io_decllist;
   btl_specification *decllist;
   btl_specification *eventlist;
   btl_specification *filelist;
   btl_specification *assignlist;
   btl_specification *assignment;
   btl_specification *varname;
+  btl_specification *indexedname;
   btl_specification *declname;
   btl_specification *initname;
   btl_specification *eventname;
@@ -140,11 +158,14 @@ union YYSTYPE
   btl_specification *constname;
   btl_specification *filename;
   btl_specification *expression;
+  btl_specification *varrange;
+  btl_specification *selrange;
   btl_specification *number;
+  btl_specification *string;
 
-#line 146 "ting_parser.h" /* yacc.c:1909  */
+#line 167 "ting_parser.h"
+
 };
-
 typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1

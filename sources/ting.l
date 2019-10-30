@@ -40,6 +40,7 @@ UNIQUE      "unique"
 IMPLY       "-->"
 INVIMPLY    "<--"
 EQV         "=="
+CODE        "code"
 
 EQUAL       "="
 PLUS        "+"
@@ -52,6 +53,7 @@ RPAREN      ")"
 LSQUARED    "["
 RSQUARED    "]"
 COMMA       ","
+COLON       ":"
 
 INPUT       "input"
 OUTPUT      "output"
@@ -60,17 +62,29 @@ INIT        "init"
 DEFINE      "define"
 INCLUDE     "include"
 ITER        "iter"
+WHEN        "when"
+ELSE        "else"
+
+ON          "on"
+IN          "in"
+IS          "is"
+NEG         "not"
 
 ANY         "any"
 IPC         "ipc"
 FILE        "file"
+BINARY      "binary"
+PACKED      "packed"
+UNKNOWN     "unknown"
+FALSE       "false"
+TRUE        "true"
 
 LBRACKET    "{"
 RBRACKET    "}"
 SEMICOLON   ";"
 
 NAME        [a-zA-Z][a-zA-Z0-9_]*
-FILENAME    "\""[^\"]+"\""
+STRING      "\""[^\"]+"\""
 ITERATOR    "^"+
 NUMBER      [0-9]+
 BLANKS      [ \r\n\t]*
@@ -94,6 +108,7 @@ BLANKS      [ \r\n\t]*
 {IMPLY}         { return TOKEN_IMPLY; }
 {INVIMPLY}      { return TOKEN_INVIMPLY; }
 {EQV}           { return TOKEN_EQV; }
+{CODE}          { return TOKEN_CODE; }
 {EQUAL}         { return TOKEN_EQUAL; }
 {PLUS}          { return TOKEN_PLUS; }
 {MINUS}         { return TOKEN_MINUS; }
@@ -106,10 +121,22 @@ BLANKS      [ \r\n\t]*
 {DEFINE}        { return TOKEN_DEFINE; }
 {INCLUDE}       { return TOKEN_INCLUDE; }
 {ITER}          { return TOKEN_ITER; }
+{WHEN}          { return TOKEN_WHEN; }
+{ELSE}          { return TOKEN_ELSE; }
+{ON}            { return TOKEN_ON; }
+{IN}            { return TOKEN_IN; }
+{IS}            { return TOKEN_IS; }
+{NEG}           { return TOKEN_NEG; }
 {ANY}           { return TOKEN_ANY; }
 {IPC}           { return TOKEN_IPC; }
 {FILE}          { return TOKEN_FILE; }
+{BINARY}        { return TOKEN_BINARY; }
+{PACKED}        { return TOKEN_PACKED; }
+{UNKNOWN}       { return TOKEN_UNKNOWN; }
+{FALSE}         { return TOKEN_FALSE; }
+{TRUE}          { return TOKEN_TRUE; }
 {COMMA}         { return TOKEN_COMMA; }
+{COLON}         { return TOKEN_COLON; }
 {LPAREN}        { return TOKEN_LPAREN; }
 {RPAREN}        { return TOKEN_RPAREN; }
 {LSQUARED}      { return TOKEN_LSQUARED; }
@@ -119,7 +146,7 @@ BLANKS      [ \r\n\t]*
 {SEMICOLON}     { return TOKEN_SEMICOLON; }
 
 {NAME}          { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_NAME; }
-{FILENAME}      { sscanf(yytext, FILENAME_FMT, yylval->symbol); return TOKEN_FILENAME; }
+{STRING}        { sscanf(yytext, STRING_FMT, yylval->symbol); return TOKEN_STRING; }
 {ITERATOR}      { sscanf(yytext, VARNAME_FMT, yylval->symbol); return TOKEN_ITERATOR; }
 {NUMBER}        { sscanf(yytext, TIME_FMT, &yylval->value); return TOKEN_NUMBER; }
 {BLANKS}        {  }

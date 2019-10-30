@@ -1,6 +1,6 @@
 # Makefile
 
-all:			semaphore.tin crossroad.tin advanced_crossroad.tin tinybenchmark.tin benchmark.tin benchmark_8.tin benchmark_16.tin enterprise.tin excl.tin mutex_4.tin resource.tin multiplexer.tin cs.tin wm.tin
+all:			semaphore.tin crossroad.tin advanced_crossroad.tin tinybenchmark.tin benchmark.tin benchmark_8.tin benchmark_16.tin enterprise.tin excl.tin mutex_4.tin resource.tin multiplexer.tin cs.tin wm.tin outchar.tin blanket.tin
 
 semaphore.tin:		semaphore.btl
 			ting -o semaphore.tin semaphore.btl
@@ -44,6 +44,11 @@ cs.tin:			cs.btl
 wm.tin:			wm.btl
 			ting -o wm.tin wm.btl
 
+outchar.tin:		outchar.btl
+			ting -o outchar.tin outchar.btl
+
+blanket.tin:		blanket.btl
+			ting -o blanket.tin blanket.btl
 clean:
 			rm -f *.tin *.evl *~
 

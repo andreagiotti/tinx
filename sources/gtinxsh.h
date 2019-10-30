@@ -2,7 +2,7 @@
 /*
   GTINXSH - Temporal Inference Network eXecutor Suite
   Design & coding by Andrea Giotti, 1998-1999
-  Revised 2016-2018
+  Revised 2016-2019
 */
 
 #include "ting_core.h"
@@ -12,6 +12,7 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 #define CMD_PATH ""
+#define HELP_FILE "/usr/share/doc/tinx/reference.pdf"
 #define CONFIG_FILENAME ".gtinxshrc"
 
 #define MAX_STRLEN_IF 512
@@ -40,7 +41,7 @@
 #define CONFIG_TITLE "Configuration"
 #define PROB_TITLE "Probabilities"
 #define BANNER "Temporal Inference Network eXecutor Suite "PACK_VER", graphical shell "VER"\n" \
-               "Design & coding by Andrea Giotti, 1998-1999, 2016-2018\n\n" \
+               "Design & coding by Andrea Giotti, 1998-1999, 2016-2019\n\n" \
                "A real time inference engine for temporal logic specifications, which is able to process and generate any binary signal through POSIX IPC or files.\n" \
                "Specifications of signals are represented as special graphs and executed in real time, with a sampling time of few milliseconds.\n" \
                "The accepted language provides timed logic operators, conditional operators, interval operators, bounded quantifiers and parametrization of signals.\n\n" \
@@ -118,6 +119,7 @@ typedef struct config
     bool seplit_fe;
     bool seplit_su;
     bool merge;
+    bool constout;
     bool outaux;
     bool outint;
     bool batch_in;
@@ -126,6 +128,7 @@ typedef struct config
     int horizon_size;
     int display_rows;
     char editor_name[MAX_STRLEN];
+    char viewer_name[MAX_STRLEN];
     float inprob[MAX_FILES];
     int fn;
   } config;
@@ -142,9 +145,12 @@ typedef struct s_base
     m_time time_base;
     char fnames[MAX_FILES][MAX_STRLEN];
     bool ffile_io[MAX_FILES];
+    bool fpacked[MAX_FILES];
     char gnames[MAX_FILES][MAX_STRLEN];
     bool gfile_io[MAX_FILES];
+    bool gpacked[MAX_FILES];
     bool gaux[MAX_FILES];
+    bool gsync[MAX_FILES];
     int maxlen;
     file fp[MAX_FILES];
     file gp[MAX_FILES];
@@ -191,8 +197,10 @@ typedef struct s_base
     GtkButton *erase_button;
     GtkButton *dummy_button;
     GtkButton *edit_button;
+    GtkButton *help_button;
     GtkButton *clear_button;
     GtkMenuItem *run_menu;
+    GtkMenuItem *help_menu;
     GtkMenuItem *save_menu;
     GtkMenuItem *erase_menu;
     GtkAdjustment *area_adj;
@@ -205,7 +213,7 @@ typedef struct s_base
 /* Protos */
 
 INLINE m_time get_time();
-void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int width, int height, char truth);
+void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int width, int height, char truth, bool text);
 gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb);
 gboolean tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, s_base *sb);
 void tintloop(s_base *sb);
