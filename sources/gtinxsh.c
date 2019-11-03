@@ -9,13 +9,11 @@
 
 #define ANSI_FILE_IO
 /* #define UNIX_FILE_IO */
-/* #define POSIX_IPC_IO */
-#define UNIX_IPC_IO
 
 #include "gtinxsh.h"
 
-#define PACK_VER "8.3.1"
-#define VER "3.7.3"
+#define PACK_VER "8.3.2"
+#define VER "3.7.4"
 
 INLINE m_time get_time()
 {
@@ -450,6 +448,20 @@ void tinxpipe(s_base *sb)
   pthread_exit(NULL);
 }
 
+gboolean flip_controls(s_base *sb)
+{
+  if(sb->rs == starting || sb->rs == started)
+    {
+      gtk_button_set_label(sb->run_button, "Stop execution");
+      gtk_menu_item_set_label(sb->run_menu, "Stop execution");
+    }
+  else
+    {
+      gtk_button_set_label(sb->run_button, "Execute network");
+      gtk_menu_item_set_label(sb->run_menu, "Execute network");
+    }
+}
+
 void dummy_button_clicked(GtkWidget *widget, s_base *sb)
 {
   FILE *bp;
@@ -862,8 +874,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
               }
           }
 
-        gtk_button_set_label(sb->run_button, "Stop execution");
-        gtk_menu_item_set_label(sb->run_menu, "Stop execution");
+        g_idle_add((gboolean (*)(gpointer))flip_controls, sb);
 
         sb->rs = started;
       break;
@@ -997,9 +1008,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
         pthread_join(sb->tinxpipe, NULL);
 
         g_idle_add((gboolean (*)(gpointer))reset_view, sb);
-
-        gtk_button_set_label(sb->run_button, "Execute network");
-        gtk_menu_item_set_label(sb->run_menu, "Execute network");
+        g_idle_add((gboolean (*)(gpointer))flip_controls, sb);
 
         sb->rs = stopped;
       break;
@@ -3260,6 +3269,8 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   sbs.regenerate = FALSE;
   sbs.changed = FALSE;
   sbs.changeprob = FALSE;
+
+  gtk_disable_setlocale();
 
   gtk_init(NULL, NULL);
 
