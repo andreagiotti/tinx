@@ -11,7 +11,7 @@
 
 #include "tinx.h"
 
-#define VER "7.5.1 (single core)"
+#define VER "7.6.0 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -410,7 +410,8 @@ bool input_f(k_base *kb, stream *ios)
     {
     case eof_symbol:
       reset_file(ios->fp);
-      return FALSE;
+
+      return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
     break;
 
     case unknown_symbol:
@@ -479,7 +480,8 @@ bool input_packed_f(k_base *kb, stream *ios)
       if(feof(ios->fp))
         {
           reset_file(ios->fp);
-          return FALSE;
+
+          return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
         }
     }
 
@@ -521,7 +523,7 @@ bool input_m_posix(k_base *kb, stream *ios)
   switch(strchr(kb->alpha, c) - kb->alpha)
     {
     case eof_symbol:
-      return FALSE;
+      return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
     break;
 
     case unknown_symbol:
@@ -591,7 +593,7 @@ bool input_packed_m_posix(k_base *kb, stream *ios)
 
           ios->errors++;
 
-          return FALSE;
+          return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
         }
       else
         ios->errors = 0;
@@ -635,7 +637,7 @@ bool input_m_sys5(k_base *kb, stream *ios)
   switch(strchr(kb->alpha, c) - kb->alpha)
     {
     case eof_symbol:
-      return FALSE;
+      return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
     break;
 
     case unknown_symbol:
@@ -705,7 +707,7 @@ bool input_packed_m_sys5(k_base *kb, stream *ios)
 
           ios->errors++;
 
-          return FALSE;
+          return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
         }
       else
         ios->errors = 0;
@@ -758,6 +760,9 @@ bool output_f(k_base *kb, stream *ios)
                 return FALSE;
               else
                 {
+                  if(ios->defaultval > unknown_symbol)
+                    return TRUE;
+
                   ios->fails++;
 
                   if(!kb->max_time && ios->fails > kb->bsd4)
@@ -811,6 +816,8 @@ bool output_packed_f(k_base *kb, stream *ios)
        else
          if(ios->defaultval == true_symbol)
            c |= (1 << k);
+
+      pack->gen = TRUE;
     }
   else
    {
@@ -821,6 +828,7 @@ bool output_packed_f(k_base *kb, stream *ios)
         {
           ios->fails = 0;
           c &= ~ (1 << k);
+          pack->gen = TRUE;
         }
       else
         {
@@ -830,27 +838,31 @@ bool output_packed_f(k_base *kb, stream *ios)
             {
               ios->fails = 0;
               c |= (1 << k);
+              pack->gen = TRUE;
             }
           else
             {
               if(kb->io_stream[input_stream] || !kb->far)
                 return FALSE;
               else
-                {
-                  ios->fails++;
+                if(ios->defaultval <= unknown_symbol)
+                  {
+                    ios->fails++;
 
-                  if(!kb->max_time && ios->fails > kb->bsd4)
-                    {
-                      ios->open = FALSE;
-                      return FALSE;
-                    }
+                    if(!kb->max_time && ios->fails > kb->bsd4)
+                      {
+                        ios->open = FALSE;
+                        return FALSE;
+                      }
 
-                  if(ios->defaultval == false_symbol)
-                    c &= ~ (1 << k);
-                  else
-                    if(ios->defaultval == true_symbol)
-                      c |= (1 << k);
-                }
+                    if(ios->defaultval == false_symbol)
+                      c &= ~ (1 << k);
+                    else
+                      if(ios->defaultval == true_symbol)
+                        c |= (1 << k);
+
+                    pack->gen = TRUE;
+                  }
             }
         }
     }
@@ -860,16 +872,21 @@ bool output_packed_f(k_base *kb, stream *ios)
 
   if(!pack->packedcount)
     {
-      if(mput_file(ios->fp, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+      if(pack->gen)
         {
-          perror(ios->file_name);
-          exit(EXIT_FAILURE);
-        }
+          if(mput_file(ios->fp, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+            {
+              perror(ios->file_name);
+              exit(EXIT_FAILURE);
+            }
 
-      if(sync_file(ios->fp))
-        {
-          perror(ios->file_name);
-          exit(EXIT_FAILURE);
+          if(sync_file(ios->fp))
+            {
+              perror(ios->file_name);
+              exit(EXIT_FAILURE);
+            }
+
+          pack->gen = FALSE;
         }
 
       pack->packedcount = pack->packedtot;
@@ -910,6 +927,9 @@ bool output_m_posix(k_base *kb, stream *ios)
                 return FALSE;
               else
                 {
+                  if(ios->defaultval > unknown_symbol)
+                    return TRUE;
+
                   ios->fails++;
 
                   if(!kb->max_time && ios->fails > kb->bsd4)
@@ -973,6 +993,8 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
        else
          if(ios->defaultval == true_symbol)
            c |= (1 << k);
+
+      pack->gen = TRUE;
     }
   else
    {
@@ -983,6 +1005,7 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
         {
           ios->fails = 0;
           c &= ~ (1 << k);
+          pack->gen = TRUE;
         }
       else
         {
@@ -992,27 +1015,31 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
             {
               ios->fails = 0;
               c |= (1 << k);
+              pack->gen = TRUE;
             }
           else
             {
               if(kb->io_stream[input_stream] || !kb->far)
                 return FALSE;
               else
-                {
-                  ios->fails++;
+                if(ios->defaultval <= unknown_symbol)
+                  {
+                    ios->fails++;
 
-                  if(!kb->max_time && ios->fails > kb->bsd4)
-                    {
-                      ios->open = FALSE;
-                      return FALSE;
-                    }
+                    if(!kb->max_time && ios->fails > kb->bsd4)
+                      {
+                        ios->open = FALSE;
+                        return FALSE;
+                      }
 
-                  if(ios->defaultval == false_symbol)
-                    c &= ~ (1 << k);
-                  else
-                    if(ios->defaultval == true_symbol)
-                      c |= (1 << k);
-                }
+                    if(ios->defaultval == false_symbol)
+                      c &= ~ (1 << k);
+                    else
+                      if(ios->defaultval == true_symbol)
+                        c |= (1 << k);
+
+                    pack->gen = TRUE;
+                  }
             }
         }
     }
@@ -1022,29 +1049,34 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
 
   if(!pack->packedcount)
     {
-      if(msend_message_posix(ios->chan, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+      if(pack->gen)
         {
-          if(errno != EAGAIN)
+          if(msend_message_posix(ios->chan, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
             {
-              perror(ios->chan_name);
-              exit(EXIT_FAILURE);
+              if(errno != EAGAIN)
+                {
+                  perror(ios->chan_name);
+                  exit(EXIT_FAILURE);
+                }
+
+              ios->errors++;
+
+              if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+                {
+                  ios->open = FALSE;
+
+                  fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+                }
+
+              (pack->packedcount)++;
+
+              return FALSE;
             }
+          else
+            ios->errors = 0;
 
-          ios->errors++;
-
-          if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
-            {
-              ios->open = FALSE;
-
-              fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
-            }
-
-          (pack->packedcount)++;
-
-          return FALSE;
+          pack->gen = FALSE;
         }
-      else
-        ios->errors = 0;
 
       pack->packedcount = pack->packedtot;
     }
@@ -1084,6 +1116,9 @@ bool output_m_sys5(k_base *kb, stream *ios)
                 return FALSE;
               else
                 {
+                  if(ios->defaultval > unknown_symbol)
+                    return TRUE;
+
                   ios->fails++;
 
                   if(!kb->max_time && ios->fails > kb->bsd4)
@@ -1147,6 +1182,8 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
        else
          if(ios->defaultval == true_symbol)
            c |= (1 << k);
+
+      pack->gen = TRUE;
     }
    else
     {
@@ -1157,6 +1194,7 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
         {
           ios->fails = 0;
           c &= ~ (1 << k);
+          pack->gen = TRUE;
         }
       else
         {
@@ -1166,27 +1204,31 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
             {
               ios->fails = 0;
               c |= (1 << k);
+              pack->gen = TRUE;
             }
           else
             {
               if(kb->io_stream[input_stream] || !kb->far)
                 return FALSE;
               else
-                {
-                  ios->fails++;
+                if(ios->defaultval <= unknown_symbol)
+                  {
+                    ios->fails++;
 
-                  if(!kb->max_time && ios->fails > kb->bsd4)
-                    {
-                      ios->open = FALSE;
-                      return FALSE;
-                    }
+                    if(!kb->max_time && ios->fails > kb->bsd4)
+                      {
+                        ios->open = FALSE;
+                        return FALSE;
+                      }
 
-                  if(ios->defaultval == false_symbol)
-                    c &= ~ (1 << k);
-                  else
-                    if(ios->defaultval == true_symbol)
-                      c |= (1 << k);
-                }
+                    if(ios->defaultval == false_symbol)
+                      c &= ~ (1 << k);
+                    else
+                      if(ios->defaultval == true_symbol)
+                        c |= (1 << k);
+
+                    pack->gen = TRUE;
+                  }
             }
         }
     }
@@ -1196,29 +1238,34 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
 
   if(!pack->packedcount)
     {
-      if(msend_message_sys5(ios->chan5, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+      if(pack->gen)
         {
-          if(errno != EAGAIN)
+          if(msend_message_sys5(ios->chan5, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
             {
-              perror(ios->chan_name);
-              exit(EXIT_FAILURE);
+              if(errno != EAGAIN)
+                {
+                  perror(ios->chan_name);
+                  exit(EXIT_FAILURE);
+                }
+
+              ios->errors++;
+
+              if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+                {
+                  ios->open = FALSE;
+
+                  fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+                }
+
+              (pack->packedcount)++;
+
+              return FALSE;
             }
+          else
+            ios->errors = 0;
 
-          ios->errors++;
-
-          if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
-            {
-              ios->open = FALSE;
-
-              fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
-            }
-
-          (pack->packedcount)++;
-
-          return FALSE;
+          pack->gen = FALSE;
         }
-      else
-        ios->errors = 0;
 
       pack->packedcount = pack->packedtot;
     }
@@ -2052,6 +2099,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
               packed_ios[packed]->pack.packedtot++;
               packed_ios[packed]->pack.packedcount = packed_ios[packed]->pack.packedtot;
+              packed_ios[packed]->pack.gen = FALSE;
             }
         }
 

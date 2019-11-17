@@ -226,6 +226,7 @@ typedef enum io_type3
   io_false,
   io_true,
   io_unknown,
+  io_omit,
   IO_TYPES3_NUMBER
 } io_type3;
 
@@ -252,6 +253,7 @@ typedef struct packet
   int packedcount;
   int packedtot;
   int packedbit;
+  bool gen;
 } packet;
 
 struct stream

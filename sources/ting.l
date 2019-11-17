@@ -78,6 +78,7 @@ PACKED      "packed"
 UNKNOWN     "unknown"
 FALSE       "false"
 TRUE        "true"
+OMIT        "omit"
 
 LBRACKET    "{"
 RBRACKET    "}"
@@ -135,6 +136,7 @@ BLANKS      [ \r\n\t]*
 {UNKNOWN}       { return TOKEN_UNKNOWN; }
 {FALSE}         { return TOKEN_FALSE; }
 {TRUE}          { return TOKEN_TRUE; }
+{OMIT}          { return TOKEN_OMIT; }
 {COMMA}         { return TOKEN_COMMA; }
 {COLON}         { return TOKEN_COLON; }
 {LPAREN}        { return TOKEN_LPAREN; }

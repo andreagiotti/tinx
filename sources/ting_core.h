@@ -163,12 +163,12 @@ typedef struct initial_condition
 #define SOURCE_BUFSIZE 262144
 #define SOURCE_BUFSIZE_C "262143"
 
-#define SYMTAB_SIZE 8191
+#define SYMTAB_SIZE 8191    /* Prime */
 #define SYMTAB_DEPTH 64
-#define NUM_LITERALS 4096
-#define NUM_OCCURRENCES 4096
-#define NUM_ICS 4096
-#define NUM_INTEGERS 4096
+#define NUM_LITERALS 8192
+#define NUM_OCCURRENCES 8192
+#define NUM_ICS 8192
+#define NUM_INTEGERS 8192
 #define NUM_LEVELS 256
 
 #define BTL_HISTORY_LEN 256

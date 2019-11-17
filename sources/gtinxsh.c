@@ -12,8 +12,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "8.3.2"
-#define VER "3.7.4"
+#define PACK_VER "8.4.0"
+#define VER "3.8.0"
 
 INLINE m_time get_time()
 {
@@ -360,6 +360,9 @@ void tintloop(s_base *sb)
 
                       tau_g[i]++;
                     }
+                  else
+                    if(sb->gomit[i] && sb->time >= (tau_g[i] + 1) * sb->cp_step * (1 + sb->cfg.correction))
+                      tau_g[i]++;
                 }
 
               sb->gsync[i] = sync_char[i][(sb->t + (sb->cp_horizon_size - 2)) % sb->cp_horizon_size];
@@ -460,6 +463,8 @@ gboolean flip_controls(s_base *sb)
       gtk_button_set_label(sb->run_button, "Execute network");
       gtk_menu_item_set_label(sb->run_menu, "Execute network");
     }
+
+  return G_SOURCE_REMOVE;
 }
 
 void dummy_button_clicked(GtkWidget *widget, s_base *sb)
@@ -468,7 +473,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
   char cmd[MAX_STRLEN_IF], arg[MAX_STRLEN_IF];
   pthread_attr_t attributes;
-  int i, k, len, count, tot_rows, page_rows, packed, packedbit;
+  int i, k, len, count, tot_rows, page_rows, packed, packedbit, defaultval;
   char c, ic, oc;
   io_type stype;
   pid_t pid;
@@ -528,6 +533,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
             stype = io_any;
             packed = 0;
             packedbit = 0;
+            defaultval = unknown_symbol;
 
             fscanf(bp, " "SKIP_FMT" ");
 
@@ -539,7 +545,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
               }
 
             file_io = TRUE;
-            while(fscanf(bp, " "OP_FMT" "FUN_FMT" ( %*[^"SEPARATORS"] , %*[^"SEPARATORS"] ) # %*d / %u , %u , %u , %*u @ %*ld ", &c, name, &stype, &packed, &packedbit) >= 2)
+            while(fscanf(bp, " "OP_FMT" "FUN_FMT" ( %*[^"SEPARATORS"] , %*[^"SEPARATORS"] ) # %*d / %u , %u , %u , %u @ %*ld ", &c, name, &stype, &packed, &packedbit, &defaultval) >= 2)
               {
                 if(!packed || !packedbit)
                   {
@@ -629,6 +635,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
                                 }
 
                               sb->gpacked[sb->gn] = packed;
+                              sb->gomit[sb->gn] = (defaultval > unknown_symbol);
                               sb->gaux[sb->gn] = (c == '.');
 
                               len = strlen(sb->gnames[sb->gn]);
@@ -649,6 +656,7 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
                 stype = io_any;
                 packed = 0;
                 packedbit = 0;
+                defaultval = unknown_symbol;
               }
 
             if(ferror(bp))
@@ -1007,8 +1015,8 @@ void dummy_button_clicked(GtkWidget *widget, s_base *sb)
 
         pthread_join(sb->tinxpipe, NULL);
 
-        g_idle_add((gboolean (*)(gpointer))reset_view, sb);
         g_idle_add((gboolean (*)(gpointer))flip_controls, sb);
+        g_idle_add((gboolean (*)(gpointer))reset_view, sb);
 
         sb->rs = stopped;
       break;
@@ -2328,12 +2336,22 @@ void rows_value(GtkWidget *widget, s_base *sb)
     }
 }
 
+gboolean goto_end(s_base *sb)
+{
+  GtkTextMark *mark;
+
+  mark = gtk_text_buffer_get_mark(gtk_text_view_get_buffer(sb->textarea), "end");
+
+  gtk_text_view_scroll_mark_onscreen(sb->textarea, mark);
+
+  return G_SOURCE_REMOVE;
+}
+
 gboolean update_view(s_base *sb)
 {
   char buffer[XBUFSIZE];
   int i, n;
   bool xcat;
-
   GtkTextBuffer *textbuffer;
   GtkTextMark *mark;
   GtkTextIter iter;
@@ -2366,7 +2384,7 @@ gboolean update_view(s_base *sb)
       gtk_text_buffer_insert(textbuffer, &iter, buffer, -1);
     }
 
-  gtk_text_view_scroll_mark_onscreen(sb->textarea, mark);
+  g_idle_add((gboolean (*)(gpointer))goto_end, sb);
 
   return G_SOURCE_REMOVE;
 }

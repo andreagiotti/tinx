@@ -92,22 +92,19 @@ int msend_message_sys5(channel_sys5 c, char *a, int n)
 int mread_message_sys5(channel_sys5 c, char *a, int n)
 {
   message qbuf;
-  int rv;
 
   qbuf.mtype = c.saddr;
 
-  rv = msgrcv(c.paddr, &qbuf, MSG_SIZE, c.saddr, IPC_NOWAIT);
-
-  if(rv == MSG_SIZE)
+  if(msgrcv(c.paddr, &qbuf, MSG_SIZE, c.saddr, IPC_NOWAIT) != MSG_SIZE)
     {
-      memcpy(a, qbuf.mtext, n);
+      *a = EOF;
 
-      return 0;
+      return -1;
     }
 
-  *a = EOF;
+  memcpy(a, qbuf.mtext, n);
 
-  return rv;
+  return 0;
 }
 
 int delete_queues_sys5()

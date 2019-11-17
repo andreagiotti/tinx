@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "3.6.0"
+#define VER "3.7.0"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
@@ -1932,7 +1932,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           {
             if(stv.ot == op_ioqual3 || stv.ot == op_ioqual13 || stv.ot == op_ioqual23)
               {
-                fprintf(stderr, "Error, double true/false/unknown qualifier: %s\n", spec->debug);
+                fprintf(stderr, "Error, double true/false/unknown/omit qualifier: %s\n", spec->debug);
                 exit_failure();
               }
 

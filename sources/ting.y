@@ -160,6 +160,7 @@ typedef struct tracker
 %token TOKEN_UNKNOWN
 %token TOKEN_FALSE
 %token TOKEN_TRUE
+%token TOKEN_OMIT
 %token <symbol> TOKEN_NAME
 %token <symbol> TOKEN_STRING
 %token <symbol> TOKEN_ITERATOR
@@ -301,6 +302,7 @@ iod
     | TOKEN_UNKNOWN { $$ = create_ground(op_ioqual3, "unknown", io_unknown); }
     | TOKEN_FALSE { $$ = create_ground(op_ioqual3, "false", io_false); }
     | TOKEN_TRUE { $$ = create_ground(op_ioqual3, "true", io_true); }
+    | TOKEN_OMIT { $$ = create_ground(op_ioqual3, "omit", io_omit); }
     ;
 
 dlist

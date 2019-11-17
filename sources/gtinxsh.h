@@ -149,6 +149,7 @@ typedef struct s_base
     char gnames[MAX_FILES][MAX_STRLEN];
     bool gfile_io[MAX_FILES];
     bool gpacked[MAX_FILES];
+    bool gomit[MAX_FILES];
     bool gaux[MAX_FILES];
     bool gsync[MAX_FILES];
     int maxlen;

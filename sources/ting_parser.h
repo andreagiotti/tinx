@@ -119,10 +119,11 @@ typedef struct tracker
     TOKEN_UNKNOWN = 305,
     TOKEN_FALSE = 306,
     TOKEN_TRUE = 307,
-    TOKEN_NAME = 308,
-    TOKEN_STRING = 309,
-    TOKEN_ITERATOR = 310,
-    TOKEN_NUMBER = 311
+    TOKEN_OMIT = 308,
+    TOKEN_NAME = 309,
+    TOKEN_STRING = 310,
+    TOKEN_ITERATOR = 311,
+    TOKEN_NUMBER = 312
   };
 #endif
 
@@ -163,7 +164,7 @@ union YYSTYPE
   btl_specification *number;
   btl_specification *string;
 
-#line 167 "ting_parser.h"
+#line 168 "ting_parser.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
