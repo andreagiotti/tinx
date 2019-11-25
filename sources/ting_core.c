@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "3.7.0"
+#define VER "3.7.2"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
@@ -429,6 +429,9 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
 
           strcpy(sp->name, name);
           *sp->root = '\0';
+          sp->from = NULL;
+          sp->to = NULL;
+          sp->occurr = no_link;
           sp->sclass = internal_class;
           sp->stype = io_any;
           sp->packed = 0;
@@ -2023,7 +2026,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
                 stv.vp = stv_2.vp;
                 stv.vp->up = vp;
 
-                purge_smallnode(cb, wp, vp, FALSE);
+                purge_smallnode(cb, wp, vp, undefined);
               }
             else
               {
@@ -2107,10 +2110,10 @@ smallnode **gendir(smallnode *vp, smallnode *bp, direction dir)
       case dir_left:
         if(bp == *genup(vp))
           {
-            if(bp != vp->left)
-              zpp = &vp->left;
-            else
+            if(bp == vp->left)
               zpp = &vp->right;
+            else
+              zpp = &vp->left;
           }
         else
           if(bp == vp->right)
@@ -2173,28 +2176,18 @@ link_code occurrence(smallnode *from, smallnode *to)
     }
 }
 
-void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, bool neg)
+void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
 {
   io_signal *sp;
-  smallnode *lp, *rp, **lpp, **rpp;
+  smallnode *lp, *rp;
   int i;
   io_symbol def;
 
   assert(vp);
   assert(!vp->zombie);
 
-  lpp = gendir(vp, bp, dir_left);
-  rpp = gendir(vp, bp, dir_right);
-
-  if(lpp)
-    lp = *lpp;
-  else
-    lp = NULL;
-
-  if(rpp)
-    rp = *rpp;
-  else
-    rp = NULL;
+  lp = *gendir(vp, bp, dir_left);
+  rp = *gendir(vp, bp, dir_right);
 
   for(i = 0; i < cb->num_signals; i++)
     {
@@ -2203,54 +2196,59 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, bool neg)
 
       if(sp->from == vp || sp->to == vp)
         {
-          def = unknown_symbol;
-
-          if(sp->from == vp)
+          if(val != undefined)
             {
-              if(sp->to == lp)
-                {
-                  sp->from = rp;
-                  sp->occurr = occurrence(vp, lp);
-                }
+              if(sp->to == vp && (sp->from != vp || sp->occurr == parent))
+                def = (val == negated)? true_symbol : false_symbol;
               else
-                if(sp->to == rp)
-                  {
-                    sp->from = lp;
-                    sp->occurr = occurrence(vp, rp);
-                  }
+                def = (val == negated)? false_symbol : true_symbol;
 
-              def = neg? true_symbol : false_symbol;
-            }
-
-          if(sp->to == vp)
-            {
-              if(sp->from == lp)
-                {
-                  sp->to = rp;
-                  sp->occurr = occurrence(vp, rp);
-                }
-              else
-                if(sp->from == rp)
-                  {
-                    sp->to = lp;
-                    sp->occurr = occurrence(vp, lp);
-                  }
-
-              def = neg? false_symbol : true_symbol;
-            }
-
-          if(!sp->from || !sp->to || sp->from == vp || sp->to == vp)
-            {
               if(sp->defaultval == unknown_symbol)
                 sp->defaultval = def;
               else
                 if(sp->defaultval != def)
                   fprintf(stderr, "%s: Warning, incompatible default on signal\n", sp->name);
+            }
+          else
+            {
+              if(sp->from == vp)
+                {
+                  if(sp->to == lp)
+                    {
+                      sp->from = rp;
+                      sp->occurr = occurrence(vp, lp);
+                    }
+                  else
+                    if(sp->to == rp)
+                      {
+                        sp->from = lp;
+                        sp->occurr = occurrence(vp, rp);
+                      }
+                }
 
+              if(sp->to == vp)
+                {
+                  if(sp->from == lp)
+                    {
+                      sp->to = rp;
+                      sp->occurr = occurrence(vp, rp);
+                    }
+                  else
+                    if(sp->from == rp)
+                      {
+                        sp->to = lp;
+                        sp->occurr = occurrence(vp, lp);
+                      }
+                }
+            }
+    
+          if(sp->from == vp || sp->to == vp)
+            {
               sp->from = NULL;
               sp->to = NULL;
 
-              fprintf(stderr, "%s: Warning, signal removed\n", sp->name);
+              if(sp->sclass != internal_class)
+                fprintf(stderr, "%s: Warning, signal removed\n", sp->name);
             }
         }
     }
@@ -2260,11 +2258,13 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, bool neg)
 
 void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp)
 {
-  smallnode **left, **right;
+  smallnode **zpp;
 
   if(!xp)
     {
-      purge_smalltree(cb, yp, bp);
+      if(yp)
+        purge_smalltree(cb, yp, bp);
+
       return;
     }
   else
@@ -2274,14 +2274,17 @@ void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp
         return;
       }
 
-  *get_neighbor_handle(xp, bp) = NULL;
-  *get_neighbor_handle(yp, bp) = NULL;
+  if(xp != bp)
+    *get_neighbor_handle(xp, bp) = NULL;
 
-  left = get_neighbor_handle(bp, xp);
-  right = get_neighbor_handle(bp, yp);
+  if(yp != bp)
+    *get_neighbor_handle(yp, bp) = NULL;
 
-  *left = yp;
-  *right = xp;
+  zpp = get_neighbor_handle(bp, xp);
+  *zpp = NULL;
+
+  *get_neighbor_handle(bp, yp) = xp;
+  *zpp = yp;
 }
 
 void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
@@ -2290,7 +2293,7 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
 
   if(!vp)
     {
-      fprintf(stderr, "%s: Error, ill-formed clauses: %s\n", bp->name, bp->debug);
+      fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", bp->name, bp->debug);
       exit_failure();
     }
 
@@ -2306,7 +2309,13 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         lpp = gendir(vp, bp, dir_left);
         rpp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, TRUE);
+        if(*lpp == vp && *rpp == vp)
+          {
+            fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", vp->name, vp->debug);
+            exit_failure();
+          }
+
+        purge_smallnode(cb, vp, bp, negated);
 
         erase_smalltree(cb, *lpp, vp);
         erase_smalltree(cb, *rpp, vp);
@@ -2316,15 +2325,25 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         lpp = gendir(vp, bp, dir_left);
         rpp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, TRUE);
-
         if(bp == *genup(vp))
           {
+            if(*lpp == vp && *rpp == vp)
+              {
+                fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", vp->name, vp->debug);
+                exit_failure();
+              }
+
+            purge_smallnode(cb, vp, bp, negated);
+
             erase_smalltree(cb, *lpp, vp);
             erase_smalltree(cb, *rpp, vp);
           }
         else
-          close_smallbranches(cb, *lpp, *rpp, vp);
+          {
+            purge_smallnode(cb, vp, bp, undefined);
+
+            close_smallbranches(cb, *lpp, *rpp, vp);
+          }
       break;
 
       case delay:
@@ -2332,7 +2351,7 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         if(!*lpp)
           lpp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, TRUE);
+        purge_smallnode(cb, vp, bp, negated);
 
         erase_smalltree(cb, *lpp, vp);
       break;
@@ -2365,7 +2384,7 @@ void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         lpp = gendir(vp, bp, dir_left);
         rpp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
+        purge_smallnode(cb, vp, bp, undefined);
 
         close_smallbranches(cb, *lpp, *rpp, vp);
       break;
@@ -2374,22 +2393,32 @@ void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         lpp = gendir(vp, bp, dir_left);
         rpp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
-
         if(bp == *genup(vp))
           {
+            if(*lpp == vp && *rpp == vp)
+              {
+                fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", vp->name, vp->debug);
+                exit_failure();
+              }
+
+            purge_smallnode(cb, vp, bp, asserted);
+
             purge_smalltree(cb, *lpp, vp);
             purge_smalltree(cb, *rpp, vp);
           }
         else
           if(*lpp == *genup(vp))
             {
+              purge_smallnode(cb, vp, bp, asserted);
+
               purge_smalltree(cb, *lpp, vp);
               erase_smalltree(cb, *rpp, vp);
             }
           else
             if(*rpp == *genup(vp))
               {
+                purge_smallnode(cb, vp, bp, asserted);
+
                 erase_smalltree(cb, *lpp, vp);
                 purge_smalltree(cb, *rpp, vp);
               }
@@ -2400,7 +2429,7 @@ void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
         if(!*lpp)
           lpp = gendir(vp, bp, dir_right);
 
-        purge_smallnode(cb, vp, bp, FALSE);
+        purge_smallnode(cb, vp, bp, asserted);
 
         purge_smalltree(cb, *lpp, vp);
       break;
@@ -2504,15 +2533,15 @@ int save_signals(c_base *cb, FILE *fp)
         }
       else
         {
-          if(cb->constout && sp->sclass == output_class)
+          if(cb->constout && sp->sclass == output_class && sp->defaultval != unknown_symbol)
             {
               rv = fprintf(fp, "? %s (*, *) # 0 / %d, %d, %d, %d\n", *sp->root? sp->root : sp->name, sp->stype, sp->packed, sp->packedbit, sp->defaultval);
 
-              fprintf(stderr, "%s: Warning, constant output signal generated as %s by default\n", sp->name,
-                                                                                                  sp->defaultval == false_symbol? "false" : (sp->defaultval == true_symbol? "true" : "unknown"));
+              fprintf(stderr, "%s: Warning, constant output signal generated as %s by default\n", sp->name, sp->defaultval == false_symbol? "false" : "true");
             }
           else
-            fprintf(stderr, "%s: Warning, signal not generated\n", sp->name);
+            if(sp->sclass != internal_class)
+              fprintf(stderr, "%s: Warning, signal not generated\n", sp->name);
         }
     }
 

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Encoding=UTF-8
 Name=TINX
-Version=8.4.0
+Version=8.4.2
 Comment=Real time inference engine for temporal logic specifications
 Exec=/usr/bin/gtinxsh
 Icon=/usr/share/icons/hicolor/512x512/apps/tinx.png
