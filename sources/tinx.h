@@ -42,7 +42,7 @@ typedef long int d_time;
 #define FTIME_FMT "%06ld"
 #define NULL_TIME LONG_MAX
 
-typedef float m_time;
+typedef double m_time;
 #define CLOCK_TYPE CLOCK_MONOTONIC_RAW
 #define DEFAULT_STEP_SEC ((m_time) 0.1)
 
@@ -207,21 +207,28 @@ typedef enum io_type
   IO_TYPES_NUMBER
 } io_type;
 
-typedef enum io_type2
+typedef enum io_type_2
 {
   io_binary,
   io_packed,
-  IO_TYPES2_NUMBER
-} io_type2;
+  IO_TYPES_2_NUMBER
+} io_type_2;
 
-typedef enum io_type3
+typedef enum io_type_3
 {
   io_false,
   io_true,
   io_unknown,
+  IO_TYPES_3_NUMBER
+} io_type_3;
+
+typedef enum io_type_4
+{
+  io_raw,
+  io_filter,
   io_omit,
-  IO_TYPES3_NUMBER
-} io_type3;
+  IO_TYPES_4_NUMBER
+} io_type_4;
 
 typedef struct k_base k_base;
 
@@ -255,7 +262,8 @@ struct stream
   stream_class sclass;
   arc e;
   arc ne;
-  io_symbol defaultval;
+  io_type_3 defaultval;
+  bool skip[IO_TYPES_3_NUMBER];
   char file_name[MAX_STRLEN];
   char chan_name[MAX_STRLEN];
   file fp;
@@ -347,6 +355,7 @@ typedef struct k_base
   d_time max_time;
   d_time offset;
   bool far;
+  bool bound;
   bool strictly_causal;
   bool soundness_check;
   bool trace_focus;
@@ -356,7 +365,6 @@ typedef struct k_base
   bool sturdy;
   bool busywait;
   bool io_busy;
-  bool exiting;
   FILE *logfp;
   m_time time_base;
   m_time step;
@@ -401,7 +409,7 @@ bool input_m(k_base *kb, stream *ios);
 bool output_m(k_base *kb, stream *ios);
 void trace(k_base *kb, event s);
 stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5,
-                    char *prefix, char *path, io_symbol defaultval, int packed, int packedbit, stream *packed_ios);
+                    char *prefix, char *path, io_type_3 defaultval, io_type_4 omissions, int packed, int packedbit, stream *packed_ios);
 void close_stream(stream *ios, char *alpha);
 INLINE void add_stream(stream **handle, stream *ios);
 INLINE void remove_stream(stream **handle);

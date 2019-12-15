@@ -47,6 +47,8 @@ PLUS        "+"
 MINUS       "-"
 MUL         "*"
 DIV         "/"
+MOD         "%"
+POW         "^"
 
 LPAREN      "("
 RPAREN      ")"
@@ -78,6 +80,8 @@ PACKED      "packed"
 UNKNOWN     "unknown"
 FALSE       "false"
 TRUE        "true"
+RAW         "raw"
+FILTER      "filter"
 OMIT        "omit"
 
 LBRACKET    "{"
@@ -86,7 +90,7 @@ SEMICOLON   ";"
 
 NAME        [a-zA-Z][a-zA-Z0-9_]*
 STRING      "\""[^\"]+"\""
-ITERATOR    "^"+
+ITERATOR    "#"+
 NUMBER      [0-9]+
 BLANKS      [ \r\n\t]*
 
@@ -115,6 +119,8 @@ BLANKS      [ \r\n\t]*
 {MINUS}         { return TOKEN_MINUS; }
 {MUL}           { return TOKEN_MUL; }
 {DIV}           { return TOKEN_DIV; }
+{MOD}           { return TOKEN_MOD; }
+{POW}           { return TOKEN_POW; }
 {INPUT}         { return TOKEN_INPUT; }
 {OUTPUT}        { return TOKEN_OUTPUT; }
 {AUX}           { return TOKEN_AUX; }
@@ -136,6 +142,8 @@ BLANKS      [ \r\n\t]*
 {UNKNOWN}       { return TOKEN_UNKNOWN; }
 {FALSE}         { return TOKEN_FALSE; }
 {TRUE}          { return TOKEN_TRUE; }
+{RAW}           { return TOKEN_RAW; }
+{FILTER}        { return TOKEN_FILTER; }
 {OMIT}          { return TOKEN_OMIT; }
 {COMMA}         { return TOKEN_COMMA; }
 {COLON}         { return TOKEN_COLON; }

@@ -12,16 +12,18 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 #define CMD_PATH ""
-#define HELP_FILE "/usr/share/doc/tinx/reference.pdf"
 #define CONFIG_FILENAME ".gtinxshrc"
+#define EDITOR_FILENAME "gedit"
+#define VIEWER_FILENAME "evince"
+#define HELP_FILENAME "/usr/share/doc/tinx/reference.pdf"
 
 #define MAX_STRLEN_IF 512
 #define MAX_STRLEN_IF_C "511"
 
-#define MAX_FILES 256
+#define MAX_FILES 1024
 #define DEFAULT_HORIZON_SIZE (100 + 1)
 #define MAX_HORIZON_SIZE (255 + 1)
-#define MAX_RUN_LEN 1000000
+#define MAX_RUN_LEN 999999999999
 #define MIN_BSBT 2
 #define MAX_BSBT 30
 
@@ -35,7 +37,7 @@
 #define DEFAULT_DISPLAY_ROWS 15
 #define MAX_DISPLAY_ROWS 255
 
-#define DEFAULT_PROB ((float) 0.5)
+#define DEFAULT_PROB ((double) 0.5)
 
 #define TITLE "Temporal Inference Network eXecutor Suite"
 #define CONFIG_TITLE "Configuration"
@@ -47,7 +49,7 @@
                "The accepted language provides timed logic operators, conditional operators, interval operators, bounded quantifiers and parametrization of signals.\n\n" \
                "This software is licensed under the GNU Public License.\n"
 
-#define REAL_FMT "%.3f"
+#define REAL_FMT "%.6f"
 #define ORIGIN_FMT "%.9f"
 
 #define XBUFSIZE 262144
@@ -98,8 +100,8 @@ typedef struct config
     m_time step;
     d_time max_time;
     int num_threads;
-    float prob;
-    float correction;
+    double prob;
+    double correction;
     char prefix[MAX_STRLEN];
     char path[MAX_STRLEN];
     char include_path[MAX_STRLEN];
@@ -125,11 +127,12 @@ typedef struct config
     bool batch_in;
     bool batch_out;
     bool draw_undef;
+    bool full_names;
     int horizon_size;
     int display_rows;
     char editor_name[MAX_STRLEN];
     char viewer_name[MAX_STRLEN];
-    float inprob[MAX_FILES];
+    double inprob[MAX_FILES];
     int fn;
   } config;
 
@@ -144,9 +147,11 @@ typedef struct s_base
     m_time time;
     m_time time_base;
     char fnames[MAX_FILES][MAX_STRLEN];
+    char fnames_full[MAX_FILES][MAX_STRLEN];
     bool ffile_io[MAX_FILES];
     bool fpacked[MAX_FILES];
     char gnames[MAX_FILES][MAX_STRLEN];
+    char gnames_full[MAX_FILES][MAX_STRLEN];
     bool gfile_io[MAX_FILES];
     bool gpacked[MAX_FILES];
     bool gomit[MAX_FILES];
@@ -181,6 +186,7 @@ typedef struct s_base
     bool cp_sys5;
     bool cp_batch_in;
     bool cp_batch_out;
+    bool cp_full_names;
     int cp_horizon_size;
     int cp_display_rows;
     pthread_t tintloop;
@@ -260,7 +266,7 @@ void print_add(s_base *sb, char *string, ...);
 pid_t pidof(s_base *sb, char *name);
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
          bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge,
-         bool outaux, bool outint, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, float prob,
+         bool outaux, bool outint, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, double prob,
          bool batch_in, bool batch_out, bool draw_undef);
 
 

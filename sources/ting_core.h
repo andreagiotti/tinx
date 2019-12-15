@@ -11,7 +11,7 @@
 
 #define SOURCE_EXT ".btl"
 
-#define VARSEP "][)(}{"BLANKS"~&|@?,;:*/+-"
+#define VARSEP "][)(}{"BLANKS"~&|@?,;:*/^+-"
 #define VARNAME_FMT "%"MAX_NAMEBUF_C"[^"VARSEP"]"
 #define STRING_FMT "\"%[^\"]\""
 
@@ -32,14 +32,13 @@ typedef enum op_type
   op_ioqual1,
   op_ioqual2,
   op_ioqual3,
-  op_ioqual12,
-  op_ioqual23,
-  op_ioqual13,
-  op_ioqual123,
+  op_ioqual4,
   op_plus,
   op_minus,
   op_mul,
   op_div,
+  op_mod,
+  op_pow,
   op_chs,
   op_not,
   op_and,
@@ -109,10 +108,12 @@ typedef struct subtreeval
   btl_specification *btl;
   btl_specification *btldef;
   smallnode *vp;
-  op_type ot;
   d_time a;
   d_time b;
-  d_time *extra;
+  d_time *xtra;
+  d_time *ytra;
+  d_time *ztra;
+  d_time *wtra;
   bool neg;
 } subtreeval;
 
@@ -136,7 +137,8 @@ typedef struct io_signal
   io_type stype;
   int packed;
   int packedbit;
-  io_symbol defaultval;
+  io_type_3 defaultval;
+  io_type_4 omissions;
   int signal_id;
 } io_signal;
 
@@ -252,7 +254,7 @@ void gensym(c_base *cb, char *symbol, char *type, litval val, bool incr);
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param);
 subtreeval at_happen(c_base *cb, btl_specification *spec, int level, int param, bool dual);
 subtreeval since_until(c_base *cb, btl_specification *spec, int level, int param, bool dual);
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, io_type2 packed, io_type3 defaultval, d_time t);
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3 defaultval, io_type_4 omissions, d_time t);
 void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val);
 void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp);
 void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp);

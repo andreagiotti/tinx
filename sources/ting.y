@@ -109,6 +109,8 @@ typedef struct tracker
 %left TOKEN_MINUS
 %left TOKEN_MUL
 %left TOKEN_DIV
+%left TOKEN_MOD
+%left TOKEN_POW
 
 %token TOKEN_LBRACKET
 %token TOKEN_RBRACKET
@@ -148,6 +150,8 @@ typedef struct tracker
 %token TOKEN_MINUS
 %token TOKEN_MUL
 %token TOKEN_DIV
+%token TOKEN_MOD
+%token TOKEN_POW
 %token TOKEN_ON
 %token TOKEN_IN
 %token TOKEN_IS
@@ -160,6 +164,8 @@ typedef struct tracker
 %token TOKEN_UNKNOWN
 %token TOKEN_FALSE
 %token TOKEN_TRUE
+%token TOKEN_RAW
+%token TOKEN_FILTER
 %token TOKEN_OMIT
 %token <symbol> TOKEN_NAME
 %token <symbol> TOKEN_STRING
@@ -277,11 +283,13 @@ inter
 
 decl
     : TOKEN_INPUT TOKEN_LSQUARED iodlist[B] TOKEN_RSQUARED dlist[A] { $$ = create_operation(op_input, $A, $B, "input[%2$s] %1$s"); }
-    | TOKEN_INPUT dlist[A] { $$ = create_operation(op_input, $A, create_operation(op_join_qual, create_operation(op_join_qual,
-      create_ground(op_ioqual1, "", io_any), create_ground(op_ioqual2, "", io_binary), "%s , %s"), create_ground(op_ioqual3, "", io_unknown), "%s , %s"), "input[%2$s] %1$s"); }
+    | TOKEN_INPUT dlist[A] { $$ = create_operation(op_input, $A, create_operation(op_join_qual, create_operation(op_join_qual, create_operation(op_join_qual,
+      create_ground(op_ioqual1, "", io_any), create_ground(op_ioqual2, "", io_binary), "%s , %s"), create_ground(op_ioqual3, "", io_unknown), "%s , %s"),
+      create_ground(op_ioqual4, "", io_raw), "%s , %s"), "input[%2$s] %1$s"); }
     | TOKEN_OUTPUT TOKEN_LSQUARED iodlist[B] TOKEN_RSQUARED dlist[A] { $$ = create_operation(op_output, $A, $B, "output[%2$s] %1$s"); }
-    | TOKEN_OUTPUT dlist[A] { $$ = create_operation(op_output, $A, create_operation(op_join_qual, create_operation(op_join_qual,
-      create_ground(op_ioqual1, "", io_any), create_ground(op_ioqual2, "", io_binary), "%s , %s"), create_ground(op_ioqual3, "", io_unknown), "%s , %s"), "output[%2$s] %1$s"); }
+    | TOKEN_OUTPUT dlist[A] { $$ = create_operation(op_output, $A, create_operation(op_join_qual, create_operation(op_join_qual, create_operation(op_join_qual,
+      create_ground(op_ioqual1, "", io_any), create_ground(op_ioqual2, "", io_binary), "%s , %s"), create_ground(op_ioqual3, "", io_unknown), "%s , %s"),
+      create_ground(op_ioqual4, "", io_raw), "%s , %s"), "output[%2$s] %1$s"); }
     | TOKEN_AUX dlist[A] { $$ = create_operation(op_aux, $A, NULL, "aux %s"); }
     | TOKEN_INIT elist[A] { $$ = create_operation(op_init, $A, NULL, "init %s"); }
     | TOKEN_DEFINE alist[A] { $$ = $A; }
@@ -302,7 +310,9 @@ iod
     | TOKEN_UNKNOWN { $$ = create_ground(op_ioqual3, "unknown", io_unknown); }
     | TOKEN_FALSE { $$ = create_ground(op_ioqual3, "false", io_false); }
     | TOKEN_TRUE { $$ = create_ground(op_ioqual3, "true", io_true); }
-    | TOKEN_OMIT { $$ = create_ground(op_ioqual3, "omit", io_omit); }
+    | TOKEN_RAW { $$ = create_ground(op_ioqual4, "raw", io_raw); }
+    | TOKEN_FILTER { $$ = create_ground(op_ioqual4, "filter", io_filter); }
+    | TOKEN_OMIT { $$ = create_ground(op_ioqual4, "omit", io_omit); }
     ;
 
 dlist
@@ -396,6 +406,8 @@ expr
     | expr[L] TOKEN_MINUS expr[R] { $$ = create_operation(op_minus, $L, $R, "%s - %s"); }
     | expr[L] TOKEN_MUL expr[R] { $$ = create_operation(op_mul, $L, $R, "%s * %s"); }
     | expr[L] TOKEN_DIV expr[R] { $$ = create_operation(op_div, $L, $R, "%s / %s"); }
+    | expr[L] TOKEN_MOD expr[R] { $$ = create_operation(op_mod, $L, $R, "%s % %s"); }
+    | expr[L] TOKEN_POW expr[R] { $$ = create_operation(op_pow, $L, $R, "%s ^ %s"); }
     | TOKEN_MINUS expr[E] { $$ = create_operation(op_chs, $E, NULL, "- %s"); }
     | TOKEN_LPAREN expr[E] TOKEN_RPAREN { $$ = $E; }
     | num[N] { $$ = $N; }

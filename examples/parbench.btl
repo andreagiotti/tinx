@@ -1,0 +1,58 @@
+
+/*
+	Optimized parametric multiple crossroad benchmark by Andrea Giotti, 2017-2019
+
+	Some three-state semaphores are connected in an array of crossroads with granted exclusive passage
+	The succession of states is green --> yellow --> red --> green, consequent output ligths are not produced
+	The duration of the red state is deduced from the durations of the two other states
+*/
+
+/*
+	Parameters:
+
+	"number" is the number of instances of the single semaphore, should be a power of 2
+	"lognum" is the logarithm in base 2 of "number"
+        "green_time" is the duration in milliseconds of the green state
+        "yellow_time" is the duration in milliseconds of the yellow state
+*/
+
+define number = 64, lognum = 6, green_time = 256, yellow_time = 128;
+
+/* Definition of an array of semaphore instances */
+
+iter(k on number)
+{
+	output green(k), yellow(k), red(k);
+
+	/* One and only one state amongst green, yellow and red states */
+
+	green(k) | yellow(k) | red(k);
+	~ (green(k) & yellow(k)) & ~ (yellow(k) & red(k)) & ~ (red(k) & green(k));
+
+	/* If an exit from previous state exists ("?") in the proper past interval, next state is entered and hold */
+
+	green(k) == (red(k) @ -1 & ~ red(k)) ? (- green_time, 0];
+        yellow(k) == (green(k) @ -1 & ~ green(k)) ? (- yellow_time, 0];
+}
+
+/* Interface of synchronization */
+
+define pow = 1;
+
+iter(h on lognum)
+{
+	/* When an instance is in the red state, following istance in the hierarchy is not in such a state */
+
+	iter(k on number / (2 * pow))
+		red(2 * k * pow) == ~ red((2 * k + 1) * pow);
+
+	define pow = 2 * pow;
+}
+
+/* Initial conditions */
+
+/* Instance zero starts in green state */
+
+init red(0) @ -1, ~ red(0) @ 0;
+
+

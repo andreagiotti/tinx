@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "3.7.2"
+#define VER "4.0.0"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
@@ -436,7 +436,8 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
           sp->stype = io_any;
           sp->packed = 0;
           sp->packedbit = 0;
-          sp->defaultval = unknown_symbol;
+          sp->defaultval = io_unknown;
+          sp->omissions = io_raw;
           sp->signal_id = cb->num_signals;
 
           cb->num_signals++;
@@ -664,17 +665,21 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
   char symbol[MAX_STRLEN], debug[MAX_STRLEN], filename[MAX_STRLEN];
   btl_specification *e, *p, *q, *r;
   constant *tp;
-  d_time val, h, k;
+  d_time val, h, k, n;
   int l;
   op_type ot;
   FILE *fp;
   char c;
+  char *endp;
 
   stv.btl = NULL;
   stv.btldef = NULL;
   stv.a = 0;
   stv.b = 0;
-  stv.extra = NULL;
+  stv.xtra = NULL;
+  stv.ytra = NULL;
+  stv.ztra = NULL;
+  stv.wtra = NULL;
   stv.neg = FALSE;
 
   if(!spec)
@@ -766,6 +771,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
       case op_ioqual1:
       case op_ioqual2:
       case op_ioqual3:
+      case op_ioqual4:
         stv.btl = create_ground(spec->ot, "", spec->value);
         stv.a = spec->value;
         stv.b = spec->value;
@@ -958,6 +964,40 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
           }
 
         val = stv.a / stv_2.a;
+
+        delete_specification(stv.btl);
+        delete_specification(stv_2.btl);
+
+        stv.btl = create_ground(op_number, "", val);
+        stv.a = val;
+        stv.b = val;
+      break;
+
+      case op_mod:
+        stv = preval(cb, spec->left, level, param);
+        stv_2 = preval(cb, spec->right, level, param);
+
+        if(!stv_2.a)
+          {
+            fprintf(stderr, "Error, division by zero: %s\n", spec->debug);
+            exit_failure();
+          }
+
+        val = stv.a % stv_2.a;
+
+        delete_specification(stv.btl);
+        delete_specification(stv_2.btl);
+
+        stv.btl = create_ground(op_number, "", val);
+        stv.a = val;
+        stv.b = val;
+      break;
+
+      case op_pow:
+        stv = preval(cb, spec->left, level, param);
+        stv_2 = preval(cb, spec->right, level, param);
+
+        val = pow(stv.a, stv_2.a);
 
         delete_specification(stv.btl);
         delete_specification(stv_2.btl);
@@ -1191,15 +1231,15 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(!stv.neg)
           {
-            if(stv.extra)
-              stv.neg = !(stv.a <= *stv.extra && *stv.extra <= stv.b);
+            if(stv.xtra)
+              stv.neg = !(stv.a <= *stv.xtra && *stv.xtra <= stv.b);
             else
               stv.neg = !(stv.a <= param && param <= stv.b);
           }
         else
           {
-            if(stv.extra)
-              stv.neg = (stv.a <= *stv.extra && *stv.extra <= stv.b);
+            if(stv.xtra)
+              stv.neg = (stv.a <= *stv.xtra && *stv.xtra <= stv.b);
             else
               stv.neg = (stv.a <= param && param <= stv.b);
           }
@@ -1274,6 +1314,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
         l = strlen(stv_2.btl->symbol);
 
         p = NULL;
+        n = 0;
         for(h = 0; h < l; h++)
           {
             stv = preval(cb, spec->left, level + 1, param);
@@ -1284,7 +1325,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                 exit_failure();
               }
 
-            sprintf(symbol, "%s("TIME_FMT",0)", stv.btl->symbol, h);
+            sprintf(symbol, "%s("TIME_FMT",0)", stv.btl->symbol, n);
             ot = stv.btl->ot;
 
             delete_specification(stv.btl);
@@ -1292,13 +1333,19 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
             stv.btl = create_ground(ot, symbol, 0);
 
             c = stv_2.btl->symbol[h];
+
             if(c == '\\' && h < l - 1)
               {
                 h++;
+
                 switch(stv_2.btl->symbol[h])
                   {
                     case '\\':
                       c = '\\';
+                    break;
+
+                    case '\"':
+                      c = '\"';
                     break;
 
                     case 'n':
@@ -1309,8 +1356,34 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                       c = '\r';
                     break;
 
+                    case 'f':
+                      c = '\f';
+                    break;
+
                     case 't':
                       c = '\t';
+                    break;
+
+                    case 'v':
+                      c = '\v';
+                    break;
+
+                    case 'a':
+                      c = '\a';
+                    break;
+
+                    case 'b':
+                      c = '\b';
+                    break;
+
+                    case 'x':
+                      if(h < l - 1)
+                        {
+                          h++;
+
+                          c = strtoul(&stv_2.btl->symbol[h], &endp, 16);
+                          h = endp - stv_2.btl->symbol - 1;
+                        }
                     break;
                   }
               }
@@ -1324,7 +1397,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
               {
                 stv = preval(cb, spec->left, level + 1, param);
 
-                sprintf(symbol, "%s("TIME_FMT","TIME_FMT")", stv.btl->symbol, h, k);
+                sprintf(symbol, "%s("TIME_FMT","TIME_FMT")", stv.btl->symbol, n, k);
                 ot = stv.btl->ot;
 
                 delete_specification(stv.btl);
@@ -1337,10 +1410,12 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
                   r = create_operation(op_and, r, create_operation(op_not, copy_specification(stv.btl), NULL, "(~ %s)"), "(%s & %s)");
               }
 
-            if(h == 0)
+            if(n == 0)
               p = r;
             else
               p = create_operation(op_and, p, r, "(%s & %s)");
+
+            n++;
           }
 
         stv.btl = p;
@@ -1357,11 +1432,15 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
             exit_failure();
           }
 
-        memset(stv_2.btl->symbol, 0, MAX_STRLEN);
+        l = 0;
+        for(h = sizeof(d_time); h >= 0; h--)
+          if(((char *)&(stv_2.btl->value))[h])
+            {
+              for(l = 0; l <= h; l++)
+                stv_2.btl->symbol[l] = ((char *)&(stv_2.btl->value))[l];
 
-        *((d_time *)(stv_2.btl->symbol)) = stv_2.btl->value;
-
-        l = strlen(stv_2.btl->symbol);
+              break;
+            }
 
         p = NULL;
         for(h = 0; h < l; h++)
@@ -1467,15 +1546,15 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         if(!stv_2.neg)
           {
-            if(stv_2.extra)
-              stv_2.neg = !(stv_2.a <= *stv_2.extra && *stv_2.extra <= stv_2.b);
+            if(stv_2.xtra)
+              stv_2.neg = !(stv_2.a <= *stv_2.xtra && *stv_2.xtra <= stv_2.b);
             else
               stv_2.neg = !(stv_2.a <= cb->iterator[level - 1] && cb->iterator[level - 1] <= stv_2.b);
           }
         else
           {
-            if(stv_2.extra)
-              stv_2.neg = (stv_2.a <= *stv_2.extra && *stv_2.extra <= stv_2.b);
+            if(stv_2.xtra)
+              stv_2.neg = (stv_2.a <= *stv_2.xtra && *stv_2.xtra <= stv_2.b);
             else
               stv_2.neg = (stv_2.a <= cb->iterator[level - 1] && cb->iterator[level - 1] <= stv_2.b);
           }
@@ -1492,7 +1571,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         stv.a = stv_2.a;
         stv.b = stv_2.b;
-        stv.extra = &stv.btl->value;
+        stv.xtra = &stv.btl->value;
 
         delete_specification(stv_2.btl);
       break;
@@ -1744,26 +1823,26 @@ subtreeval since_until(c_base *cb, btl_specification *spec, int level, int param
   return stv;
 }
 
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, io_type2 packed, io_type3 defaultval, d_time t)
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3 defaultval, io_type_4 omissions, d_time t)
 {
   subtreeval stv, stv_2;
   smallnode *wp;
   io_signal *sp;
-  op_type ot;
   char name[MAX_NAMELEN];
   int idx, idx_2;
 
   stv.vp = NULL;
   stv.a = 0;
   stv.b = 0;
-  stv.extra = NULL;
+  stv.xtra = NULL;
+  stv.ytra = NULL;
+  stv.ztra = NULL;
+  stv.wtra = NULL;
 
   if(!spec)
     return stv;
 
-  ot = spec->ot;
-
-  switch(ot)
+  switch(spec->ot)
     {
       case op_name:
         if(spec->symbol[0] == '_')
@@ -1848,6 +1927,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
 
         sp->defaultval = defaultval;
+        sp->omissions = omissions;
       break;
 
       case op_iname:
@@ -1855,21 +1935,28 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_number:
-      case op_ioqual1:
         stv.a = spec->value;
       break;
 
+      case op_ioqual1:
+        stv.xtra = &spec->value;
+      break;
+
       case op_ioqual2:
-        stv.b = spec->value;
+        stv.ytra = &spec->value;
       break;
 
       case op_ioqual3:
-        stv.extra = &spec->value;
+        stv.ztra = &spec->value;
+      break;
+
+      case op_ioqual4:
+        stv.wtra = &spec->value;
       break;
 
       case op_join:
-        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, t);
-        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, t);
+        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t);
 
         if(stv.vp && stv_2.vp)
           {
@@ -1900,64 +1987,56 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_join_qual:
-        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, t);
-        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, t);
+        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t);
 
-        if(stv.ot == op_ioqual123 || stv_2.ot == op_ioqual123)
+        if(stv_2.xtra)
           {
-            fprintf(stderr, "Error, multiple I/O qualifiers: %s\n", spec->debug);
-            exit_failure();
-          }
-
-        if(stv_2.ot == op_ioqual1 || stv_2.ot == op_ioqual12 || stv_2.ot == op_ioqual13)
-          {
-            if(stv.ot == op_ioqual1 || stv.ot == op_ioqual12 || stv.ot == op_ioqual13)
+            if(stv.xtra)
               {
-                fprintf(stderr, "Error, double any/ipc/file qualifier: %s\n", spec->debug);
+                fprintf(stderr, "Error, repeated or conflicting any/ipc/file qualifiers: %s\n", spec->debug);
                 exit_failure();
               }
 
-            stv.a = stv_2.a;
+            stv.xtra = stv_2.xtra;
           }
 
-        if(stv_2.ot == op_ioqual2 || stv_2.ot == op_ioqual12 || stv_2.ot == op_ioqual23)
+        if(stv_2.ytra)
           {
-            if(stv.ot == op_ioqual2 || stv.ot == op_ioqual12 || stv.ot == op_ioqual23)
+            if(stv.ytra)
               {
-                fprintf(stderr, "Error, double binary/packed qualifier: %s\n", spec->debug);
+                fprintf(stderr, "Error, repeated or conflicting binary/packed qualifiers: %s\n", spec->debug);
                 exit_failure();
               }
 
-            stv.b = stv_2.b;
+            stv.ytra = stv_2.ytra;
           }
 
-        if(stv_2.ot == op_ioqual3 || stv_2.ot == op_ioqual13 || stv_2.ot == op_ioqual23)
+        if(stv_2.ztra)
           {
-            if(stv.ot == op_ioqual3 || stv.ot == op_ioqual13 || stv.ot == op_ioqual23)
+            if(stv.ztra)
               {
-                fprintf(stderr, "Error, double true/false/unknown/omit qualifier: %s\n", spec->debug);
+                fprintf(stderr, "Error, repeated or conflicting true/false/unknown qualifiers: %s\n", spec->debug);
                 exit_failure();
               }
 
-            stv.extra = stv_2.extra;
+            stv.ztra = stv_2.ztra;
           }
 
-        if((stv.ot == op_ioqual1 && stv_2.ot == op_ioqual2) || (stv.ot == op_ioqual2 && stv_2.ot == op_ioqual1))
-          ot = op_ioqual12;
+        if(stv_2.wtra)
+          {
+            if(stv.wtra)
+              {
+                fprintf(stderr, "Error, repeated or conflicting raw/filter/omit qualifiers: %s\n", spec->debug);
+                exit_failure();
+              }
 
-        if((stv.ot == op_ioqual1 && stv_2.ot == op_ioqual3) || (stv.ot == op_ioqual3 && stv_2.ot == op_ioqual1))
-          ot = op_ioqual13;
-
-        if((stv.ot == op_ioqual2 && stv_2.ot == op_ioqual3) || (stv.ot == op_ioqual3 && stv_2.ot == op_ioqual2))
-          ot = op_ioqual23;
-
-        if((stv.ot == op_ioqual1 && stv_2.ot == op_ioqual23) || (stv.ot == op_ioqual23 && stv_2.ot == op_ioqual1) || (stv.ot == op_ioqual2 && stv_2.ot == op_ioqual13) ||
-           (stv.ot == op_ioqual13 && stv_2.ot == op_ioqual2) || (stv.ot == op_ioqual3 && stv_2.ot == op_ioqual12) || (stv.ot == op_ioqual12 && stv_2.ot == op_ioqual3))
-          ot = op_ioqual123;
+            stv.wtra = stv_2.wtra;
+          }
       break;
 
       case op_not:
-        stv = eval(cb, spec->left, vp, !neg, sclass, stype, packed, defaultval, t);
+        stv = eval(cb, spec->left, vp, !neg, sclass, stype, packed, defaultval, omissions, t);
       break;
 
       case op_and:
@@ -1969,8 +2048,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
 
         wp->up = vp;
-        wp->left = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, t).vp;
-        wp->right = eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, t).vp;
+        wp->left = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, omissions, t).vp;
+        wp->right = eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, omissions, t).vp;
 
         if(neg)
           snprintf(wp->debug, DEBUG_STRLEN, "(~ %s)", spec->debug);
@@ -1989,8 +2068,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
 
         wp->up = vp;
-        wp->left = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, t).vp;
-        wp->right = eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, t).vp;
+        wp->left = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, omissions, t).vp;
+        wp->right = eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, omissions, t).vp;
 
         if(neg)
           snprintf(wp->debug, DEBUG_STRLEN, "(~ %s)", spec->debug);
@@ -2003,8 +2082,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       case op_delay:
         if(cb->merge && vp && vp->nclass == delay)
           {
-            stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, t);
-            stv.a += eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, t).a;
+            stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, t);
+            stv.a += eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t).a;
           }
         else
           {
@@ -2015,11 +2094,11 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
                 exit_failure();
               }
 
-            stv_2 = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, t);
+            stv_2 = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, omissions, t);
 
             wp->up = vp;
             wp->left = stv_2.vp;
-            wp->k = - (stv_2.a + eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, t).a);
+            wp->k = - (stv_2.a + eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, omissions, t).a);
 
             if(cb->merge && !wp->k)
               {
@@ -2038,33 +2117,34 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_var_at:
-        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, t).a);
+        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t).a);
       break;
 
       case op_aux:
-        stv = eval(cb, spec->left, vp, neg, aux_class, stype, packed, defaultval, t);
+        stv = eval(cb, spec->left, vp, neg, aux_class, stype, packed, defaultval, omissions, t);
       break;
 
       case op_input:
-        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, t);
-        stv = eval(cb, spec->left, vp, neg, input_class, stv_2.a, stv_2.b, stv_2.extra? *stv_2.extra : io_unknown, t);
+        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, neg, input_class, stv_2.xtra? *stv_2.xtra : io_any, stv_2.ytra? *stv_2.ytra : io_binary,
+                   stv_2.ztra? *stv_2.ztra : io_unknown, stv_2.wtra? *stv_2.wtra : io_raw, t);
       break;
 
       case op_output:
-        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, t);
-        stv = eval(cb, spec->left, vp, neg, output_class, stv_2.a, stv_2.b, stv_2.extra? *stv_2.extra : io_unknown, t);
+        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, neg, output_class, stv_2.xtra? *stv_2.xtra : io_any, stv_2.ytra? *stv_2.ytra : io_binary,
+                   stv_2.ztra? *stv_2.ztra : io_unknown, stv_2.wtra? *stv_2.wtra : io_raw, t);
+
       break;
 
       case op_init:
-        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, t);
+        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, t);
       break;
 
       default:
         assert(FALSE);
       break;
     }
-
-  stv.ot = ot;
 
   return stv;
 }
@@ -2181,7 +2261,7 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
   io_signal *sp;
   smallnode *lp, *rp;
   int i;
-  io_symbol def;
+  io_type_3 def;
 
   assert(vp);
   assert(!vp->zombie);
@@ -2199,11 +2279,11 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
           if(val != undefined)
             {
               if(sp->to == vp && (sp->from != vp || sp->occurr == parent))
-                def = (val == negated)? true_symbol : false_symbol;
+                def = (val == negated)? io_true : io_false;
               else
-                def = (val == negated)? false_symbol : true_symbol;
+                def = (val == negated)? io_false : io_true;
 
-              if(sp->defaultval == unknown_symbol)
+              if(sp->defaultval == io_unknown)
                 sp->defaultval = def;
               else
                 if(sp->defaultval != def)
@@ -2501,27 +2581,27 @@ int save_signals(c_base *cb, FILE *fp)
           switch(sp->sclass)
             {
               case input_class:
-                rv = fprintf(fp, "! %s (%s, %s) # %d / %d, %d, %d, %d\n",
-                             *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval);
+                rv = fprintf(fp, "! %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
+                             *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
               break;
 
               case output_class:
-                rv = fprintf(fp, "? %s (%s, %s) # %d / %d, %d, %d, %d\n",
-                             *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval);
+                rv = fprintf(fp, "? %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
+                             *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
               break;
 
               case aux_class:
                 if(cb->outaux)
-                  rv = fprintf(fp, ". %s (%s, %s) # %d / %d, %d, %d, %d\n",
-                               *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval);
+                  rv = fprintf(fp, ". %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
+                               *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
                 else
                   rv = 0;
               break;
 
               case internal_class:
                 if(cb->outint)
-                  rv = fprintf(fp, ". %s (%s, %s) # %d / %d, %d, %d, %d\n",
-                               *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval);
+                  rv = fprintf(fp, ". %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
+                               *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
                 else
                   rv = 0;
               break;
@@ -2533,11 +2613,11 @@ int save_signals(c_base *cb, FILE *fp)
         }
       else
         {
-          if(cb->constout && sp->sclass == output_class && sp->defaultval != unknown_symbol)
+          if(cb->constout && sp->sclass == output_class && sp->defaultval != io_unknown)
             {
-              rv = fprintf(fp, "? %s (*, *) # 0 / %d, %d, %d, %d\n", *sp->root? sp->root : sp->name, sp->stype, sp->packed, sp->packedbit, sp->defaultval);
+              rv = fprintf(fp, "? %s (*, *) # 0 / %d, %d, %d, %d, %d\n", *sp->root? sp->root : sp->name, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
 
-              fprintf(stderr, "%s: Warning, constant output signal generated as %s by default\n", sp->name, sp->defaultval == false_symbol? "false" : "true");
+              fprintf(stderr, "%s: Warning, constant output signal generated as %s by default\n", sp->name, sp->defaultval == io_false? "false" : "true");
             }
           else
             if(sp->sclass != internal_class)
@@ -2946,7 +3026,7 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   printf("Generating network\n");
 
-  stv = eval(cb, f, NULL, FALSE, internal_class, io_any, io_binary, io_unknown, 0);
+  stv = eval(cb, f, NULL, FALSE, internal_class, io_any, io_binary, io_unknown, io_raw, 0);
 
   delete_specification(f);
 

@@ -11,7 +11,7 @@
 
 #include "tinx.h"
 
-#define VER "7.6.0 (single core)"
+#define VER "8.0.0 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -202,8 +202,7 @@ INLINE event choose(k_base *kb)
 #if !defined NDEBUG
           printf("(%s, %s) @ "TIME_FMT" ==>\n", arc_neg(s.e).vp->name, s.e.vp->name, s.t);
 #endif
-          if(dt < - kb->bsd4)
-            s = null_event;
+          kb->bound = kb->strictly_causal || (dt < - kb->bsd4);
         }
       else
         {
@@ -287,7 +286,7 @@ INLINE void process(k_base *kb, event s)
           r.t = s.t + s.e.vp->k;
         }
 
-      if(!kb->strictly_causal || r.t >= s.t)
+      if(!kb->bound || r.t >= s.t)
         safe_state(kb, r);
 
       break;
@@ -348,7 +347,7 @@ INLINE bool loop(k_base *kb)
             process(kb, s);
             kb->slice--;
 
-            return FALSE;
+            return irq;
           }
     }
 
@@ -362,7 +361,7 @@ INLINE bool loop(k_base *kb)
       if(!kb->io_stream[input_stream] && !kb->io_stream[output_stream])
         {
           if(kb->quiet && !valid(kb->focus))
-            kb->exiting = TRUE;
+            return TRUE;
           else
             {
               delta_time = get_time() - kb->time_base - (kb->curr_time - kb->offset + 1) * kb->step;
@@ -379,7 +378,7 @@ INLINE bool loop(k_base *kb)
                   kb->far = FALSE;
 
                   if(kb->max_time && kb->curr_time >= kb->max_time)
-                    kb->exiting = TRUE;
+                    return TRUE;
                 }
               else
                 if(!kb->busywait && kb->far)
@@ -388,7 +387,7 @@ INLINE bool loop(k_base *kb)
         }
     }
 
-  return kb->exiting;
+  return irq;
 }
 
 /******** Input/Output ********/
@@ -411,14 +410,23 @@ bool input_f(k_base *kb, stream *ios)
     case eof_symbol:
       reset_file(ios->fp);
 
-      return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
+      if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
     break;
 
     case unknown_symbol:
-      if(ios->defaultval == false_symbol)
+      if(ios->defaultval == io_false)
         s.e = ios->ne;
       else
-        if(ios->defaultval == true_symbol)
+        if(ios->defaultval == io_true)
           s.e = ios->e;
         else
           return TRUE;
@@ -481,19 +489,37 @@ bool input_packed_f(k_base *kb, stream *ios)
         {
           reset_file(ios->fp);
 
-          return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
-        }
-    }
+          if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+            return FALSE;
 
-  if(!(pack->packedchar[h] & (1 << k)))
-    s.e = ios->ne;
-  else
-    s.e = ios->e;
+          pack->gen = FALSE;
+        }
+      else
+        pack->gen = TRUE;
+    }
 
   (pack->packedcount)--;
 
   if(!pack->packedcount)
     pack->packedcount = pack->packedtot;
+
+  if(pack->gen)
+    {
+      if(!(pack->packedchar[h] & (1 << k)))
+        s.e = ios->ne;
+      else
+        s.e = ios->e;
+    }
+  else
+    {
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    }
 
   safe_state(kb, s);
 
@@ -523,14 +549,23 @@ bool input_m_posix(k_base *kb, stream *ios)
   switch(strchr(kb->alpha, c) - kb->alpha)
     {
     case eof_symbol:
-      return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
+      if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
     break;
 
     case unknown_symbol:
-      if(ios->defaultval == false_symbol)
+      if(ios->defaultval == io_false)
         s.e = ios->ne;
       else
-        if(ios->defaultval == true_symbol)
+        if(ios->defaultval == io_true)
           s.e = ios->e;
         else
           return TRUE;
@@ -593,21 +628,40 @@ bool input_packed_m_posix(k_base *kb, stream *ios)
 
           ios->errors++;
 
-          return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
+          if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+            return FALSE;
+
+          pack->gen = FALSE;
         }
       else
-        ios->errors = 0;
+        {
+          ios->errors = 0;
+          pack->gen = TRUE;
+        }
     }
-
-  if(!(pack->packedchar[h] & (1 << k)))
-    s.e = ios->ne;
-  else
-    s.e = ios->e;
 
   (pack->packedcount)--;
 
   if(!pack->packedcount)
     pack->packedcount = pack->packedtot;
+
+  if(pack->gen)
+    {
+      if(!(pack->packedchar[h] & (1 << k)))
+        s.e = ios->ne;
+      else
+        s.e = ios->e;
+    }
+  else
+    {
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    }
 
   safe_state(kb, s);
 
@@ -637,14 +691,23 @@ bool input_m_sys5(k_base *kb, stream *ios)
   switch(strchr(kb->alpha, c) - kb->alpha)
     {
     case eof_symbol:
-      return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
+      if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
     break;
 
     case unknown_symbol:
-      if(ios->defaultval == false_symbol)
+      if(ios->defaultval == io_false)
         s.e = ios->ne;
       else
-        if(ios->defaultval == true_symbol)
+        if(ios->defaultval == io_true)
           s.e = ios->e;
         else
           return TRUE;
@@ -707,21 +770,40 @@ bool input_packed_m_sys5(k_base *kb, stream *ios)
 
           ios->errors++;
 
-          return (ios->defaultval > unknown_symbol && get_time() - kb->time_base >= (kb->curr_time - kb->offset + 1) * kb->step);
+          if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+            return FALSE;
+
+          pack->gen = FALSE;
         }
       else
-        ios->errors = 0;
+        {
+          ios->errors = 0;
+          pack->gen = TRUE;
+        }
     }
-
-  if(!(pack->packedchar[h] & (1 << k)))
-    s.e = ios->ne;
-  else
-    s.e = ios->e;
 
   (pack->packedcount)--;
 
   if(!pack->packedcount)
     pack->packedcount = pack->packedtot;
+
+  if(pack->gen)
+    {
+      if(!(pack->packedchar[h] & (1 << k)))
+        s.e = ios->ne;
+      else
+        s.e = ios->e;
+    }
+  else
+    {
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    }
 
   safe_state(kb, s);
 
@@ -742,8 +824,11 @@ bool output_f(k_base *kb, stream *ios)
 
       if(is_stated(kb, s))
         {
+          if(ios->skip[io_false])
+            return TRUE;
+
           ios->fails = 0;
-          c = kb->alpha[false_symbol];
+          c = kb->alpha[io_false];
         }
       else
         {
@@ -751,8 +836,11 @@ bool output_f(k_base *kb, stream *ios)
 
           if(is_stated(kb, s))
             {
+              if(ios->skip[io_true])
+                return TRUE;
+
               ios->fails = 0;
-              c = kb->alpha[true_symbol];
+              c = kb->alpha[io_true];
             }
           else
             {
@@ -760,7 +848,7 @@ bool output_f(k_base *kb, stream *ios)
                 return FALSE;
               else
                 {
-                  if(ios->defaultval > unknown_symbol)
+                  if(ios->skip[io_unknown])
                     return TRUE;
 
                   ios->fails++;
@@ -811,10 +899,10 @@ bool output_packed_f(k_base *kb, stream *ios)
 
   if(!ios->e.vp)
     {
-      if(ios->defaultval == false_symbol)
+      if(ios->defaultval == io_false)
         c &= ~ (1 << k);
        else
-         if(ios->defaultval == true_symbol)
+         if(ios->defaultval == io_true)
            c |= (1 << k);
 
       pack->gen = TRUE;
@@ -826,9 +914,13 @@ bool output_packed_f(k_base *kb, stream *ios)
 
       if(is_stated(kb, s))
         {
-          ios->fails = 0;
           c &= ~ (1 << k);
-          pack->gen = TRUE;
+
+          if(!ios->skip[io_false])
+            {
+              ios->fails = 0;
+              pack->gen = TRUE;
+            }
         }
       else
         {
@@ -836,33 +928,39 @@ bool output_packed_f(k_base *kb, stream *ios)
 
           if(is_stated(kb, s))
             {
-              ios->fails = 0;
               c |= (1 << k);
-              pack->gen = TRUE;
+
+              if(!ios->skip[io_true])
+                {
+                  ios->fails = 0;
+                  pack->gen = TRUE;
+                }
             }
           else
             {
               if(kb->io_stream[input_stream] || !kb->far)
                 return FALSE;
               else
-                if(ios->defaultval <= unknown_symbol)
-                  {
-                    ios->fails++;
+                {
+                  if(ios->defaultval == io_false)
+                    c &= ~ (1 << k);
+                  else
+                    if(ios->defaultval == io_true)
+                      c |= (1 << k);
 
-                    if(!kb->max_time && ios->fails > kb->bsd4)
-                      {
-                        ios->open = FALSE;
-                        return FALSE;
-                      }
+                  if(!ios->skip[io_unknown])
+                    {
+                      ios->fails++;
 
-                    if(ios->defaultval == false_symbol)
-                      c &= ~ (1 << k);
-                    else
-                      if(ios->defaultval == true_symbol)
-                        c |= (1 << k);
+                      if(!kb->max_time && ios->fails > kb->bsd4)
+                        {
+                          ios->open = FALSE;
+                          return FALSE;
+                        }
 
-                    pack->gen = TRUE;
-                  }
+                      pack->gen = TRUE;
+                    }
+                }
             }
         }
     }
@@ -909,8 +1007,11 @@ bool output_m_posix(k_base *kb, stream *ios)
 
       if(is_stated(kb, s))
         {
+          if(ios->skip[io_false])
+            return TRUE;
+
           ios->fails = 0;
-          c = kb->alpha[false_symbol];
+          c = kb->alpha[io_false];
         }
       else
         {
@@ -918,8 +1019,11 @@ bool output_m_posix(k_base *kb, stream *ios)
 
           if(is_stated(kb, s))
             {
+              if(ios->skip[io_true])
+                return TRUE;
+
               ios->fails = 0;
-              c = kb->alpha[true_symbol];
+              c = kb->alpha[io_true];
             }
           else
             {
@@ -927,7 +1031,7 @@ bool output_m_posix(k_base *kb, stream *ios)
                 return FALSE;
               else
                 {
-                  if(ios->defaultval > unknown_symbol)
+                  if(ios->skip[io_unknown])
                     return TRUE;
 
                   ios->fails++;
@@ -988,10 +1092,10 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
 
   if(!ios->e.vp)
     {
-      if(ios->defaultval == false_symbol)
+      if(ios->defaultval == io_false)
         c &= ~ (1 << k);
        else
-         if(ios->defaultval == true_symbol)
+         if(ios->defaultval == io_true)
            c |= (1 << k);
 
       pack->gen = TRUE;
@@ -1003,9 +1107,13 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
 
       if(is_stated(kb, s))
         {
-          ios->fails = 0;
           c &= ~ (1 << k);
-          pack->gen = TRUE;
+
+          if(!ios->skip[io_false])
+            {
+              ios->fails = 0;
+              pack->gen = TRUE;
+            }
         }
       else
         {
@@ -1013,33 +1121,39 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
 
           if(is_stated(kb, s))
             {
-              ios->fails = 0;
               c |= (1 << k);
-              pack->gen = TRUE;
+
+              if(!ios->skip[io_true])
+                {
+                  ios->fails = 0;
+                  pack->gen = TRUE;
+                }
             }
           else
             {
               if(kb->io_stream[input_stream] || !kb->far)
                 return FALSE;
               else
-                if(ios->defaultval <= unknown_symbol)
-                  {
-                    ios->fails++;
+                {
+                  if(ios->defaultval == io_false)
+                    c &= ~ (1 << k);
+                  else
+                    if(ios->defaultval == io_true)
+                      c |= (1 << k);
 
-                    if(!kb->max_time && ios->fails > kb->bsd4)
-                      {
-                        ios->open = FALSE;
-                        return FALSE;
-                      }
+                  if(!ios->skip[io_unknown])
+                    {
+                      ios->fails++;
 
-                    if(ios->defaultval == false_symbol)
-                      c &= ~ (1 << k);
-                    else
-                      if(ios->defaultval == true_symbol)
-                        c |= (1 << k);
+                      if(!kb->max_time && ios->fails > kb->bsd4)
+                        {
+                          ios->open = FALSE;
+                          return FALSE;
+                        }
 
-                    pack->gen = TRUE;
-                  }
+                      pack->gen = TRUE;
+                    }
+                }
             }
         }
     }
@@ -1098,8 +1212,11 @@ bool output_m_sys5(k_base *kb, stream *ios)
 
       if(is_stated(kb, s))
         {
+          if(ios->skip[io_false])
+            return TRUE;
+
           ios->fails = 0;
-          c = kb->alpha[false_symbol];
+          c = kb->alpha[io_false];
         }
       else
         {
@@ -1107,8 +1224,11 @@ bool output_m_sys5(k_base *kb, stream *ios)
 
           if(is_stated(kb, s))
             {
+              if(ios->skip[io_true])
+                return TRUE;
+
               ios->fails = 0;
-              c = kb->alpha[true_symbol];
+              c = kb->alpha[io_true];
             }
           else
             {
@@ -1116,7 +1236,7 @@ bool output_m_sys5(k_base *kb, stream *ios)
                 return FALSE;
               else
                 {
-                  if(ios->defaultval > unknown_symbol)
+                  if(ios->skip[io_unknown])
                     return TRUE;
 
                   ios->fails++;
@@ -1177,10 +1297,10 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
 
   if(!ios->e.vp)
     {
-      if(ios->defaultval == false_symbol)
+      if(ios->defaultval == io_false)
         c &= ~ (1 << k);
        else
-         if(ios->defaultval == true_symbol)
+         if(ios->defaultval == io_true)
            c |= (1 << k);
 
       pack->gen = TRUE;
@@ -1192,9 +1312,13 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
 
       if(is_stated(kb, s))
         {
-          ios->fails = 0;
           c &= ~ (1 << k);
-          pack->gen = TRUE;
+
+          if(!ios->skip[io_false])
+            {
+              ios->fails = 0;
+              pack->gen = TRUE;
+            }
         }
       else
         {
@@ -1202,33 +1326,39 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
 
           if(is_stated(kb, s))
             {
-              ios->fails = 0;
               c |= (1 << k);
-              pack->gen = TRUE;
+
+              if(!ios->skip[io_true])
+                {
+                  ios->fails = 0;
+                  pack->gen = TRUE;
+                }
             }
           else
             {
               if(kb->io_stream[input_stream] || !kb->far)
                 return FALSE;
               else
-                if(ios->defaultval <= unknown_symbol)
-                  {
-                    ios->fails++;
+                {
+                  if(ios->defaultval == io_false)
+                    c &= ~ (1 << k);
+                  else
+                    if(ios->defaultval == io_true)
+                      c |= (1 << k);
 
-                    if(!kb->max_time && ios->fails > kb->bsd4)
-                      {
-                        ios->open = FALSE;
-                        return FALSE;
-                      }
+                  if(!ios->skip[io_unknown])
+                    {
+                      ios->fails++;
 
-                    if(ios->defaultval == false_symbol)
-                      c &= ~ (1 << k);
-                    else
-                      if(ios->defaultval == true_symbol)
-                        c |= (1 << k);
+                      if(!kb->max_time && ios->fails > kb->bsd4)
+                        {
+                          ios->open = FALSE;
+                          return FALSE;
+                        }
 
-                    pack->gen = TRUE;
-                  }
+                      pack->gen = TRUE;
+                    }
+                }
             }
         }
     }
@@ -1325,10 +1455,12 @@ void trace(k_base *kb, event s)
       }
 }
 
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5, char *prefix, char *path, io_symbol defaultval, int packed, int packedbit, stream *packed_ios)
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5, char *prefix, char *path, io_type_3 defaultval, io_type_4 omissions,
+                    int packed, int packedbit, stream *packed_ios)
 {
   stream *ios;
   linkage *pin;
+  io_type_3 i;
 
   ios = malloc(sizeof(stream));
   if(!ios)
@@ -1511,10 +1643,16 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
     }
 
   ios->defaultval = defaultval;
+
+  for(i = 0; i < IO_TYPES_3_NUMBER; i++)
+    ios->skip[i] = (omissions >= io_filter && i == io_unknown) || (omissions == io_omit && i == defaultval);
+
   ios->file_io = file_io;
   ios->sys5 = sys5;
   ios->pack.packed = packed;
+
   memset(ios->pack.packedchar, 0, sizeof(char) * IOS_BUFFER_SIZE);
+
   ios->pack.packedcount = 0;
   ios->pack.packedtot = 0;
   ios->pack.packedbit = packedbit;
@@ -1878,7 +2016,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   stream_class sclass;
   io_type stype;
   int packed, packedbit;
-  io_symbol defaultval;
+  io_type_3 defaultval;
+  io_type_4 omissions;
   arc e;
   int bufsiz;
   link_code lc;
@@ -1992,11 +2131,12 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   stype = io_any;
   packed = 0;
   packedbit = 0;
-  defaultval = unknown_symbol;
+  defaultval = io_unknown;
+  omissions = io_raw;
   k = 0;
 
-  while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) # %d / %u , %u , %u , %u @ "TIME_FMT" ",
-               &c, name, name_v, name_w, &lc, &stype, &packed, &packedbit, &defaultval, &k) >= 4)
+  while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) # %d / %u , %u , %u , %u, %u @ "TIME_FMT" ",
+               &c, name, name_v, name_w, &lc, &stype, &packed, &packedbit, &defaultval, &omissions, &k) >= 4)
     {
       if(strlen(name) >= MAX_NAMELEN)
         {
@@ -2085,7 +2225,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
                 exit(EXIT_FAILURE);
             }
 
-          ios = open_stream(name, sclass, e, kb->offset, (file_io && stype == io_any) || stype == io_file, sys5, prefix, path, defaultval, packed, packedbit, packed_ios[packed]);
+          ios = open_stream(name, sclass, e, kb->offset, (file_io && stype == io_any) || stype == io_file, sys5, prefix, path, defaultval, omissions, packed, packedbit, packed_ios[packed]);
 
           kb->io_num[sclass]++;
           kb->io_open++;
@@ -2107,7 +2247,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       stype = io_any;
       packed = 0;
       packedbit = 0;
-      defaultval = unknown_symbol;
+      defaultval = io_unknown;
       k = 0;
     }
 
@@ -2226,8 +2366,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->max_time = kb->offset + max_time;
 
   kb->far = TRUE;
+  kb->bound = FALSE;
   kb->io_busy = FALSE;
-  kb->exiting = FALSE;
 
   kb->step = step;
 
@@ -2419,7 +2559,7 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
   else
     kb->time_base = get_time();
 
-  while(!irq && !loop(kb));
+  while(!loop(kb));
 
   kb->perf.ticks = get_time() - kb->time_base;
 
@@ -2856,7 +2996,7 @@ int main(int argc, char **argv)
   perf = run(base_name, state_name, logfile_name, xref_name,
       strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sys5, sturdy, busywait, bufexp, max_time, step, origin, prefix, path, alpha);
 
-  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.3f seconds, %.3f KLIPS, %lu depth (avg %.3f)\n",
+  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.6f seconds, %.3f KLIPS, %lu depth (avg %.3f)\n",
 	irq? "Execution interrupted" : "End of execution",
 	perf.count,
 	perf.horizon && perf.edges? 100.0 * perf.count / (perf.horizon * perf.edges) : 0,
@@ -2865,7 +3005,7 @@ int main(int argc, char **argv)
 	perf.ticks,
 	perf.ticks? perf.count / (1000 * perf.ticks) : 0,
 	perf.depth,
-	perf.count? (float)perf.depth / perf.count : 0);
+	perf.count? (double)perf.depth / perf.count : 0);
 
   return EXIT_SUCCESS;
 }
