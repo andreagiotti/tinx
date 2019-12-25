@@ -11,7 +11,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "8.0.0 MT (multiple cores)"
+#define VER "8.0.1 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -531,7 +531,7 @@ bool input_f(k_base *kb, stream *ios)
     case eof_symbol:
       reset_file(ios->fp);
 
-      if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+      if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
         return FALSE;
 
       if(ios->defaultval == io_false)
@@ -612,7 +612,7 @@ bool input_packed_f(k_base *kb, stream *ios)
         {
           reset_file(ios->fp);
 
-          if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+          if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
             return FALSE;
 
           pack->gen = FALSE;
@@ -673,7 +673,7 @@ bool input_m_posix(k_base *kb, stream *ios)
   switch(strchr(kb->alpha, c) - kb->alpha)
     {
     case eof_symbol:
-      if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+      if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
         return FALSE;
 
       if(ios->defaultval == io_false)
@@ -754,7 +754,7 @@ bool input_packed_m_posix(k_base *kb, stream *ios)
 
           ios->errors++;
 
-          if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+          if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
             return FALSE;
 
           pack->gen = FALSE;
@@ -818,7 +818,7 @@ bool input_m_sys5(k_base *kb, stream *ios)
   switch(strchr(kb->alpha, c) - kb->alpha)
     {
     case eof_symbol:
-      if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+      if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
         return FALSE;
 
       if(ios->defaultval == io_false)
@@ -899,7 +899,7 @@ bool input_packed_m_sys5(k_base *kb, stream *ios)
 
           ios->errors++;
 
-          if(!ios->skip[io_unknown] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+          if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
             return FALSE;
 
           pack->gen = FALSE;
@@ -945,7 +945,12 @@ bool output_f(k_base *kb, stream *ios)
   char c;
 
   if(!ios->e.vp)
-    c = kb->alpha[ios->defaultval];
+    {
+      if(ios->skip[ios->defaultval])
+        return TRUE;
+
+      c = kb->alpha[ios->defaultval];
+    }
   else
     {
       s.t = kb->curr_time;
@@ -988,7 +993,10 @@ bool output_f(k_base *kb, stream *ios)
                       return FALSE;
                     }
 
-                  c = kb->alpha[ios->defaultval];
+                  if(ios->skip[ios->defaultval])
+                    c = kb->alpha[io_unknown];
+                  else
+                    c = kb->alpha[ios->defaultval];
                 }
             }
         }
@@ -1036,7 +1044,8 @@ bool output_packed_f(k_base *kb, stream *ios)
          if(ios->defaultval == io_true)
            c |= (1 << k);
 
-      pack->gen = TRUE;
+      if(!ios->skip[ios->defaultval])
+        pack->gen = TRUE;
     }
   else
    {
@@ -1132,7 +1141,12 @@ bool output_m_posix(k_base *kb, stream *ios)
   char c;
 
   if(!ios->e.vp)
-    c = kb->alpha[ios->defaultval];
+    {
+      if(ios->skip[ios->defaultval])
+        return TRUE;
+
+      c = kb->alpha[ios->defaultval];
+    }
   else
     {
       s.t = kb->curr_time;
@@ -1175,7 +1189,10 @@ bool output_m_posix(k_base *kb, stream *ios)
                       return FALSE;
                     }
 
-                  c = kb->alpha[ios->defaultval];
+                  if(ios->skip[ios->defaultval])
+                    c = kb->alpha[io_unknown];
+                  else
+                    c = kb->alpha[ios->defaultval];
                 }
             }
         }
@@ -1232,7 +1249,8 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
          if(ios->defaultval == io_true)
            c |= (1 << k);
 
-      pack->gen = TRUE;
+      if(!ios->skip[ios->defaultval])
+        pack->gen = TRUE;
     }
    else
     {
@@ -1339,7 +1357,12 @@ bool output_m_sys5(k_base *kb, stream *ios)
   char c;
 
   if(!ios->e.vp)
-    c = kb->alpha[ios->defaultval];
+    {
+      if(ios->skip[ios->defaultval])
+        return TRUE;
+
+      c = kb->alpha[ios->defaultval];
+    }
   else
     {
       s.t = kb->curr_time;
@@ -1382,7 +1405,10 @@ bool output_m_sys5(k_base *kb, stream *ios)
                       return FALSE;
                     }
 
-                  c = kb->alpha[ios->defaultval];
+                  if(ios->skip[ios->defaultval])
+                    c = kb->alpha[io_unknown];
+                  else
+                    c = kb->alpha[ios->defaultval];
                 }
             }
         }
@@ -1439,7 +1465,8 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
          if(ios->defaultval == io_true)
            c |= (1 << k);
 
-      pack->gen = TRUE;
+      if(!ios->skip[ios->defaultval])
+        pack->gen = TRUE;
     }
    else
     {
@@ -1807,7 +1834,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   ios->defaultval = defaultval;
 
   for(i = 0; i < IO_TYPES_3_NUMBER; i++)
-    ios->skip[i] = (omissions >= io_filter && i == io_unknown) || (omissions == io_omit && i == defaultval);
+    ios->skip[i] = (omissions >= io_filter && i == defaultval) || (omissions == io_omit && i == io_unknown);
 
   ios->file_io = file_io;
   ios->sys5 = sys5;

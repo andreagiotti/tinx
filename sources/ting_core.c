@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "4.0.0"
+#define VER "4.0.1"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
@@ -2283,11 +2283,14 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
               else
                 def = (val == negated)? io_false : io_true;
 
-              if(sp->defaultval == io_unknown)
-                sp->defaultval = def;
-              else
-                if(sp->defaultval != def)
+              if(sp->defaultval != io_unknown && sp->defaultval != def)
+                {
+                  sp->omissions = io_raw;
+
                   fprintf(stderr, "%s: Warning, incompatible default on signal\n", sp->name);
+                }
+
+              sp->defaultval = def;
             }
           else
             {
