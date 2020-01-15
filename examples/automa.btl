@@ -1,0 +1,135 @@
+/*
+	Name:	Asynchronous, parallel and sequential state machine with multiple exclusive resource management
+	Author:	Andrea Giotti, 2020
+	Release: 1.1
+	Notes: compile without recursion optimization or find a different set of initial conditions
+*/
+
+define	numtasks = 8,
+	numres = 3,
+	numpos = 4,
+	time_0 = 12,
+	time_1 = 16,
+	time_2 = 8;
+
+iter(i on numtasks)
+{
+	input run(i), abort(i);
+	aux idle(i);
+
+	iter(n on numres)
+	{
+		output grant(i, n);
+		aux req(i, n), rel(i, n), ack_req(i, n), wait(i, n), perform(i, n);
+
+		iter(j on numpos)
+		{
+			define k = numpos * n + j;
+
+			aux queued(i, k), begin(i, k), end(i, k), up(i, k), down(i, k), new(i, k);
+
+			when(j in 0 : numpos - 2)
+				aux roll(i, k);
+		}
+	}
+
+	output cycle(i);
+}
+
+iter(n on numres)
+	iter(j on numpos)
+	{
+		define k = numpos * n + j;
+
+		aux free(k);
+
+		when(j in 0 : numpos - 2)
+			aux noroll(k);
+	}
+
+iter(n on numres)
+{
+	iter(j on numpos)
+	{
+		define k = numpos * n + j;
+
+		free(k) == ~ exists(queued(h, k), h on numtasks);
+
+		when(j in 0 : numpos - 2)
+			noroll(k) == ~ exists(roll(h, k), h on numtasks);
+	}
+
+	iter(i on numtasks)
+	{
+		iter(j on numpos)
+		{
+			define	k0 = numpos * n,
+				k = k0 + j;
+
+                        init ~ queued(i, k) @ -1;
+
+			queued(i, k) == since(up(i, k), ~ down(i, k));
+
+			begin(i, k) == free(k) @ -1 & one(req(h, n) & ~ rel(h, n), h is i, h on numtasks);
+			end(i, k) == queued(i, k) @ -1 & rel(i, n);
+
+			when(j in 0 : numpos - 2)
+			{
+				roll(i, k) == (free(k) & queued(i, k + 1)) @ -1;
+
+				when(j is 0)
+				{
+					new(i, k) == noroll(k) & begin(i, k);
+
+					up(i, k) == roll(i, k) | new(i, k);
+					down(i, k) == end(i, k);
+
+					grant(i, n) == queued(i, k);
+				}
+				else
+				{
+					new(i, k) == noroll(k) & begin(i, k) & ~ exists(queued(i, l) | free(l), l in k0 : k - 1);
+
+					up(i, k) == roll(i, k) | new(i, k);
+					down(i, k) == roll(i, k - 1) | end(i, k);
+				}
+			}
+			else
+			{
+				new(i, k) == begin(i, k) & ~ exists(queued(i, l) | free(l), l in k0 : k - 1);
+
+				up(i, k) == new(i, k);
+				down(i, k) == roll(i, k - 1) | end(i, k);
+			}
+		}
+
+		ack_req(i, n) == exists(new(i, k), k in numpos * n : numpos * (n + 1) - 1);
+	}
+}
+
+iter(i on numtasks)
+{
+	init ~ run(i) @ -1, abort(i) @ -1;
+
+	iter(n in 0 : numres - 1)
+	{
+		when(n is 0)
+			req(i, n) == idle(i) @ -1 & run(i) & ~ abort(i);
+		else
+			req(i, n) == perform(i, n - 1) & ~ abort(i);
+
+		wait(i, n) == since(ack_req(i, n), ~ (grant(i, n) | abort(i)));
+
+		rel(i, n) == perform(i, n) | abort(i);
+	}
+
+	idle(i) == since(rel(i, numres - 1), ~ ack_req(i, 0));
+
+	cycle(i) == perform(i, numres - 1);
+
+	perform(i, 0) == grant(i, 0) @ [- time_0, 0);
+	perform(i, 1) == grant(i, 1) @ [- time_1, 0);
+	perform(i, 2) == grant(i, 2) @ [- time_2, 0);
+}
+
+
