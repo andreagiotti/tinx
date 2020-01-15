@@ -12,8 +12,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "9.0.1"
-#define VER "4.0.0"
+#define PACK_VER "9.0.3"
+#define VER "4.0.1"
 
 INLINE m_time get_time()
 {
@@ -2584,7 +2584,7 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
   FILE *bp;
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
   char fnames[MAX_FILES][MAX_STRLEN];
-  int fn, i, packed, packedbit;
+  int fn, i, n, packed, packedbit;
   char c;
   GtkWidget *window;
   GtkWidget *tabdyn;
@@ -2697,17 +2697,23 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
 
   if(fn > 0)
     {
-      tabdyn = gtk_table_new(2, fn, FALSE);
+      n = ceil(sqrt(fn / 2.0));
+
+      tabdyn = gtk_table_new(2 * n, n, FALSE);
 
       sb->changeprob = FALSE;
       for(i = 0; i < fn; i++)
         {
-          lbl = gtk_label_new(strcat(fnames[i], " "));
+          strcpy(name, " ");
+          strcat(name, fnames[i]);
+          strcat(name, " ");
+
+          lbl = gtk_label_new(name);
           gtk_misc_set_alignment(GTK_MISC(lbl), 1, 0.5);
-          gtk_table_attach_defaults(GTK_TABLE(tabdyn), lbl, 0, 1, i, i + 1);
+          gtk_table_attach_defaults(GTK_TABLE(tabdyn), lbl, 2 * (i % n), 2 * (i % n) + 1, i / n, i / n + 1);
           ent = gtk_spin_button_new_with_range(0, 1.000, 0.001);
           gtk_spin_button_set_value(GTK_SPIN_BUTTON(ent), sb->cfg.inprob[i]);
-          gtk_table_attach_defaults(GTK_TABLE(tabdyn), ent, 1, 2, i, i + 1);
+          gtk_table_attach_defaults(GTK_TABLE(tabdyn), ent, 2 * (i % n) + 1, 2 * (i % n) + 2, i / n, i / n + 1);
           g_signal_connect(G_OBJECT(ent), "value-changed", G_CALLBACK(inprob_value), (gpointer)sb);
 
           sb->inprob_widget[i] = ent;

@@ -12,7 +12,7 @@ GDEPS	= $(GFILES) ting_lexer.h ting_parser.h ting_core.h
 GFLAGS	= -pipe -Ofast -Wall -lm
 UFILES	= gtinxsh.c ipc.c
 UDEPS	= $(UFILES) gtinxsh.h tinx_mt.h ting_core.h
-UFLAGS	= -pipe -Ofast -Wall -lrt -pthread `pkg-config gtk+-3.0 --cflags` `pkg-config gtk+-3.0 --libs`
+UFLAGS	= -pipe -Ofast -Wall -lm -lrt -pthread `pkg-config gtk+-3.0 --cflags` `pkg-config gtk+-3.0 --libs`
 CC	= gcc
 
 all:		$(PROGS)

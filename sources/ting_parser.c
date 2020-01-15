@@ -86,7 +86,10 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
     for(i = 1; i <= NUM_TOKENS; i++)
       {
         k = (tr.idx + i) % NUM_TOKENS;
-        strcat(buffer, tr.token[k]);
+
+        if(tr.token[k])
+          strcat(buffer, tr.token[k]);
+
         len += tr.length[k];
       }
 
@@ -98,7 +101,7 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
   }
 
 
-#line 102 "ting_parser.c"
+#line 105 "ting_parser.c"
 
 # ifndef YY_NULLPTR
 #  if defined __cplusplus
@@ -132,7 +135,7 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 34 "ting.y"
+#line 37 "ting.y"
 
 #ifndef YY_TYPEDEF_YY_SCANNER_T
 #define YY_TYPEDEF_YY_SCANNER_T
@@ -150,7 +153,7 @@ typedef struct tracker
     int idx;
   } tracker;
 
-#line 154 "ting_parser.c"
+#line 157 "ting_parser.c"
 
 /* Token type.  */
 #ifndef YYTOKENTYPE
@@ -223,7 +226,7 @@ typedef struct tracker
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 64 "ting.y"
+#line 67 "ting.y"
 
   char symbol[MAX_NAMELEN];
   d_time value;
@@ -256,7 +259,7 @@ union YYSTYPE
   btl_specification *number;
   btl_specification *string;
 
-#line 260 "ting_parser.c"
+#line 263 "ting_parser.c"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -582,18 +585,18 @@ static const yytype_uint8 yytranslate[] =
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   207,   207,   211,   212,   213,   217,   218,   219,   220,
-     224,   225,   229,   230,   231,   234,   237,   240,   241,   245,
-     246,   247,   250,   251,   255,   256,   257,   258,   259,   260,
-     261,   262,   263,   264,   265,   266,   267,   268,   269,   270,
-     271,   272,   273,   274,   278,   279,   280,   281,   285,   286,
-     289,   290,   293,   294,   295,   296,   300,   301,   305,   306,
-     307,   308,   309,   310,   311,   312,   313,   314,   315,   319,
-     320,   324,   325,   329,   330,   334,   335,   339,   343,   344,
-     348,   349,   353,   355,   356,   360,   362,   363,   367,   369,
-     370,   374,   378,   382,   386,   390,   391,   392,   393,   397,
-     398,   399,   400,   401,   405,   406,   407,   408,   409,   410,
-     411,   412,   413,   417,   418,   419
+       0,   210,   210,   214,   215,   216,   220,   221,   222,   223,
+     227,   228,   232,   233,   234,   237,   240,   243,   244,   248,
+     249,   250,   253,   254,   258,   259,   260,   261,   262,   263,
+     264,   265,   266,   267,   268,   269,   270,   271,   272,   273,
+     274,   275,   276,   277,   281,   282,   283,   284,   288,   289,
+     292,   293,   296,   297,   298,   299,   303,   304,   308,   309,
+     310,   311,   312,   313,   314,   315,   316,   317,   318,   322,
+     323,   327,   328,   332,   333,   337,   338,   342,   346,   347,
+     351,   352,   356,   358,   359,   363,   365,   366,   370,   372,
+     373,   377,   381,   385,   389,   393,   394,   395,   396,   400,
+     401,   402,   403,   404,   408,   409,   410,   411,   412,   413,
+     414,   415,   416,   420,   421,   422
 };
 #endif
 
@@ -1700,696 +1703,696 @@ yyreduce:
   switch (yyn)
     {
   case 2:
-#line 207 "ting.y"
+#line 210 "ting.y"
     { *spec_handle = (yyvsp[0].specification); }
-#line 1706 "ting_parser.c"
+#line 1709 "ting_parser.c"
     break;
 
   case 3:
-#line 211 "ting.y"
+#line 214 "ting.y"
     { (yyval.specification) = (yyvsp[0].extformula); }
-#line 1712 "ting_parser.c"
+#line 1715 "ting_parser.c"
     break;
 
   case 4:
-#line 212 "ting.y"
+#line 215 "ting.y"
     { (yyval.specification) = (yyvsp[0].extdeclaration); }
-#line 1718 "ting_parser.c"
+#line 1721 "ting_parser.c"
     break;
 
   case 6:
-#line 217 "ting.y"
+#line 220 "ting.y"
     { (yyval.extformula) = create_operation(op_and, (yyvsp[-1].extformula), (yyvsp[0].extformula), "%s ; %s"); }
-#line 1724 "ting_parser.c"
+#line 1727 "ting_parser.c"
     break;
 
   case 7:
-#line 218 "ting.y"
+#line 221 "ting.y"
     { (yyval.extformula) = create_operation(op_join, (yyvsp[-1].extformula), (yyvsp[0].extdeclaration), "%s ; %s"); }
-#line 1730 "ting_parser.c"
+#line 1733 "ting_parser.c"
     break;
 
   case 8:
-#line 219 "ting.y"
+#line 222 "ting.y"
     { (yyval.extformula) = create_operation(op_join, (yyvsp[-1].extdeclaration), (yyvsp[0].extformula), "%s ; %s"); }
-#line 1736 "ting_parser.c"
+#line 1739 "ting_parser.c"
     break;
 
   case 9:
-#line 220 "ting.y"
+#line 223 "ting.y"
     { (yyval.extformula) = (yyvsp[0].formblock); }
-#line 1742 "ting_parser.c"
+#line 1745 "ting_parser.c"
     break;
 
   case 10:
-#line 224 "ting.y"
+#line 227 "ting.y"
     { (yyval.extdeclaration) = create_operation(op_join, (yyvsp[-1].extdeclaration), (yyvsp[0].extdeclaration), "%s ; %s"); }
-#line 1748 "ting_parser.c"
+#line 1751 "ting_parser.c"
     break;
 
   case 11:
-#line 225 "ting.y"
+#line 228 "ting.y"
     { (yyval.extdeclaration) = (yyvsp[0].declblock); }
-#line 1754 "ting_parser.c"
+#line 1757 "ting_parser.c"
     break;
 
   case 12:
-#line 229 "ting.y"
+#line 232 "ting.y"
     { (yyval.formblock) = create_operation(op_forall, (yyvsp[0].formblock), (yyvsp[-2].varrange), "iter(%2$s) { %1$s ; }"); }
-#line 1760 "ting_parser.c"
+#line 1763 "ting_parser.c"
     break;
 
   case 13:
-#line 230 "ting.y"
+#line 233 "ting.y"
     { (yyval.formblock) = create_operation(op_when, (yyvsp[0].formblock), (yyvsp[-2].selrange), "when(%2$s) { %1$s ; }"); }
-#line 1766 "ting_parser.c"
+#line 1769 "ting_parser.c"
     break;
 
   case 14:
-#line 232 "ting.y"
+#line 235 "ting.y"
     { (yyval.formblock) = create_operation(op_and, create_operation(op_when, (yyvsp[-2].formblock), (yyvsp[-4].selrange), "when(%2$s) { %1$s ; }"),
                                       create_operation(op_when, (yyvsp[0].formblock), create_operation(op_neg_range, copy_specification((yyvsp[-4].selrange)), NULL, "not %s"), "when(%2$s) { %1$s ; }"), "%s ; %s"); }
-#line 1773 "ting_parser.c"
+#line 1776 "ting_parser.c"
     break;
 
   case 15:
-#line 235 "ting.y"
+#line 238 "ting.y"
     { (yyval.formblock) = create_operation(op_join, create_operation(op_when, (yyvsp[-2].formblock), (yyvsp[-4].selrange), "when(%2$s) { %1$s ; }"),
                                        create_operation(op_when, (yyvsp[0].declblock), create_operation(op_neg_range, copy_specification((yyvsp[-4].selrange)), NULL, "not %s"), "when(%2$s) { %1$s ; }"), "%s ; %s"); }
-#line 1780 "ting_parser.c"
+#line 1783 "ting_parser.c"
     break;
 
   case 16:
-#line 238 "ting.y"
+#line 241 "ting.y"
     { (yyval.formblock) = create_operation(op_join, create_operation(op_when, (yyvsp[-2].declblock), (yyvsp[-4].selrange), "when(%2$s) { %1$s ; }"),
                                        create_operation(op_when, (yyvsp[0].formblock), create_operation(op_neg_range, copy_specification((yyvsp[-4].selrange)), NULL, "not %s"), "when(%2$s) { %1$s ; }"), "%s ; %s"); }
-#line 1787 "ting_parser.c"
+#line 1790 "ting_parser.c"
     break;
 
   case 17:
-#line 240 "ting.y"
+#line 243 "ting.y"
     { (yyval.formblock) = (yyvsp[-1].extformula); }
-#line 1793 "ting_parser.c"
+#line 1796 "ting_parser.c"
     break;
 
   case 18:
-#line 241 "ting.y"
+#line 244 "ting.y"
     { (yyval.formblock) = (yyvsp[-1].formula); }
-#line 1799 "ting_parser.c"
+#line 1802 "ting_parser.c"
     break;
 
   case 19:
-#line 245 "ting.y"
+#line 248 "ting.y"
     { (yyval.declblock) = create_operation(op_iter, (yyvsp[0].declblock), (yyvsp[-2].varrange), "iter(%2$s) { %1$s ; }"); }
-#line 1805 "ting_parser.c"
+#line 1808 "ting_parser.c"
     break;
 
   case 20:
-#line 246 "ting.y"
+#line 249 "ting.y"
     { (yyval.declblock) = create_operation(op_when, (yyvsp[0].declblock), (yyvsp[-2].selrange), "when(%2$s) { %1$s ; }"); }
-#line 1811 "ting_parser.c"
+#line 1814 "ting_parser.c"
     break;
 
   case 21:
-#line 248 "ting.y"
+#line 251 "ting.y"
     { (yyval.declblock) = create_operation(op_join, create_operation(op_when, (yyvsp[-2].declblock), (yyvsp[-4].selrange), "when(%2$s) { %1$s ; }"),
                                        create_operation(op_when, (yyvsp[0].declblock), create_operation(op_neg_range, copy_specification((yyvsp[-4].selrange)), NULL, "not %s"), "when(%2$s) { %1$s ; }"), "%s ; %s"); }
-#line 1818 "ting_parser.c"
+#line 1821 "ting_parser.c"
     break;
 
   case 22:
-#line 250 "ting.y"
+#line 253 "ting.y"
     { (yyval.declblock) = (yyvsp[-1].extdeclaration); }
-#line 1824 "ting_parser.c"
+#line 1827 "ting_parser.c"
     break;
 
   case 23:
-#line 251 "ting.y"
+#line 254 "ting.y"
     { (yyval.declblock) = (yyvsp[-1].declaration); }
-#line 1830 "ting_parser.c"
+#line 1833 "ting_parser.c"
     break;
 
   case 24:
-#line 255 "ting.y"
+#line 258 "ting.y"
     { (yyval.formula) = create_operation(op_not, (yyvsp[0].formula), NULL, "(~ %s)"); }
-#line 1836 "ting_parser.c"
+#line 1839 "ting_parser.c"
     break;
 
   case 25:
-#line 256 "ting.y"
+#line 259 "ting.y"
     { (yyval.formula) = create_operation(op_and, (yyvsp[-2].formula), (yyvsp[0].formula), "(%s & %s)"); }
-#line 1842 "ting_parser.c"
+#line 1845 "ting_parser.c"
     break;
 
   case 26:
-#line 257 "ting.y"
+#line 260 "ting.y"
     { (yyval.formula) = create_operation(op_or, (yyvsp[-2].formula), (yyvsp[0].formula), "(%s | %s)"); }
-#line 1848 "ting_parser.c"
+#line 1851 "ting_parser.c"
     break;
 
   case 27:
-#line 258 "ting.y"
+#line 261 "ting.y"
     { (yyval.formula) = create_operation(op_delay, (yyvsp[-2].formula), (yyvsp[0].expression), "(%s @ %s)"); }
-#line 1854 "ting_parser.c"
+#line 1857 "ting_parser.c"
     break;
 
   case 28:
-#line 259 "ting.y"
+#line 262 "ting.y"
     { (yyval.formula) = create_operation(op_delay, (yyvsp[-2].formula), (yyvsp[0].expression), "(%s ? %s)"); }
-#line 1860 "ting_parser.c"
+#line 1863 "ting_parser.c"
     break;
 
   case 29:
-#line 260 "ting.y"
+#line 263 "ting.y"
     { (yyval.formula) = create_operation(op_at, (yyvsp[-2].formula), (yyvsp[0].interval), "(%s @ %s)"); }
-#line 1866 "ting_parser.c"
+#line 1869 "ting_parser.c"
     break;
 
   case 30:
-#line 261 "ting.y"
+#line 264 "ting.y"
     { (yyval.formula) = create_operation(op_happen, (yyvsp[-2].formula), (yyvsp[0].interval), "(%s ? %s)"); }
-#line 1872 "ting_parser.c"
+#line 1875 "ting_parser.c"
     break;
 
   case 31:
-#line 262 "ting.y"
+#line 265 "ting.y"
     { (yyval.formula) = create_operation(op_since, (yyvsp[-3].formula), (yyvsp[-1].formula), "since(%s , %s)"); }
-#line 1878 "ting_parser.c"
+#line 1881 "ting_parser.c"
     break;
 
   case 32:
-#line 263 "ting.y"
+#line 266 "ting.y"
     { (yyval.formula) = create_operation(op_until, (yyvsp[-3].formula), (yyvsp[-1].formula), "until(%s , %s)"); }
-#line 1884 "ting_parser.c"
+#line 1887 "ting_parser.c"
     break;
 
   case 33:
-#line 264 "ting.y"
+#line 267 "ting.y"
     { (yyval.formula) = create_operation(op_forall, (yyvsp[-3].formula), (yyvsp[-1].varrange), "forall(%s , %s)"); }
-#line 1890 "ting_parser.c"
+#line 1893 "ting_parser.c"
     break;
 
   case 34:
-#line 265 "ting.y"
+#line 268 "ting.y"
     { (yyval.formula) = create_operation(op_exists, (yyvsp[-3].formula), (yyvsp[-1].varrange), "exists(%s , %s)"); }
-#line 1896 "ting_parser.c"
+#line 1899 "ting_parser.c"
     break;
 
   case 35:
-#line 266 "ting.y"
+#line 269 "ting.y"
     { (yyval.formula) = create_operation(op_one, (yyvsp[-5].formula), create_operation(op_one_check, (yyvsp[-3].selrange), (yyvsp[-1].varrange), "%s , %s"), "one(%s , %s)"); }
-#line 1902 "ting_parser.c"
+#line 1905 "ting_parser.c"
     break;
 
   case 36:
-#line 267 "ting.y"
+#line 270 "ting.y"
     { (yyval.formula) = create_operation(op_unique, (yyvsp[-3].formula), (yyvsp[-1].varrange), "unique(%s , %s)"); }
-#line 1908 "ting_parser.c"
+#line 1911 "ting_parser.c"
     break;
 
   case 37:
-#line 268 "ting.y"
+#line 271 "ting.y"
     { (yyval.formula) = create_operation(op_imply, (yyvsp[-2].formula), (yyvsp[0].formula), "(%s --> %s)"); }
-#line 1914 "ting_parser.c"
+#line 1917 "ting_parser.c"
     break;
 
   case 38:
-#line 269 "ting.y"
+#line 272 "ting.y"
     { (yyval.formula) = create_operation(op_imply, (yyvsp[0].formula), (yyvsp[-2].formula), "(%2$s <-- %1$s)"); }
-#line 1920 "ting_parser.c"
+#line 1923 "ting_parser.c"
     break;
 
   case 39:
-#line 270 "ting.y"
+#line 273 "ting.y"
     { (yyval.formula) = create_operation(op_eqv, (yyvsp[-2].formula), (yyvsp[0].formula), "(%s == %s)"); }
-#line 1926 "ting_parser.c"
+#line 1929 "ting_parser.c"
     break;
 
   case 40:
-#line 271 "ting.y"
+#line 274 "ting.y"
     { (yyval.formula) = create_operation(op_code, (yyvsp[-3].varname), (yyvsp[-1].string), "code(%s , %s)"); }
-#line 1932 "ting_parser.c"
+#line 1935 "ting_parser.c"
     break;
 
   case 41:
-#line 272 "ting.y"
+#line 275 "ting.y"
     { (yyval.formula) = create_operation(op_code_num, (yyvsp[-3].varname), (yyvsp[-1].expression), "code(%s , %s)"); }
-#line 1938 "ting_parser.c"
+#line 1941 "ting_parser.c"
     break;
 
   case 42:
-#line 273 "ting.y"
+#line 276 "ting.y"
     { (yyval.formula) = (yyvsp[-1].formula); }
-#line 1944 "ting_parser.c"
+#line 1947 "ting_parser.c"
     break;
 
   case 43:
-#line 274 "ting.y"
+#line 277 "ting.y"
     { (yyval.formula) = (yyvsp[0].indexedname); }
-#line 1950 "ting_parser.c"
+#line 1953 "ting_parser.c"
     break;
 
   case 44:
-#line 278 "ting.y"
+#line 281 "ting.y"
     { (yyval.interval) = create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "[%s , %s]"); }
-#line 1956 "ting_parser.c"
+#line 1959 "ting_parser.c"
     break;
 
   case 45:
-#line 279 "ting.y"
+#line 282 "ting.y"
     { (yyval.interval) = create_operation(op_interval_2, (yyvsp[-3].expression), (yyvsp[-1].expression), "(%s , %s]"); }
-#line 1962 "ting_parser.c"
+#line 1965 "ting_parser.c"
     break;
 
   case 46:
-#line 280 "ting.y"
+#line 283 "ting.y"
     { (yyval.interval) = create_operation(op_interval_3, (yyvsp[-3].expression), (yyvsp[-1].expression), "[%s , %s)"); }
-#line 1968 "ting_parser.c"
+#line 1971 "ting_parser.c"
     break;
 
   case 47:
-#line 281 "ting.y"
+#line 284 "ting.y"
     { (yyval.interval) = create_operation(op_interval_4, (yyvsp[-3].expression), (yyvsp[-1].expression), "(%s , %s)"); }
-#line 1974 "ting_parser.c"
+#line 1977 "ting_parser.c"
     break;
 
   case 48:
-#line 285 "ting.y"
+#line 288 "ting.y"
     { (yyval.declaration) = create_operation(op_input, (yyvsp[0].decllist), (yyvsp[-2].io_decllist), "input[%2$s] %1$s"); }
-#line 1980 "ting_parser.c"
+#line 1983 "ting_parser.c"
     break;
 
   case 49:
-#line 286 "ting.y"
+#line 289 "ting.y"
     { (yyval.declaration) = create_operation(op_input, (yyvsp[0].decllist), create_operation(op_join_qual, create_operation(op_join_qual, create_operation(op_join_qual,
       create_ground(op_ioqual1, "", io_any), create_ground(op_ioqual2, "", io_binary), "%s , %s"), create_ground(op_ioqual3, "", io_unknown), "%s , %s"),
       create_ground(op_ioqual4, "", io_raw), "%s , %s"), "input[%2$s] %1$s"); }
-#line 1988 "ting_parser.c"
+#line 1991 "ting_parser.c"
     break;
 
   case 50:
-#line 289 "ting.y"
+#line 292 "ting.y"
     { (yyval.declaration) = create_operation(op_output, (yyvsp[0].decllist), (yyvsp[-2].io_decllist), "output[%2$s] %1$s"); }
-#line 1994 "ting_parser.c"
+#line 1997 "ting_parser.c"
     break;
 
   case 51:
-#line 290 "ting.y"
+#line 293 "ting.y"
     { (yyval.declaration) = create_operation(op_output, (yyvsp[0].decllist), create_operation(op_join_qual, create_operation(op_join_qual, create_operation(op_join_qual,
       create_ground(op_ioqual1, "", io_any), create_ground(op_ioqual2, "", io_binary), "%s , %s"), create_ground(op_ioqual3, "", io_unknown), "%s , %s"),
       create_ground(op_ioqual4, "", io_raw), "%s , %s"), "output[%2$s] %1$s"); }
-#line 2002 "ting_parser.c"
+#line 2005 "ting_parser.c"
     break;
 
   case 52:
-#line 293 "ting.y"
+#line 296 "ting.y"
     { (yyval.declaration) = create_operation(op_aux, (yyvsp[0].decllist), NULL, "aux %s"); }
-#line 2008 "ting_parser.c"
+#line 2011 "ting_parser.c"
     break;
 
   case 53:
-#line 294 "ting.y"
+#line 297 "ting.y"
     { (yyval.declaration) = create_operation(op_init, (yyvsp[0].eventlist), NULL, "init %s"); }
-#line 2014 "ting_parser.c"
+#line 2017 "ting_parser.c"
     break;
 
   case 54:
-#line 295 "ting.y"
+#line 298 "ting.y"
     { (yyval.declaration) = (yyvsp[0].assignlist); }
-#line 2020 "ting_parser.c"
+#line 2023 "ting_parser.c"
     break;
 
   case 55:
-#line 296 "ting.y"
+#line 299 "ting.y"
     { (yyval.declaration) = (yyvsp[0].filelist); }
-#line 2026 "ting_parser.c"
+#line 2029 "ting_parser.c"
     break;
 
   case 56:
-#line 300 "ting.y"
+#line 303 "ting.y"
     { (yyval.io_decllist) = create_operation(op_join_qual, (yyvsp[-2].io_decllist), (yyvsp[0].io_decl), "%s , %s"); }
-#line 2032 "ting_parser.c"
+#line 2035 "ting_parser.c"
     break;
 
   case 57:
-#line 301 "ting.y"
+#line 304 "ting.y"
     { (yyval.io_decllist) = (yyvsp[0].io_decl); }
-#line 2038 "ting_parser.c"
+#line 2041 "ting_parser.c"
     break;
 
   case 58:
-#line 305 "ting.y"
+#line 308 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual1, "any", io_any); }
-#line 2044 "ting_parser.c"
+#line 2047 "ting_parser.c"
     break;
 
   case 59:
-#line 306 "ting.y"
+#line 309 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual1, "ipc", io_ipc); }
-#line 2050 "ting_parser.c"
+#line 2053 "ting_parser.c"
     break;
 
   case 60:
-#line 307 "ting.y"
+#line 310 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual1, "file", io_file); }
-#line 2056 "ting_parser.c"
+#line 2059 "ting_parser.c"
     break;
 
   case 61:
-#line 308 "ting.y"
+#line 311 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual2, "binary", io_binary); }
-#line 2062 "ting_parser.c"
+#line 2065 "ting_parser.c"
     break;
 
   case 62:
-#line 309 "ting.y"
+#line 312 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual2, "packed", io_packed); }
-#line 2068 "ting_parser.c"
+#line 2071 "ting_parser.c"
     break;
 
   case 63:
-#line 310 "ting.y"
+#line 313 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual3, "unknown", io_unknown); }
-#line 2074 "ting_parser.c"
+#line 2077 "ting_parser.c"
     break;
 
   case 64:
-#line 311 "ting.y"
+#line 314 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual3, "false", io_false); }
-#line 2080 "ting_parser.c"
+#line 2083 "ting_parser.c"
     break;
 
   case 65:
-#line 312 "ting.y"
+#line 315 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual3, "true", io_true); }
-#line 2086 "ting_parser.c"
+#line 2089 "ting_parser.c"
     break;
 
   case 66:
-#line 313 "ting.y"
+#line 316 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual4, "raw", io_raw); }
-#line 2092 "ting_parser.c"
+#line 2095 "ting_parser.c"
     break;
 
   case 67:
-#line 314 "ting.y"
+#line 317 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual4, "filter", io_filter); }
-#line 2098 "ting_parser.c"
+#line 2101 "ting_parser.c"
     break;
 
   case 68:
-#line 315 "ting.y"
+#line 318 "ting.y"
     { (yyval.io_decl) = create_ground(op_ioqual4, "omit", io_omit); }
-#line 2104 "ting_parser.c"
+#line 2107 "ting_parser.c"
     break;
 
   case 69:
-#line 319 "ting.y"
+#line 322 "ting.y"
     { (yyval.decllist) = create_operation(op_join, (yyvsp[-2].decllist), (yyvsp[0].declname), "%s , %s"); }
-#line 2110 "ting_parser.c"
+#line 2113 "ting_parser.c"
     break;
 
   case 70:
-#line 320 "ting.y"
+#line 323 "ting.y"
     { (yyval.decllist) = (yyvsp[0].declname); }
-#line 2116 "ting_parser.c"
+#line 2119 "ting_parser.c"
     break;
 
   case 71:
-#line 324 "ting.y"
+#line 327 "ting.y"
     { (yyval.eventlist) = create_operation(op_join, (yyvsp[-2].eventlist), (yyvsp[0].eventname), "%s , %s"); }
-#line 2122 "ting_parser.c"
+#line 2125 "ting_parser.c"
     break;
 
   case 72:
-#line 325 "ting.y"
+#line 328 "ting.y"
     { (yyval.eventlist) = (yyvsp[0].eventname); }
-#line 2128 "ting_parser.c"
+#line 2131 "ting_parser.c"
     break;
 
   case 73:
-#line 329 "ting.y"
+#line 332 "ting.y"
     { (yyval.filelist) = create_operation(op_join, (yyvsp[-2].filelist), (yyvsp[0].filename), "%s , %s"); }
-#line 2134 "ting_parser.c"
+#line 2137 "ting_parser.c"
     break;
 
   case 74:
-#line 330 "ting.y"
+#line 333 "ting.y"
     { (yyval.filelist) = (yyvsp[0].filename); }
-#line 2140 "ting_parser.c"
+#line 2143 "ting_parser.c"
     break;
 
   case 75:
-#line 334 "ting.y"
+#line 337 "ting.y"
     { (yyval.assignlist) = create_operation(op_join, (yyvsp[-2].assignlist), (yyvsp[0].assignment), "%s ; %s"); }
-#line 2146 "ting_parser.c"
+#line 2149 "ting_parser.c"
     break;
 
   case 76:
-#line 335 "ting.y"
+#line 338 "ting.y"
     { (yyval.assignlist) = (yyvsp[0].assignment); }
-#line 2152 "ting_parser.c"
+#line 2155 "ting_parser.c"
     break;
 
   case 77:
-#line 339 "ting.y"
+#line 342 "ting.y"
     { (yyval.assignment) = create_operation(op_define, (yyvsp[-2].constname), (yyvsp[0].expression), "define %s = %s"); }
-#line 2158 "ting_parser.c"
+#line 2161 "ting_parser.c"
     break;
 
   case 78:
-#line 343 "ting.y"
+#line 346 "ting.y"
     { (yyval.eventname) = create_operation(op_var_at, (yyvsp[-2].qualname), (yyvsp[0].expression), "%s @ %s"); }
-#line 2164 "ting_parser.c"
+#line 2167 "ting_parser.c"
     break;
 
   case 79:
-#line 344 "ting.y"
+#line 347 "ting.y"
     { (yyval.eventname) = create_operation(op_var_at, (yyvsp[-2].qualname), (yyvsp[0].interval), "%s @ %s"); }
-#line 2170 "ting_parser.c"
+#line 2173 "ting_parser.c"
     break;
 
   case 80:
-#line 348 "ting.y"
+#line 351 "ting.y"
     { (yyval.qualname) = create_operation(op_not, (yyvsp[0].initname), NULL, "~ %s"); }
-#line 2176 "ting_parser.c"
+#line 2179 "ting_parser.c"
     break;
 
   case 81:
-#line 349 "ting.y"
+#line 352 "ting.y"
     { (yyval.qualname) = (yyvsp[0].initname); }
-#line 2182 "ting_parser.c"
+#line 2185 "ting_parser.c"
     break;
 
   case 82:
-#line 353 "ting.y"
+#line 356 "ting.y"
     { (yyval.indexedname) = create_operation(op_matrix, create_ground(op_name, (yyvsp[-5].symbol), 0),
       create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s)"); }
-#line 2189 "ting_parser.c"
+#line 2192 "ting_parser.c"
     break;
 
   case 83:
-#line 355 "ting.y"
+#line 358 "ting.y"
     { (yyval.indexedname) = create_operation(op_vector, create_ground(op_name, (yyvsp[-3].symbol), 0), (yyvsp[-1].expression), "%s(%s)"); }
-#line 2195 "ting_parser.c"
+#line 2198 "ting_parser.c"
     break;
 
   case 84:
-#line 356 "ting.y"
+#line 359 "ting.y"
     { (yyval.indexedname) = (yyvsp[0].varname); }
-#line 2201 "ting_parser.c"
+#line 2204 "ting_parser.c"
     break;
 
   case 85:
-#line 360 "ting.y"
+#line 363 "ting.y"
     { (yyval.declname) = create_operation(op_matrix, create_ground(op_dname, (yyvsp[-5].symbol), 0),
       create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s)"); }
-#line 2208 "ting_parser.c"
+#line 2211 "ting_parser.c"
     break;
 
   case 86:
-#line 362 "ting.y"
+#line 365 "ting.y"
     { (yyval.declname) = create_operation(op_vector, create_ground(op_dname, (yyvsp[-3].symbol), 0), (yyvsp[-1].expression), "%s(%s)"); }
-#line 2214 "ting_parser.c"
+#line 2217 "ting_parser.c"
     break;
 
   case 87:
-#line 363 "ting.y"
+#line 366 "ting.y"
     { (yyval.declname) = create_ground(op_dname, (yyvsp[0].symbol), 0); }
-#line 2220 "ting_parser.c"
+#line 2223 "ting_parser.c"
     break;
 
   case 88:
-#line 367 "ting.y"
+#line 370 "ting.y"
     { (yyval.initname) = create_operation(op_matrix, create_ground(op_iname, (yyvsp[-5].symbol), 0),
       create_operation(op_interval_1, (yyvsp[-3].expression), (yyvsp[-1].expression), "%s , %s"), "%s(%s)"); }
-#line 2227 "ting_parser.c"
+#line 2230 "ting_parser.c"
     break;
 
   case 89:
-#line 369 "ting.y"
+#line 372 "ting.y"
     { (yyval.initname) = create_operation(op_vector, create_ground(op_iname, (yyvsp[-3].symbol), 0), (yyvsp[-1].expression), "%s(%s)"); }
-#line 2233 "ting_parser.c"
+#line 2236 "ting_parser.c"
     break;
 
   case 90:
-#line 370 "ting.y"
+#line 373 "ting.y"
     { (yyval.initname) = create_ground(op_iname, (yyvsp[0].symbol), 0); }
-#line 2239 "ting_parser.c"
+#line 2242 "ting_parser.c"
     break;
 
   case 91:
-#line 374 "ting.y"
+#line 377 "ting.y"
     { (yyval.varname) = create_ground(op_name, (yyvsp[0].symbol), 0); }
-#line 2245 "ting_parser.c"
+#line 2248 "ting_parser.c"
     break;
 
   case 92:
-#line 378 "ting.y"
+#line 381 "ting.y"
     { (yyval.constname) = create_ground(op_cname, (yyvsp[0].symbol), 0); }
-#line 2251 "ting_parser.c"
+#line 2254 "ting_parser.c"
     break;
 
   case 93:
-#line 382 "ting.y"
+#line 385 "ting.y"
     { (yyval.filename) = create_ground(op_fname, (yyvsp[0].symbol), 0); }
-#line 2257 "ting_parser.c"
+#line 2260 "ting_parser.c"
     break;
 
   case 94:
-#line 386 "ting.y"
+#line 389 "ting.y"
     { (yyval.string) = create_ground(op_string, (yyvsp[0].symbol), 0); }
-#line 2263 "ting_parser.c"
+#line 2266 "ting_parser.c"
     break;
 
   case 95:
-#line 390 "ting.y"
+#line 393 "ting.y"
     { (yyval.varrange) = create_operation(op_in, (yyvsp[-4].constname), create_operation(op_interval_1, (yyvsp[-2].expression), (yyvsp[0].expression), "%s : %s"), "%s in %s"); }
-#line 2269 "ting_parser.c"
+#line 2272 "ting_parser.c"
     break;
 
   case 96:
-#line 391 "ting.y"
+#line 394 "ting.y"
     { (yyval.varrange) = create_operation(op_in, (yyvsp[-2].constname), create_operation(op_interval_3, create_ground(op_number, "", 0), (yyvsp[0].expression), "%s : %s - 1"), "%s on %s"); }
-#line 2275 "ting_parser.c"
+#line 2278 "ting_parser.c"
     break;
 
   case 97:
-#line 392 "ting.y"
+#line 395 "ting.y"
     { (yyval.varrange) = create_operation(op_interval_1, (yyvsp[-2].expression), (yyvsp[0].expression), "%s : %s"); }
-#line 2281 "ting_parser.c"
+#line 2284 "ting_parser.c"
     break;
 
   case 98:
-#line 393 "ting.y"
+#line 396 "ting.y"
     { (yyval.varrange) = create_operation(op_interval_3, create_ground(op_number, "", 0), (yyvsp[0].expression), "%s : %s - 1"); }
-#line 2287 "ting_parser.c"
+#line 2290 "ting_parser.c"
     break;
 
   case 99:
-#line 397 "ting.y"
+#line 400 "ting.y"
     { (yyval.selrange) = create_operation(op_neg_range, (yyvsp[0].selrange), NULL, "not %s"); }
-#line 2293 "ting_parser.c"
+#line 2296 "ting_parser.c"
     break;
 
   case 100:
-#line 398 "ting.y"
+#line 401 "ting.y"
     { (yyval.selrange) = create_operation(op_in, (yyvsp[-4].expression), create_operation(op_interval_1, (yyvsp[-2].expression), (yyvsp[0].expression), "%s : %s"), "%s in %s"); }
-#line 2299 "ting_parser.c"
+#line 2302 "ting_parser.c"
     break;
 
   case 101:
-#line 399 "ting.y"
+#line 402 "ting.y"
     { (yyval.selrange) = create_operation(op_in, (yyvsp[-2].expression), create_operation(op_interval_1, (yyvsp[0].expression), copy_specification((yyvsp[0].expression)), "%s : %s"), "%s is %s"); }
-#line 2305 "ting_parser.c"
+#line 2308 "ting_parser.c"
     break;
 
   case 102:
-#line 400 "ting.y"
+#line 403 "ting.y"
     { (yyval.selrange) = create_operation(op_interval_1, (yyvsp[-2].expression), (yyvsp[0].expression), "%s : %s"); }
-#line 2311 "ting_parser.c"
+#line 2314 "ting_parser.c"
     break;
 
   case 103:
-#line 401 "ting.y"
+#line 404 "ting.y"
     { (yyval.selrange) = create_operation(op_interval_1, (yyvsp[0].expression), copy_specification((yyvsp[0].expression)), "%s : %s"); }
-#line 2317 "ting_parser.c"
+#line 2320 "ting_parser.c"
     break;
 
   case 104:
-#line 405 "ting.y"
+#line 408 "ting.y"
     { (yyval.expression) = create_operation(op_plus, (yyvsp[-2].expression), (yyvsp[0].expression), "%s + %s"); }
-#line 2323 "ting_parser.c"
+#line 2326 "ting_parser.c"
     break;
 
   case 105:
-#line 406 "ting.y"
+#line 409 "ting.y"
     { (yyval.expression) = create_operation(op_minus, (yyvsp[-2].expression), (yyvsp[0].expression), "%s - %s"); }
-#line 2329 "ting_parser.c"
+#line 2332 "ting_parser.c"
     break;
 
   case 106:
-#line 407 "ting.y"
+#line 410 "ting.y"
     { (yyval.expression) = create_operation(op_mul, (yyvsp[-2].expression), (yyvsp[0].expression), "%s * %s"); }
-#line 2335 "ting_parser.c"
+#line 2338 "ting_parser.c"
     break;
 
   case 107:
-#line 408 "ting.y"
+#line 411 "ting.y"
     { (yyval.expression) = create_operation(op_div, (yyvsp[-2].expression), (yyvsp[0].expression), "%s / %s"); }
-#line 2341 "ting_parser.c"
+#line 2344 "ting_parser.c"
     break;
 
   case 108:
-#line 409 "ting.y"
+#line 412 "ting.y"
     { (yyval.expression) = create_operation(op_mod, (yyvsp[-2].expression), (yyvsp[0].expression), "%s % %s"); }
-#line 2347 "ting_parser.c"
+#line 2350 "ting_parser.c"
     break;
 
   case 109:
-#line 410 "ting.y"
+#line 413 "ting.y"
     { (yyval.expression) = create_operation(op_pow, (yyvsp[-2].expression), (yyvsp[0].expression), "%s ^ %s"); }
-#line 2353 "ting_parser.c"
+#line 2356 "ting_parser.c"
     break;
 
   case 110:
-#line 411 "ting.y"
+#line 414 "ting.y"
     { (yyval.expression) = create_operation(op_chs, (yyvsp[0].expression), NULL, "- %s"); }
-#line 2359 "ting_parser.c"
+#line 2362 "ting_parser.c"
     break;
 
   case 111:
-#line 412 "ting.y"
+#line 415 "ting.y"
     { (yyval.expression) = (yyvsp[-1].expression); }
-#line 2365 "ting_parser.c"
+#line 2368 "ting_parser.c"
     break;
 
   case 112:
-#line 413 "ting.y"
+#line 416 "ting.y"
     { (yyval.expression) = (yyvsp[0].number); }
-#line 2371 "ting_parser.c"
+#line 2374 "ting_parser.c"
     break;
 
   case 113:
-#line 417 "ting.y"
+#line 420 "ting.y"
     { (yyval.number) = create_ground(op_number, "", (yyvsp[0].value)); }
-#line 2377 "ting_parser.c"
+#line 2380 "ting_parser.c"
     break;
 
   case 114:
-#line 418 "ting.y"
+#line 421 "ting.y"
     { (yyval.number) = create_ground(op_iterator, (yyvsp[0].symbol), 0); }
-#line 2383 "ting_parser.c"
+#line 2386 "ting_parser.c"
     break;
 
   case 115:
-#line 419 "ting.y"
+#line 422 "ting.y"
     { (yyval.number) = create_ground(op_constant, (yyvsp[0].symbol), 0); }
-#line 2389 "ting_parser.c"
+#line 2392 "ting_parser.c"
     break;
 
 
-#line 2393 "ting_parser.c"
+#line 2396 "ting_parser.c"
 
       default: break;
     }
@@ -2627,6 +2630,6 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 422 "ting.y"
+#line 425 "ting.y"
 
 

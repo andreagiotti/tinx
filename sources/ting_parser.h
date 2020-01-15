@@ -44,7 +44,7 @@
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 34 "ting.y"
+#line 37 "ting.y"
 
 #ifndef YY_TYPEDEF_YY_SCANNER_T
 #define YY_TYPEDEF_YY_SCANNER_T
@@ -135,7 +135,7 @@ typedef struct tracker
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 64 "ting.y"
+#line 67 "ting.y"
 
   char symbol[MAX_NAMELEN];
   d_time value;

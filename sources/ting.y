@@ -17,7 +17,10 @@ int yyerror(YYLTYPE *yylloc, btl_specification **spec_handle, yyscan_t scanner, 
     for(i = 1; i <= NUM_TOKENS; i++)
       {
         k = (tr.idx + i) % NUM_TOKENS;
-        strcat(buffer, tr.token[k]);
+
+        if(tr.token[k])
+          strcat(buffer, tr.token[k]);
+
         len += tr.length[k];
       }
 

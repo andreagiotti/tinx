@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "4.0.1"
+#define VER "4.0.2"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
@@ -2656,7 +2656,7 @@ int save_ics(c_base *cb, FILE *fp)
         }
       else
         {
-          fprintf(stderr, "%s: Error, initial condition refers to undeclared signal\n", icp->name);
+          fprintf(stderr, "%s: Error, initial condition refers to undeclared or removed signal\n", icp->name);
           exit_failure();
         }
     }
@@ -3321,7 +3321,7 @@ int main(int argc, char *argv[])
     strcpy(xref_name, base_name);
 
   printf("\nTING "VER" - Temporal Inference Network Generator\n"
-         "Design & coding by Andrea Giotti, 2017-2019\n\n");
+         "Design & coding by Andrea Giotti, 2017-2020\n\n");
 
   cperf = compile(source_name, base_name, state_name, xref_name, path, seplit_fe, seplit_su, merge, constout, outaux, outint);
 
