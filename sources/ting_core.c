@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "4.0.2"
+#define VER "4.0.3"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 
@@ -432,6 +432,7 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
           sp->from = NULL;
           sp->to = NULL;
           sp->occurr = no_link;
+          sp->occurr_neg = no_link;
           sp->sclass = internal_class;
           sp->stype = io_any;
           sp->packed = 0;
@@ -2256,6 +2257,25 @@ link_code occurrence(smallnode *from, smallnode *to)
     }
 }
 
+link_code occurrence_neg(smallnode *from, smallnode *to)
+{
+  if(!from || !to)
+    return no_link;
+  else
+    {
+      if(from == to->right)
+        return right_son;
+      else
+        if(from == to->left)
+          return left_son;
+        else
+          if(from == *genup(to))
+            return parent;
+          else
+            return no_link;
+    }
+}
+
 void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
 {
   io_signal *sp;
@@ -2299,13 +2319,33 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
                   if(sp->to == lp)
                     {
                       sp->from = rp;
-                      sp->occurr = occurrence(vp, lp);
+
+                      if(sp->occurr == parent)
+                        {
+                          sp->occurr = occurrence(vp, lp);
+                          sp->occurr_neg = occurrence_neg(vp, rp);
+                        }
+                      else
+                        {
+                          sp->occurr = occurrence_neg(vp, lp);
+                          sp->occurr_neg = occurrence(vp, rp);
+                        }
                     }
                   else
                     if(sp->to == rp)
                       {
                         sp->from = lp;
-                        sp->occurr = occurrence(vp, rp);
+
+                        if(sp->occurr == parent)
+                          {
+                            sp->occurr = occurrence(vp, rp);
+                            sp->occurr_neg = occurrence_neg(vp, lp);
+                          }
+                        else
+                          {
+                            sp->occurr = occurrence_neg(vp, rp);
+                            sp->occurr_neg = occurrence(vp, lp);
+                          }
                       }
                 }
 
@@ -2314,13 +2354,33 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
                   if(sp->from == lp)
                     {
                       sp->to = rp;
-                      sp->occurr = occurrence(vp, rp);
+
+                      if(sp->occurr != parent)
+                        {
+                          sp->occurr = occurrence(vp, rp);
+                          sp->occurr_neg = occurrence_neg(vp, lp);
+                        }
+                      else
+                        {
+                          sp->occurr = occurrence_neg(vp, rp);
+                          sp->occurr_neg = occurrence(vp, lp);
+                        }
                     }
                   else
                     if(sp->from == rp)
                       {
                         sp->to = lp;
-                        sp->occurr = occurrence(vp, lp);
+
+                        if(sp->occurr != parent)
+                          {
+                            sp->occurr = occurrence(vp, lp);
+                            sp->occurr_neg = occurrence_neg(vp, rp);
+                          }
+                        else
+                          {
+                            sp->occurr = occurrence_neg(vp, lp);
+                            sp->occurr_neg = occurrence(vp, rp);
+                          }
                       }
                 }
             }
@@ -2585,18 +2645,18 @@ int save_signals(c_base *cb, FILE *fp)
             {
               case input_class:
                 rv = fprintf(fp, "! %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
-                             *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
               break;
 
               case output_class:
                 rv = fprintf(fp, "? %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
-                             *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
               break;
 
               case aux_class:
                 if(cb->outaux)
                   rv = fprintf(fp, ". %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
-                               *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
                 else
                   rv = 0;
               break;
@@ -2604,7 +2664,7 @@ int save_signals(c_base *cb, FILE *fp)
               case internal_class:
                 if(cb->outint)
                   rv = fprintf(fp, ". %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
-                               *sp->root? sp->root : sp->name, sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
                 else
                   rv = 0;
               break;
@@ -2650,9 +2710,9 @@ int save_ics(c_base *cb, FILE *fp)
       if(sp && sp->from && sp->to)
         {
           if(!icp->neg)
-            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->from? sp->from->name : "*", sp->to? sp->to->name : "*", sp->occurr, icp->t);
+            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->from->name, sp->to->name, sp->occurr, icp->t);
           else
-            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->to? sp->to->name : "*", sp->from? sp->from->name : "*", sp->occurr, icp->t);
+            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->to->name, sp->from->name, sp->occurr_neg, icp->t);
         }
       else
         {

@@ -1,135 +1,233 @@
 /*
 	Name:	Asynchronous, parallel and sequential state machine with multiple exclusive resource management
 	Author:	Andrea Giotti, 2020
-	Release: 1.1
-	Notes: compile without recursion optimization or find a different set of initial conditions
+	Release: 1.2
 */
 
 define	numtasks = 8,
-	numres = 3,
 	numpos = 4,
-	time_0 = 12,
-	time_1 = 16,
+	numres = 3,
+	time_0 = 16,
+	time_1 = 24,
 	time_2 = 8;
 
 iter(i on numtasks)
 {
 	input run(i), abort(i);
-	aux idle(i);
+	aux idle(i), wait(i), acknowledge(i), cycle(i);
+	iter(h on 8)
+		aux owned(i, h);
 
 	iter(n on numres)
 	{
-		output grant(i, n);
-		aux req(i, n), rel(i, n), ack_req(i, n), wait(i, n), perform(i, n);
+		aux grant(i, n), request(i, n), release(i, n), perform(i, n), valid(i, n);
 
 		iter(j on numpos)
 		{
 			define k = numpos * n + j;
 
-			aux queued(i, k), begin(i, k), end(i, k), up(i, k), down(i, k), new(i, k);
+			aux queued(i, k), begin(i, k), up(i, k), down(i, k), new(i, k);
 
 			when(j in 0 : numpos - 2)
-				aux roll(i, k);
+				aux roll(i, k), full(i, k);
 		}
 	}
-
-	output cycle(i);
 }
 
 iter(n on numres)
+{
+	aux free(n);
+
 	iter(j on numpos)
 	{
 		define k = numpos * n + j;
 
-		aux free(k);
+		aux freeslice(k);
 
 		when(j in 0 : numpos - 2)
 			aux noroll(k);
 	}
 
+	iter(h on 8)
+		aux owner(n, h);
+}
+
+aux busy;
+
+iter(h on 8)
+	aux complete(h);
+
+iter(h on 8)
+{
+	output [packed] client_0(0, h), client_1(0, h), client_2(0, h), client_3(0, h), client_4(0, h), client_5(0, h), client_6(0, h), client_7(0, h);
+	output [packed] resource_A(0, h), resource_B(0, h), resource_C(0, h);
+	output [packed] done(0, h);
+	aux string_blank(0, h), string_0(0, h), string_1(0, h), string_2(0, h), string_3(0, h), string_4(0, h), string_5(0, h), string_6(0, h), string_7(0, h);
+        aux string_trans(0, h), string_A(0, h), string_B(0, h), string_C(0, h);
+}
+
+/* Mutually exclusive resources with queues */
+
 iter(n on numres)
 {
+	free(n) == freeslice(numpos * n);
+
 	iter(j on numpos)
 	{
 		define k = numpos * n + j;
 
-		free(k) == ~ exists(queued(h, k), h on numtasks);
+		freeslice(k) == ~ exists(queued(i, k), i on numtasks);
 
 		when(j in 0 : numpos - 2)
-			noroll(k) == ~ exists(roll(h, k), h on numtasks);
-	}
-
-	iter(i on numtasks)
-	{
-		iter(j on numpos)
-		{
-			define	k0 = numpos * n,
-				k = k0 + j;
-
-                        init ~ queued(i, k) @ -1;
-
-			queued(i, k) == since(up(i, k), ~ down(i, k));
-
-			begin(i, k) == free(k) @ -1 & one(req(h, n) & ~ rel(h, n), h is i, h on numtasks);
-			end(i, k) == queued(i, k) @ -1 & rel(i, n);
-
-			when(j in 0 : numpos - 2)
-			{
-				roll(i, k) == (free(k) & queued(i, k + 1)) @ -1;
-
-				when(j is 0)
-				{
-					new(i, k) == noroll(k) & begin(i, k);
-
-					up(i, k) == roll(i, k) | new(i, k);
-					down(i, k) == end(i, k);
-
-					grant(i, n) == queued(i, k);
-				}
-				else
-				{
-					new(i, k) == noroll(k) & begin(i, k) & ~ exists(queued(i, l) | free(l), l in k0 : k - 1);
-
-					up(i, k) == roll(i, k) | new(i, k);
-					down(i, k) == roll(i, k - 1) | end(i, k);
-				}
-			}
-			else
-			{
-				new(i, k) == begin(i, k) & ~ exists(queued(i, l) | free(l), l in k0 : k - 1);
-
-				up(i, k) == new(i, k);
-				down(i, k) == roll(i, k - 1) | end(i, k);
-			}
-		}
-
-		ack_req(i, n) == exists(new(i, k), k in numpos * n : numpos * (n + 1) - 1);
+			noroll(k) == ~ exists(roll(i, k), i on numtasks);
 	}
 }
 
 iter(i on numtasks)
 {
-	init ~ run(i) @ -1, abort(i) @ -1;
-
-	iter(n in 0 : numres - 1)
+	iter(n on numres)
 	{
-		when(n is 0)
-			req(i, n) == idle(i) @ -1 & run(i) & ~ abort(i);
-		else
-			req(i, n) == perform(i, n - 1) & ~ abort(i);
+		valid(i, n) == one(request(h, n), h is i, h on numtasks);
 
-		wait(i, n) == since(ack_req(i, n), ~ (grant(i, n) | abort(i)));
+		iter(j on numpos)
+		{
+			define	k0 = numpos * n,
+				k = k0 + j;
 
-		rel(i, n) == perform(i, n) | abort(i);
+                        init ~ up(i, k) @ -1, down(i, k) @ -1;
+
+			queued(i, k) == since(up(i, k), ~ down(i, k));
+
+			begin(i, k) == freeslice(k) @ -1 & valid(i, n);
+
+			when(j in 0 : numpos - 2)
+			{
+				roll(i, k) == (freeslice(k) & queued(i, k + 1)) @ -1;
+
+				when(j is 0)
+				{
+					new(i, k) == noroll(k) & begin(i, k);
+					full(i, k) == ~ freeslice(k) & ~ queued(i, k);
+
+					up(i, k) == (roll(i, k) | new(i, k)) & ~ release(i, n);
+					down(i, k) == release(i, n);
+
+					grant(i, n) == queued(i, k);
+				}
+				else
+				{
+					new(i, k) == full(i, k - 1) @ -1 & noroll(k) & begin(i, k);
+					full(i, k) == full(i, k - 1) & ~ freeslice(k) & ~ queued(i, k);
+
+					up(i, k) == (roll(i, k) | new(i, k)) & ~ release(i, n);
+					down(i, k) == roll(i, k - 1) | release(i, n);
+				}
+			}
+			else
+			{
+				new(i, k) == full(i, k - 1) @ -1 & begin(i, k);
+
+				up(i, k) == new(i, k) & ~ release(i, n);
+				down(i, k) == roll(i, k - 1) | release(i, n);
+			}
+		}
 	}
 
-	idle(i) == since(rel(i, numres - 1), ~ ack_req(i, 0));
+	acknowledge(i) == exists(new(i, k), k in 0 : numpos - 1);
+}
 
+/* Sequential concurrent state machines */
+
+iter(i on numtasks)
+{
+	init ~ run(i) @ -1, abort(i) @ -1;
+
+	iter(n on numres)
+	{
+		when(n is 0)
+			request(i, n) == idle(i) @ -1 & run(i) & ~ abort(i);
+		else
+			request(i, n) == perform(i, n - 1) & ~ abort(i);
+
+		release(i, n) == perform(i, n) | abort(i);
+	}
+
+	idle(i) == since(release(i, numres - 1), ~ acknowledge(i));
+
+	wait(i) == ~ idle(i) & ~ exists(grant(i, n), n on numres);
 	cycle(i) == perform(i, numres - 1);
 
 	perform(i, 0) == grant(i, 0) @ [- time_0, 0);
 	perform(i, 1) == grant(i, 1) @ [- time_1, 0);
 	perform(i, 2) == grant(i, 2) @ [- time_2, 0);
 }
+
+busy == ~ exists(cycle(i), i on numtasks);
+
+/* Character input and output */
+
+iter(i on numtasks)
+{
+	idle(i) --> forall(owned(i, h) == string_blank(0, h), h on 8);
+	wait(i) --> forall(owned(i, h) == string_trans(0, h), h on 8);
+
+	grant(i, 0) --> forall(owned(i, h) == string_A(0, h), h on 8);
+	grant(i, 1) --> forall(owned(i, h) == string_B(0, h), h on 8);
+	grant(i, 2) --> forall(owned(i, h) == string_C(0, h), h on 8);
+}
+
+iter(n on numres)
+{
+	free(n) --> forall(owner(n, h) == string_blank(0, h), h on 8);
+
+	grant(0, n) --> forall(owner(n, h) == string_0(0, h), h on 8);
+	grant(1, n) --> forall(owner(n, h) == string_1(0, h), h on 8);
+	grant(2, n) --> forall(owner(n, h) == string_2(0, h), h on 8);
+	grant(3, n) --> forall(owner(n, h) == string_3(0, h), h on 8);
+	grant(4, n) --> forall(owner(n, h) == string_4(0, h), h on 8);
+	grant(5, n) --> forall(owner(n, h) == string_5(0, h), h on 8);
+	grant(6, n) --> forall(owner(n, h) == string_6(0, h), h on 8);
+	grant(7, n) --> forall(owner(n, h) == string_7(0, h), h on 8);
+}
+
+busy --> forall(complete(h) == string_blank(0, h), h on 8);
+
+cycle(0) --> forall(complete(h) == string_0(0, h), h on 8);
+cycle(1) --> forall(complete(h) == string_1(0, h), h on 8);
+cycle(2) --> forall(complete(h) == string_2(0, h), h on 8);
+cycle(3) --> forall(complete(h) == string_3(0, h), h on 8);
+cycle(4) --> forall(complete(h) == string_4(0, h), h on 8);
+cycle(5) --> forall(complete(h) == string_5(0, h), h on 8);
+cycle(6) --> forall(complete(h) == string_6(0, h), h on 8);
+cycle(7) --> forall(complete(h) == string_7(0, h), h on 8);
+
+forall(client_0(0, h) == owned(0, h), h on 8);
+forall(client_1(0, h) == owned(1, h), h on 8);
+forall(client_2(0, h) == owned(2, h), h on 8);
+forall(client_3(0, h) == owned(3, h), h on 8);
+forall(client_4(0, h) == owned(4, h), h on 8);
+forall(client_5(0, h) == owned(5, h), h on 8);
+forall(client_6(0, h) == owned(6, h), h on 8);
+forall(client_7(0, h) == owned(7, h), h on 8);
+
+forall(resource_A(0, h) == owner(0, h), h on 8);
+forall(resource_B(0, h) == owner(1, h), h on 8);
+forall(resource_C(0, h) == owner(2, h), h on 8);
+
+forall(done(0, h) == complete(h), h on 8);
+
+code(string_blank, "-");
+code(string_0, "0");
+code(string_1, "1");
+code(string_2, "2");
+code(string_3, "3");
+code(string_4, "4");
+code(string_5, "5");
+code(string_6, "6");
+code(string_7, "7");
+code(string_trans, "w");
+code(string_A, "A");
+code(string_B, "B");
+code(string_C, "C");
 
 

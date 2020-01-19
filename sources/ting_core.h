@@ -133,6 +133,7 @@ typedef struct io_signal
   smallnode *from;
   smallnode *to;
   link_code occurr;
+  link_code occurr_neg;
   io_class sclass;
   io_type stype;
   int packed;

@@ -11,7 +11,7 @@
 
 #include "tinx_mt.h"
 
-#define VER "8.0.1 MT (multiple cores)"
+#define VER "8.0.2 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -2126,8 +2126,7 @@ void thread_network(node *network)
               if(!vp->pin[lc].e.vp->pin[lc1].e.vp)
                 vp->pin[lc].e.vp->pin[lc1].e.vp = vp;
 
-              if(vp->pin[lc].e.vp->pin[lc1].e.vp == vp &&
-                 vp->pin[lc].e.vp->pin[lc1].e.lc < 0)
+              if((vp->pin[lc].e.vp != vp || lc != lc1) && vp->pin[lc].e.vp->pin[lc1].e.vp == vp && vp->pin[lc].e.vp->pin[lc1].e.lc < 0)
                 {
                   vp->pin[lc].e.vp->pin[lc1].e.lc = lc;
                   vp->pin[lc].e.lc = lc1;
