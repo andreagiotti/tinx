@@ -2321,43 +2321,43 @@ yyreduce:
 
   case 104:
 #line 408 "ting.y"
-    { (yyval.expression) = create_operation(op_plus, (yyvsp[-2].expression), (yyvsp[0].expression), "%s + %s"); }
+    { (yyval.expression) = create_operation(op_plus, (yyvsp[-2].expression), (yyvsp[0].expression), "(%s + %s)"); }
 #line 2326 "ting_parser.c"
     break;
 
   case 105:
 #line 409 "ting.y"
-    { (yyval.expression) = create_operation(op_minus, (yyvsp[-2].expression), (yyvsp[0].expression), "%s - %s"); }
+    { (yyval.expression) = create_operation(op_minus, (yyvsp[-2].expression), (yyvsp[0].expression), "(%s - %s)"); }
 #line 2332 "ting_parser.c"
     break;
 
   case 106:
 #line 410 "ting.y"
-    { (yyval.expression) = create_operation(op_mul, (yyvsp[-2].expression), (yyvsp[0].expression), "%s * %s"); }
+    { (yyval.expression) = create_operation(op_mul, (yyvsp[-2].expression), (yyvsp[0].expression), "(%s * %s)"); }
 #line 2338 "ting_parser.c"
     break;
 
   case 107:
 #line 411 "ting.y"
-    { (yyval.expression) = create_operation(op_div, (yyvsp[-2].expression), (yyvsp[0].expression), "%s / %s"); }
+    { (yyval.expression) = create_operation(op_div, (yyvsp[-2].expression), (yyvsp[0].expression), "(%s / %s)"); }
 #line 2344 "ting_parser.c"
     break;
 
   case 108:
 #line 412 "ting.y"
-    { (yyval.expression) = create_operation(op_mod, (yyvsp[-2].expression), (yyvsp[0].expression), "%s % %s"); }
+    { (yyval.expression) = create_operation(op_mod, (yyvsp[-2].expression), (yyvsp[0].expression), "(%s % %s)"); }
 #line 2350 "ting_parser.c"
     break;
 
   case 109:
 #line 413 "ting.y"
-    { (yyval.expression) = create_operation(op_pow, (yyvsp[-2].expression), (yyvsp[0].expression), "%s ^ %s"); }
+    { (yyval.expression) = create_operation(op_pow, (yyvsp[-2].expression), (yyvsp[0].expression), "(%s ^ %s)"); }
 #line 2356 "ting_parser.c"
     break;
 
   case 110:
 #line 414 "ting.y"
-    { (yyval.expression) = create_operation(op_chs, (yyvsp[0].expression), NULL, "- %s"); }
+    { (yyval.expression) = create_operation(op_chs, (yyvsp[0].expression), NULL, "- (%s)"); }
 #line 2362 "ting_parser.c"
     break;
 

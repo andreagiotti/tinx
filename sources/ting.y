@@ -405,13 +405,13 @@ srange
     ;
 
 expr
-    : expr[L] TOKEN_PLUS expr[R] { $$ = create_operation(op_plus, $L, $R, "%s + %s"); }
-    | expr[L] TOKEN_MINUS expr[R] { $$ = create_operation(op_minus, $L, $R, "%s - %s"); }
-    | expr[L] TOKEN_MUL expr[R] { $$ = create_operation(op_mul, $L, $R, "%s * %s"); }
-    | expr[L] TOKEN_DIV expr[R] { $$ = create_operation(op_div, $L, $R, "%s / %s"); }
-    | expr[L] TOKEN_MOD expr[R] { $$ = create_operation(op_mod, $L, $R, "%s % %s"); }
-    | expr[L] TOKEN_POW expr[R] { $$ = create_operation(op_pow, $L, $R, "%s ^ %s"); }
-    | TOKEN_MINUS expr[E] { $$ = create_operation(op_chs, $E, NULL, "- %s"); }
+    : expr[L] TOKEN_PLUS expr[R] { $$ = create_operation(op_plus, $L, $R, "(%s + %s)"); }
+    | expr[L] TOKEN_MINUS expr[R] { $$ = create_operation(op_minus, $L, $R, "(%s - %s)"); }
+    | expr[L] TOKEN_MUL expr[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
+    | expr[L] TOKEN_DIV expr[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
+    | expr[L] TOKEN_MOD expr[R] { $$ = create_operation(op_mod, $L, $R, "(%s % %s)"); }
+    | expr[L] TOKEN_POW expr[R] { $$ = create_operation(op_pow, $L, $R, "(%s ^ %s)"); }
+    | TOKEN_MINUS expr[E] { $$ = create_operation(op_chs, $E, NULL, "- (%s)"); }
     | TOKEN_LPAREN expr[E] TOKEN_RPAREN { $$ = $E; }
     | num[N] { $$ = $N; }
     ;
