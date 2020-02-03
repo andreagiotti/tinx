@@ -140,6 +140,7 @@ typedef struct io_signal
   int packedbit;
   io_type_3 defaultval;
   io_type_4 omissions;
+  bool removed;
   int signal_id;
 } io_signal;
 

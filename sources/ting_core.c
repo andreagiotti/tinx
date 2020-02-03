@@ -9,9 +9,10 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "4.0.4"
+#define VER "4.0.6"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
+const char *signal_class[IO_CLASSES_NUMBER] = { "internal", "auxiliary", "input", "output" };
 
 int yyparse(btl_specification **spec, yyscan_t scanner);
 
@@ -439,6 +440,7 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
           sp->packedbit = 0;
           sp->defaultval = io_unknown;
           sp->omissions = io_raw;
+          sp->removed = FALSE;
           sp->signal_id = cb->num_signals;
 
           cb->num_signals++;
@@ -721,7 +723,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         fclose(fp);
 
-        printf("\tCompiling module %s\n", spec->symbol);
+        printf("\tCompiling module %s ...\n", spec->symbol);
 
         e = parse(cb->source);
         if(!e)
@@ -731,7 +733,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, int param)
 
         delete_specification(e);
 
-        printf("\t\t%s ok\n", spec->symbol);
+        printf("\t... %s ok\n", spec->symbol);
       break;
 
       case op_define:
@@ -2476,8 +2478,10 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
               sp->from = NULL;
               sp->to = NULL;
 
+              sp->removed = TRUE;
+
               if(sp->sclass != internal_class)
-                fprintf(stderr, "%s: Warning, signal removed\n", sp->name);
+                fprintf(stderr, "%s: Warning, %s signal removed\n", sp->name, signal_class[sp->sclass]);
             }
         }
     }
@@ -2769,8 +2773,8 @@ int save_signals(c_base *cb, FILE *fp)
               fprintf(stderr, "%s: Warning, constant output signal generated as %s by default\n", sp->name, sp->defaultval == io_false? "false" : "true");
             }
           else
-            if(sp->sclass != internal_class)
-              fprintf(stderr, "%s: Warning, signal not generated\n", sp->name);
+            if(sp->sclass != internal_class && !sp->removed)
+              fprintf(stderr, "%s: Warning, %s signal not generated\n", sp->name, signal_class[sp->sclass]);
         }
     }
 
@@ -3153,7 +3157,7 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   fclose(fp);
 
-  printf("Compiling master %s to %s\n", source_filename, base_filename);
+  printf("Compiling master %s to %s ...\n", source_filename, base_filename);
 
   e = parse(cb->source);
   if(!e)
@@ -3166,12 +3170,12 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   delete_specification(e);
 
-  printf("\t%s ok\n", source_filename);
-
   if(stv.btldef)
     f = create_operation(op_and, stv.btl, stv.btldef, "%s ; %s");
   else
     f = stv.btl;
+
+  printf("... %s ok\n", source_filename);
 
   printf("Generating network\n");
 

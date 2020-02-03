@@ -1,26 +1,36 @@
 /*
 	Name:	Asynchronous, parallel and sequential state machine with multiple exclusive resource management
 	Author:	Andrea Giotti, 2020
-	Release: 1.3
+	Release: 1.5
 */
 
 define	numtasks = 8,
 	numpos = 4,
-	numres = 3,
-	time_0 = 16,
-	time_1 = 24,
-	time_2 = 8;
+	numres = 4,
+	time_0 = 8,
+	time_1 = 8,
+	time_2 = 16,
+	time_3 = 12;
+
+input [false] random, reset;
 
 iter(i on numtasks)
 {
-	input run(i), abort(i);
-	aux idle(i), wait(i), cycle(i);
+	input [false] run(i), abort(i);
+	aux idle(i), refusal(i), wait(i), cycle(i);
 	iter(h on 8)
 		aux owned(i, h);
 
 	iter(n on numres)
 	{
-		aux acknowledge(i, n), request(i, n), release(i, n), grant(i, n), perform(i, n), valid(i, n);
+		aux request(i, n), release(i, n), ack_request(i, n), lost_request(i, n), grant(i, n),
+			perform(i, n), valid_request(i, n), general_request(i, n), delayed_request(i, n), pass(i, n);
+
+		when(not i is 0)
+			aux excl_bck(i, n);
+
+		when(not i is numtasks - 1)
+			aux excl_fwd(i, n);
 
 		iter(j on numpos)
 		{
@@ -52,19 +62,27 @@ iter(n on numres)
 		aux owner(n, h);
 }
 
-aux busy;
-
 iter(h on 8)
 	aux complete(h);
 
 iter(h on 8)
 {
 	output [packed, false] client_0(0, h), client_1(0, h), client_2(0, h), client_3(0, h), client_4(0, h), client_5(0, h), client_6(0, h), client_7(0, h);
-	output [packed, false] resource_A(0, h), resource_B(0, h), resource_C(0, h);
+	output [packed, false] resource_A(0, h), resource_B(0, h), resource_C(0, h), resource_D(0, h);
 	output [packed, false] done(0, h);
-	aux string_blank(0, h), string_0(0, h), string_1(0, h), string_2(0, h), string_3(0, h), string_4(0, h), string_5(0, h), string_6(0, h), string_7(0, h);
-        aux string_trans(0, h), string_A(0, h), string_B(0, h), string_C(0, h);
+
+	iter(i on numtasks)
+		aux num_string(i, h);
+
+	iter(n on numres)
+		aux alpha_string(n, h);
+
+	iter(l on 2)
+		aux sym_string(l, h);
 }
+
+aux working;
+output [false] busy, error;
 
 /* Mutually exclusive resources with queues */
 
@@ -89,20 +107,47 @@ iter(i on numtasks)
 	{
 		define k0 = numpos * n;
 
-		valid(i, n) == one(request(h, n), h is i, h on numtasks);
-		acknowledge(i, n) == exists(new(i, k), k in k0 : k0 + numpos - 1);
+		when(i is 0)
+		{
+			excl_fwd(0, n) == ~ general_request(0, n);
+			pass(0, n) == random | (~ random & excl_bck(1, n));
+		}
+		else when(i is numtasks - 1)
+		{
+			excl_bck(numtasks - 1, n) == ~ general_request(numtasks - 1, n);
+			pass(numtasks - 1, n) == (random & excl_fwd(numtasks - 2, n)) | ~ random;
+		}
+		else
+		{
+			excl_fwd(i, n) == excl_fwd(i - 1, n) & ~ general_request(i, n);
+			excl_bck(i, n) == excl_bck(i + 1, n) & ~ general_request(i, n);
+			pass(i, n) == (random & excl_fwd(i - 1, n)) | (~ random & excl_bck(i + 1, n));
+		}
+
+		delayed_request(i, n) == since(request(i, n) & ~ release(i, n) & ~ pass(i, n), ~ release(i, n) & ~ pass(i, n));
+
+		general_request(i, n) == (request(i, n) | delayed_request(i, n) @ -1) & ~ release(i, n);
+		valid_request(i, n) == general_request(i, n) & pass(i, n);
+
+		ack_request(i, n) == exists(new(i, k), k in k0 : k0 + numpos - 1);
+		lost_request(i, n) == valid_request(i, n) & ~ ack_request(i, n);
 
 		iter(j on numpos)
 		{
 			define k = k0 + j;
 
-                        init ~ up(i, k) @ -1, down(i, k) @ -1;
+			queued(i, k) == since(up(i, k) & ~ down(i, k), ~ down(i, k));
 
-			queued(i, k) == since(up(i, k), ~ down(i, k));
+			begin(i, k) == freeslice(k) @ -1 & valid_request(i, n);
 
-			begin(i, k) == freeslice(k) @ -1 & valid(i, n);
+			when(j is numpos - 1)
+			{
+				new(i, k) == full(i, k - 1) @ -1 & begin(i, k);
 
-			when(j in 0 : numpos - 2)
+				up(i, k) == new(i, k);
+				down(i, k) == roll(i, k - 1) | release(i, n);
+			}
+			else
 			{
 				roll(i, k) == (freeslice(k) & queued(i, k + 1)) @ -1;
 
@@ -111,7 +156,7 @@ iter(i on numtasks)
 					new(i, k) == noroll(k) & begin(i, k);
 					full(i, k) == ~ freeslice(k) & ~ queued(i, k);
 
-					up(i, k) == (roll(i, k) | new(i, k)) & ~ release(i, n);
+					up(i, k) == roll(i, k) | new(i, k);
 					down(i, k) == release(i, n);
 
 					grant(i, n) == queued(i, k);
@@ -121,16 +166,9 @@ iter(i on numtasks)
 					new(i, k) == full(i, k - 1) @ -1 & noroll(k) & begin(i, k);
 					full(i, k) == full(i, k - 1) & ~ freeslice(k) & ~ queued(i, k);
 
-					up(i, k) == (roll(i, k) | new(i, k)) & ~ release(i, n);
+					up(i, k) == roll(i, k) | new(i, k);
 					down(i, k) == roll(i, k - 1) | release(i, n);
 				}
-			}
-			else
-			{
-				new(i, k) == full(i, k - 1) @ -1 & begin(i, k);
-
-				up(i, k) == new(i, k) & ~ release(i, n);
-				down(i, k) == roll(i, k - 1) | release(i, n);
 			}
 		}
 	}
@@ -140,66 +178,61 @@ iter(i on numtasks)
 
 iter(i on numtasks)
 {
-	init ~ run(i) @ -1, abort(i) @ -1;
-
 	iter(n on numres)
 	{
 		when(n is 0)
-			request(i, n) == idle(i) @ -1 & run(i) & ~ abort(i);
+			request(i, n) == idle(i) @ -1 & run(i);
 		else
-			request(i, n) == perform(i, n - 1) & ~ abort(i);
+			request(i, n) == release(i, n - 1);
 
-		release(i, n) == perform(i, n) | abort(i);
+		release(i, n) == perform(i, n) | abort(i) | reset;
 	}
 
-	idle(i) == since(release(i, numres - 1) | exists(request(i, n) & ~ acknowledge(i, n), n on numres), ~ acknowledge(i, 0));
+	idle(i) == since(release(i, numres - 1) | refusal(i), ~ ack_request(i, 0));
 
+	refusal(i) == exists(lost_request(i, n), n on numres);
 	wait(i) == ~ idle(i) & ~ exists(grant(i, n), n on numres);
 	cycle(i) == perform(i, numres - 1);
 
 	perform(i, 0) == grant(i, 0) @ [- time_0, 0);
 	perform(i, 1) == grant(i, 1) @ [- time_1, 0);
 	perform(i, 2) == grant(i, 2) @ [- time_2, 0);
+	perform(i, 3) == grant(i, 3) @ [- time_3, 0);
 }
 
-busy == ~ exists(cycle(i), i on numtasks);
+working == ~ exists(cycle(i), i on numtasks);
+busy == ~ forall(idle(i), i on numtasks);
+error == exists(refusal(i), i on numtasks);
+
+init random @ -1, reset @ -1;
 
 /* Character input and output */
 
+code(num_string, "01234567");
+code(alpha_string, "ABCD");
+code(sym_string, "-x");
+
 iter(i on numtasks)
 {
-	idle(i) --> forall(owned(i, h) == string_blank(0, h), h on 8);
-	wait(i) --> forall(owned(i, h) == string_trans(0, h), h on 8);
+	idle(i) --> forall(owned(i, h) == sym_string(0, h), h on 8);
+	wait(i) --> forall(owned(i, h) == sym_string(1, h), h on 8);
 
-	grant(i, 0) --> forall(owned(i, h) == string_A(0, h), h on 8);
-	grant(i, 1) --> forall(owned(i, h) == string_B(0, h), h on 8);
-	grant(i, 2) --> forall(owned(i, h) == string_C(0, h), h on 8);
+	iter(n on numres)
+		grant(i, n) --> forall(owned(i, h) == alpha_string(n, h), h on 8);
 }
 
 iter(n on numres)
 {
-	free(n) --> forall(owner(n, h) == string_blank(0, h), h on 8);
+	free(n) --> forall(owner(n, h) == sym_string(0, h), h on 8);
 
-	grant(0, n) --> forall(owner(n, h) == string_0(0, h), h on 8);
-	grant(1, n) --> forall(owner(n, h) == string_1(0, h), h on 8);
-	grant(2, n) --> forall(owner(n, h) == string_2(0, h), h on 8);
-	grant(3, n) --> forall(owner(n, h) == string_3(0, h), h on 8);
-	grant(4, n) --> forall(owner(n, h) == string_4(0, h), h on 8);
-	grant(5, n) --> forall(owner(n, h) == string_5(0, h), h on 8);
-	grant(6, n) --> forall(owner(n, h) == string_6(0, h), h on 8);
-	grant(7, n) --> forall(owner(n, h) == string_7(0, h), h on 8);
+	iter(i on numtasks)
+		grant(i, n) --> forall(owner(n, h) == num_string(i, h), h on 8);
 }
 
-busy --> forall(complete(h) == string_blank(0, h), h on 8);
+working --> forall(complete(h) == sym_string(0, h), h on 8);
 
-cycle(0) --> forall(complete(h) == string_0(0, h), h on 8);
-cycle(1) --> forall(complete(h) == string_1(0, h), h on 8);
-cycle(2) --> forall(complete(h) == string_2(0, h), h on 8);
-cycle(3) --> forall(complete(h) == string_3(0, h), h on 8);
-cycle(4) --> forall(complete(h) == string_4(0, h), h on 8);
-cycle(5) --> forall(complete(h) == string_5(0, h), h on 8);
-cycle(6) --> forall(complete(h) == string_6(0, h), h on 8);
-cycle(7) --> forall(complete(h) == string_7(0, h), h on 8);
+iter(i on numtasks)
+	cycle(i) --> forall(complete(h) == num_string(i, h), h on 8);
 
 forall(client_0(0, h) == owned(0, h), h on 8);
 forall(client_1(0, h) == owned(1, h), h on 8);
@@ -213,21 +246,8 @@ forall(client_7(0, h) == owned(7, h), h on 8);
 forall(resource_A(0, h) == owner(0, h), h on 8);
 forall(resource_B(0, h) == owner(1, h), h on 8);
 forall(resource_C(0, h) == owner(2, h), h on 8);
+forall(resource_D(0, h) == owner(3, h), h on 8);
 
 forall(done(0, h) == complete(h), h on 8);
-
-code(string_blank, "-");
-code(string_0, "0");
-code(string_1, "1");
-code(string_2, "2");
-code(string_3, "3");
-code(string_4, "4");
-code(string_5, "5");
-code(string_6, "6");
-code(string_7, "7");
-code(string_trans, "w");
-code(string_A, "A");
-code(string_B, "B");
-code(string_C, "C");
 
 

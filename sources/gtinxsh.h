@@ -42,6 +42,7 @@
 #define TITLE "Temporal Inference Network eXecutor Suite"
 #define CONFIG_TITLE "Configuration"
 #define PROB_TITLE "Probabilities"
+#define FILTER_TITLE "External signals"
 #define BANNER "Temporal Inference Network eXecutor Suite "PACK_VER", graphical shell "VER"\n" \
                "Design & coding by Andrea Giotti, 1998-1999, 2016-2020\n\n" \
                "A real time inference engine for temporal logic specifications, which is able to process and generate any binary signal through POSIX IPC or files.\n" \
@@ -60,6 +61,8 @@
 #define CONFIG_WINDOW_HEIGHT 512
 #define PROB_WINDOW_WIDTH 128
 #define PROB_WINDOW_HEIGHT 64
+#define FILTER_WINDOW_WIDTH 128
+#define FILTER_WINDOW_HEIGHT 64
 
 #define GRAPHICS_HEIGHT (WINDOW_HEIGHT / 2)
 #define TEXT_HEIGHT (WINDOW_HEIGHT / 3)
@@ -133,7 +136,10 @@ typedef struct config
     char editor_name[MAX_STRLEN];
     char viewer_name[MAX_STRLEN];
     double inprob[MAX_FILES];
+    bool fexcl[MAX_FILES];
+    bool gexcl[MAX_FILES];
     int fn;
+    int gn;
   } config;
 
 typedef struct s_base
@@ -197,6 +203,7 @@ typedef struct s_base
     GtkWindow *window;
     GtkWindow *config_window;
     GtkWindow *prob_window;
+    GtkWindow *filter_window;
     GtkDrawingArea *drawingarea;
     GtkTextView *textarea;
     GtkButton *run_button;
@@ -215,12 +222,14 @@ typedef struct s_base
     GtkLabel *reg_warning;
     GtkImage *reg_warning_icon;
     GtkWidget *inprob_widget[MAX_FILES];
+    GtkWidget *infilter_widget[MAX_FILES];
+    GtkWidget *outfilter_widget[MAX_FILES];
   } s_base;
 
 /* Protos */
 
 INLINE m_time get_time();
-void plot(cairo_t *cr, s_base *sb, int x, int y, int offset_x, int offset_y, int width, int height, char truth, bool text);
+void plot(cairo_t *cr, s_base *sb, int x, int y, double offset_x, double offset_y, double width, double height, char truth, bool text);
 gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb);
 gboolean tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, s_base *sb);
 void tintloop(s_base *sb);
