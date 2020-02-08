@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "4.0.6"
+#define VER "4.1.0"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 const char *signal_class[IO_CLASSES_NUMBER] = { "internal", "auxiliary", "input", "output" };
@@ -168,6 +168,7 @@ smallnode *create_smallnode(c_base *cb, node_class nclass)
   vp->literal_id = 0;
   vp->neg = FALSE;
   vp->zombie = FALSE;
+  vp->open = 0;
 
   vp->up = NULL;
   vp->up_2 = NULL;
@@ -440,6 +441,7 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
           sp->packedbit = 0;
           sp->defaultval = io_unknown;
           sp->omissions = io_raw;
+          sp->val = undefined;
           sp->removed = FALSE;
           sp->signal_id = cb->num_signals;
 
@@ -2399,6 +2401,7 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
                 }
 
               sp->defaultval = def;
+              sp->val = val;
             }
           else
             {
@@ -2495,17 +2498,23 @@ void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp
 
   if(!xp)
     {
-      if(yp)
+      if(bp->open)
+        erase_smalltree(cb, yp, bp);
+      else
         purge_smalltree(cb, yp, bp);
 
       return;
     }
-  else
-    if(!yp)
-      {
+
+  if(!yp)
+    {
+      if(bp->open)
+        erase_smalltree(cb, xp, bp);
+      else
         purge_smalltree(cb, xp, bp);
-        return;
-      }
+
+      return;
+    }
 
   if(xp != bp)
     *get_neighbor_handle(xp, bp) = NULL;
@@ -2524,14 +2533,22 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
 {
   smallnode **lpp, **rpp;
 
-  if(!vp)
-    {
-      fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", bp->name, bp->debug);
-      exit_failure();
-    }
-
   if(bp)
     *get_neighbor_handle(vp, bp) = NULL;
+
+  if(!vp)
+    {
+      if(bp && bp->open)
+        {
+          bp->open--;
+          return;
+        }
+      else
+        {
+          fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", bp->name, bp->debug);
+          exit_failure();
+        }
+    }
 
   if(vp->zombie)
     return;
@@ -2599,14 +2616,22 @@ void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
 {
   smallnode **lpp, **rpp;
 
-  if(!vp)
-    {
-      fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", bp->name, bp->debug);
-      exit_failure();
-    }
-
   if(bp)
     *get_neighbor_handle(vp, bp) = NULL;
+
+  if(!vp)
+    {
+      if(bp && bp->open)
+        {
+          bp->open--;
+          return;
+        }
+      else
+        {
+          fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", bp->name, bp->debug);
+          exit_failure();
+        }
+    }
 
   if(vp->zombie)
     return;
@@ -2770,7 +2795,7 @@ int save_signals(c_base *cb, FILE *fp)
             {
               rv = fprintf(fp, "? %s (*, *) # 0 / %d, %d, %d, %d, %d\n", *sp->root? sp->root : sp->name, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
 
-              fprintf(stderr, "%s: Warning, constant output signal generated as %s by default\n", sp->name, sp->defaultval == io_false? "false" : "true");
+              fprintf(stderr, "%s: Warning, constant output signal generated as %s by default (%s deduction)\n", sp->name, sp->defaultval == io_false? "false" : "true", sp->val? "strong" : "weak");
             }
           else
             if(sp->sclass != internal_class && !sp->removed)
@@ -2906,8 +2931,7 @@ void raise_signals(c_base *cb, smallnode *vp)
   bool branch;
   int k;
 
-  if(!vp)
-    return;
+  assert(vp);
 
   for(branch = FALSE; branch <= TRUE; branch++)
     {
@@ -2916,7 +2940,7 @@ void raise_signals(c_base *cb, smallnode *vp)
       else
         wp = vp->right;
 
-      if(vp == wp->up_2)
+      if(wp && vp == wp->up_2)
         {
           raise_signals(cb, wp);
 
@@ -2999,22 +3023,6 @@ smallnode *build_twotrees(c_base *cb, int i)
 {
   smallnode *vp, *wp, *xp;
 
-  vp = build_smalltree(cb, i, FALSE);
-
-  if(!vp)
-    {
-      fprintf(stderr, "%s: Error, missing asserted literal for signal\n", cb->symtab[i][0]->name);
-      exit_failure();
-    }
-
-  wp = build_smalltree(cb, i, TRUE);
-
-  if(!wp)
-    {
-      fprintf(stderr, "%s: Error, missing negated literal for signal\n", cb->symtab[i][0]->name);
-      exit_failure();
-    }
-
   xp = create_smallnode(cb, gate);
   if(!xp)
     {
@@ -3022,13 +3030,34 @@ smallnode *build_twotrees(c_base *cb, int i)
       exit_failure();
     }
 
+  vp = build_smalltree(cb, i, FALSE);
+
+  if(!vp)
+    {
+      if(cb->symtab[i][0]->name[0] != '+' && cb->symtab[i][0]->name[0] != '-')
+        fprintf(stderr, "%s: Warning, missing asserted literal for signal\n", cb->symtab[i][0]->name);
+
+      xp->open++;
+    }
+  else
+    vp->up_2 = xp;
+
+  wp = build_smalltree(cb, i, TRUE);
+
+  if(!wp)
+    {
+      if(cb->symtab[i][0]->name[0] != '+' && cb->symtab[i][0]->name[0] != '-')
+        fprintf(stderr, "%s: Warning, missing negated literal for signal\n", cb->symtab[i][0]->name);
+
+      xp->open++;
+    }
+  else
+    wp->up_2 = xp;
+
   xp->left = vp;
   xp->right = wp;
 
-  vp->up_2 = xp;
-  wp->up_2 = xp;
-
-  snprintf(xp->debug, DEBUG_STRLEN, "(%s | %s)", vp->debug, wp->debug);
+  snprintf(xp->debug, DEBUG_STRLEN, "(%s | %s)", vp? vp->debug : "<blank>", wp? wp->debug : "<blank>");
 
   if(strlen(xp->debug) == DEBUG_STRLEN - 1)
     {
@@ -3193,11 +3222,7 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
   delete_zombies(cb);
 
   if(!cb->network)
-    {
-      fprintf(stderr, "Error, network empty\n");
-      free(cb);
-      return cperf;
-    }
+    fprintf(stderr, "Warning, network empty\n");
 
   printf("Generating object files\n");
 

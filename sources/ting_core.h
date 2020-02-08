@@ -95,6 +95,7 @@ typedef struct smallnode
   int literal_id;
   bool neg;
   bool zombie;
+  int open;
   struct smallnode *up;
   struct smallnode *up_2;
   struct smallnode *left;
@@ -126,6 +127,13 @@ typedef enum io_class
   IO_CLASSES_NUMBER
 } io_class;
 
+typedef enum litval
+{
+  negated,
+  asserted,
+  undefined
+} litval;
+
 typedef struct io_signal
 {
   char name[MAX_NAMELEN];
@@ -140,6 +148,7 @@ typedef struct io_signal
   int packedbit;
   io_type_3 defaultval;
   io_type_4 omissions;
+  litval val;
   bool removed;
   int signal_id;
 } io_signal;
@@ -223,13 +232,6 @@ typedef enum direction
   dir_left,
   dir_right
 } direction;
-
-typedef enum litval
-{
-  negated,
-  asserted,
-  undefined
-} litval;
 
 #define genup(VP) ((VP)->up? &((VP)->up) : &((VP)->up_2))
 

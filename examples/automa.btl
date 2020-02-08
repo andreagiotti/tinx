@@ -1,7 +1,7 @@
 /*
 	Name:	Asynchronous, parallel and sequential state machine with multiple exclusive resource management
 	Author:	Andrea Giotti, 2020
-	Release: 1.5
+	Release: 1.6
 */
 
 define	numtasks = 8,
@@ -67,9 +67,12 @@ iter(h on 8)
 
 iter(h on 8)
 {
-	output [packed, false] client_0(0, h), client_1(0, h), client_2(0, h), client_3(0, h), client_4(0, h), client_5(0, h), client_6(0, h), client_7(0, h);
-	output [packed, false] resource_A(0, h), resource_B(0, h), resource_C(0, h), resource_D(0, h);
-	output [packed, false] done(0, h);
+	iter(l on 2)
+	{
+		output [packed, false] client_0(l, h), client_1(l, h), client_2(l, h), client_3(l, h), client_4(l, h), client_5(l, h), client_6(l, h), client_7(l, h);
+		output [packed, false] resource_A(l, h), resource_B(l, h), resource_C(l, h), resource_D(l, h);
+		output [packed, false] done(l, h);
+	}
 
 	iter(i on numtasks)
 		aux num_string(i, h);
@@ -249,5 +252,21 @@ forall(resource_C(0, h) == owner(2, h), h on 8);
 forall(resource_D(0, h) == owner(3, h), h on 8);
 
 forall(done(0, h) == complete(h), h on 8);
+
+forall(~ client_0(1, h), h on 8);
+forall(~ client_1(1, h), h on 8);
+forall(~ client_2(1, h), h on 8);
+forall(~ client_3(1, h), h on 8);
+forall(~ client_4(1, h), h on 8);
+forall(~ client_5(1, h), h on 8);
+forall(~ client_6(1, h), h on 8);
+forall(~ client_7(1, h), h on 8);
+
+forall(~ resource_A(1, h), h on 8);
+forall(~ resource_B(1, h), h on 8);
+forall(~ resource_C(1, h), h on 8);
+forall(~ resource_D(1, h), h on 8);
+
+forall(~ done(1, h), h on 8);
 
 
