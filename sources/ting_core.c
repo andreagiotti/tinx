@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "4.1.0"
+#define VER "5.0.0"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 const char *signal_class[IO_CLASSES_NUMBER] = { "internal", "auxiliary", "input", "output" };
@@ -168,12 +168,17 @@ smallnode *create_smallnode(c_base *cb, node_class nclass)
   vp->literal_id = 0;
   vp->neg = FALSE;
   vp->zombie = FALSE;
-  vp->open = 0;
 
   vp->up = NULL;
   vp->up_2 = NULL;
   vp->left = NULL;
   vp->right = NULL;
+  vp->self = vp;
+
+  vp->up_dir = no_link;
+  vp->up_2_dir = no_link;
+  vp->left_dir = no_link;
+  vp->right_dir = no_link;
 
   vp->debug[0] = '\0';
 
@@ -199,9 +204,9 @@ void delete_smallnode(c_base *cb, smallnode *vp)
     }
 
   if(zp)
-   zp->vp = vp->vp;
+    zp->vp = vp->vp;
   else
-   cb->network = vp->vp;
+    cb->network = vp->vp;
 
   cb->num_nodes[vp->nclass]--;
 
@@ -221,6 +226,9 @@ void delete_zombies(c_base *cb)
 
       if(vp->zombie)
         {
+          if((vp->up && vp->up != SPECIAL) || (vp->left && vp->left != SPECIAL) || (vp->right && vp->right != SPECIAL))
+            fprintf(stderr, "%s: Warning, network not closed: %s\n", vp->name, vp->debug);
+
           if(zp)
             zp->vp = wp;
           else
@@ -433,8 +441,8 @@ io_signal *name2signal(c_base *cb, char *name, bool create)
           *sp->root = '\0';
           sp->from = NULL;
           sp->to = NULL;
-          sp->occurr = no_link;
-          sp->occurr_neg = no_link;
+          sp->tofrom = NULL;
+          sp->fromto = NULL;
           sp->sclass = internal_class;
           sp->stype = io_any;
           sp->packed = 0;
@@ -1914,7 +1922,7 @@ subtreeval since_until(c_base *cb, btl_specification *spec, int level, int param
   return stv;
 }
 
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3 defaultval, io_type_4 omissions, d_time t)
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ext_dir, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3 defaultval, io_type_4 omissions, d_time t)
 {
   subtreeval stv, stv_2;
   smallnode *wp;
@@ -1951,7 +1959,9 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
         if(sp)
           {
             wp = name2smallnode(cb, spec->symbol, TRUE);
+
             wp->up = vp;
+            wp->up_dir = ext_dir;
             wp->neg = neg;
 
             if(neg)
@@ -2046,8 +2056,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_join:
-        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, t);
-        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, ext_dir, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv_2 = eval(cb, spec->right, vp, ext_dir, neg, sclass, stype, packed, defaultval, omissions, t);
 
         if(stv.vp && stv_2.vp)
           {
@@ -2062,8 +2072,15 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
             wp->left = stv.vp;
             wp->right = stv_2.vp;
 
+            wp->up_dir = ext_dir;
+            wp->left_dir = parent;
+            wp->right_dir = parent;
+
             stv.vp->up = wp;
             stv_2.vp->up = wp;
+
+            stv.vp->up_dir = left_son;
+            stv_2.vp->up_dir = right_son;
 
             if(neg)
               snprintf(wp->debug, DEBUG_STRLEN, "(~ %s)", spec->debug);
@@ -2078,8 +2095,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_join_qual:
-        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, t);
-        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, left_son, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv_2 = eval(cb, spec->right, vp, right_son, neg, sclass, stype, packed, defaultval, omissions, t);
 
         if(stv_2.xtra)
           {
@@ -2127,7 +2144,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_not:
-        stv = eval(cb, spec->left, vp, !neg, sclass, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, ext_dir, !neg, sclass, stype, packed, defaultval, omissions, t);
       break;
 
       case op_and:
@@ -2139,8 +2156,12 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
 
         wp->up = vp;
-        wp->left = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, omissions, t).vp;
-        wp->right = eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, omissions, t).vp;
+        wp->left = eval(cb, spec->left, wp, left_son, neg, sclass, stype, packed, defaultval, omissions, t).vp;
+        wp->right = eval(cb, spec->right, wp, right_son, neg, sclass, stype, packed, defaultval, omissions, t).vp;
+
+        wp->up_dir = ext_dir;
+        wp->left_dir = parent;
+        wp->right_dir = parent;
 
         if(neg)
           snprintf(wp->debug, DEBUG_STRLEN, "(~ %s)", spec->debug);
@@ -2159,8 +2180,12 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
           }
 
         wp->up = vp;
-        wp->left = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, omissions, t).vp;
-        wp->right = eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, omissions, t).vp;
+        wp->left = eval(cb, spec->left, wp, left_son, neg, sclass, stype, packed, defaultval, omissions, t).vp;
+        wp->right = eval(cb, spec->right, wp, right_son, neg, sclass, stype, packed, defaultval, omissions, t).vp;
+
+        wp->up_dir = ext_dir;
+        wp->left_dir = parent;
+        wp->right_dir = parent;
 
         if(neg)
           snprintf(wp->debug, DEBUG_STRLEN, "(~ %s)", spec->debug);
@@ -2173,8 +2198,8 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       case op_delay:
         if(cb->merge && vp && vp->nclass == delay)
           {
-            stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, t);
-            stv.a += eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t).a;
+            stv = eval(cb, spec->left, vp, left_son, neg, sclass, stype, packed, defaultval, omissions, t);
+            stv.a += eval(cb, spec->right, vp, right_son, neg, sclass, stype, packed, defaultval, omissions, t).a;
           }
         else
           {
@@ -2185,18 +2210,27 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
                 exit_failure();
               }
 
-            stv_2 = eval(cb, spec->left, wp, neg, sclass, stype, packed, defaultval, omissions, t);
+            stv_2 = eval(cb, spec->left, wp, left_son, neg, sclass, stype, packed, defaultval, omissions, t);
 
             wp->up = vp;
             wp->left = stv_2.vp;
-            wp->k = - (stv_2.a + eval(cb, spec->right, wp, neg, sclass, stype, packed, defaultval, omissions, t).a);
+
+            wp->up_dir = ext_dir;
+            wp->left_dir = parent;
+
+            wp->k = - (stv_2.a + eval(cb, spec->right, wp, right_son, neg, sclass, stype, packed, defaultval, omissions, t).a);
 
             if(cb->merge && !wp->k)
               {
                 stv.vp = stv_2.vp;
                 stv.vp->up = vp;
 
-                purge_smallnode(cb, wp, vp, undefined);
+                stv.vp->up_dir = ext_dir;
+
+                purge_smallnode(cb, wp, &wp->right, undefined);
+
+                wp->up = NULL;
+                wp->left = NULL;
               }
             else
               {
@@ -2208,28 +2242,27 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
       break;
 
       case op_var_at:
-        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t).a);
+        stv = eval(cb, spec->left, vp, left_son, neg, sclass, stype, packed, defaultval, omissions, eval(cb, spec->right, vp, right_son, neg, sclass, stype, packed, defaultval, omissions, t).a);
       break;
 
       case op_aux:
-        stv = eval(cb, spec->left, vp, neg, aux_class, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, left_son, neg, aux_class, stype, packed, defaultval, omissions, t);
       break;
 
       case op_input:
-        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t);
-        stv = eval(cb, spec->left, vp, neg, input_class, stv_2.xtra? *stv_2.xtra : io_any, stv_2.ytra? *stv_2.ytra : io_binary,
+        stv_2 = eval(cb, spec->right, vp, right_son, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, left_son, neg, input_class, stv_2.xtra? *stv_2.xtra : io_any, stv_2.ytra? *stv_2.ytra : io_binary,
                    stv_2.ztra? *stv_2.ztra : io_unknown, stv_2.wtra? *stv_2.wtra : io_raw, t);
       break;
 
       case op_output:
-        stv_2 = eval(cb, spec->right, vp, neg, sclass, stype, packed, defaultval, omissions, t);
-        stv = eval(cb, spec->left, vp, neg, output_class, stv_2.xtra? *stv_2.xtra : io_any, stv_2.ytra? *stv_2.ytra : io_binary,
+        stv_2 = eval(cb, spec->right, vp, right_son, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, left_son, neg, output_class, stv_2.xtra? *stv_2.xtra : io_any, stv_2.ytra? *stv_2.ytra : io_binary,
                    stv_2.ztra? *stv_2.ztra : io_unknown, stv_2.wtra? *stv_2.wtra : io_raw, t);
-
       break;
 
       case op_init:
-        stv = eval(cb, spec->left, vp, neg, sclass, stype, packed, defaultval, omissions, t);
+        stv = eval(cb, spec->left, vp, left_son, neg, sclass, stype, packed, defaultval, omissions, t);
       break;
 
       default:
@@ -2240,76 +2273,38 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io
   return stv;
 }
 
-smallnode **get_neighbor_handle(smallnode *vp, smallnode *wp)
+smallnode **gendir(smallnode *vp, smallnode **bpp, link_code dir)
 {
   smallnode **zpp;
 
-  assert(vp && wp);
-
-  zpp = NULL;
-
-  if(vp == *genup(wp))
-    zpp = genup(wp);
-  else
-    if(vp == wp->left)
-      zpp = &wp->left;
-    else
-      if(vp == wp->right)
-        zpp = &wp->right;
-      else
-        assert(FALSE);
-
-  if(!zpp)
-    {
-      fprintf(stderr, "%s: Internal error in pruning network (2): %s\n", vp->name, vp->debug);
-      exit_failure();
-    }
-
-  return zpp;
-}
-
-smallnode **gendir(smallnode *vp, smallnode *bp, direction dir)
-{
-  smallnode **zpp;
-
-  assert(vp && !vp->zombie);
+  assert(vp);
 
   zpp = NULL;
 
   switch(dir)
     {
-      case dir_left:
-        if(bp == *genup(vp))
-          {
-            if(bp == vp->left)
-              zpp = &vp->right;
-            else
-              zpp = &vp->left;
-          }
+      case left_son:
+        if(bpp == &vp->up)
+          zpp = &vp->right;
         else
-          if(bp == vp->right)
-             zpp = genup(vp);
+          if(bpp == &vp->left)
+             zpp = &vp->up;
           else
-            if(bp == vp->left)
-              zpp = &vp->right;
+            if(bpp == &vp->right)
+              zpp = &vp->left;
             else
               assert(FALSE);
       break;
 
-      case dir_right:
-        if(bp == *genup(vp))
-          {
-            if(bp == vp->left)
-              zpp = &vp->left;
-            else
-              zpp = &vp->right;
-          }
+      case right_son:
+        if(bpp == &vp->up)
+          zpp = &vp->left;
         else
-          if(bp == vp->right)
-            zpp = &vp->left;
+          if(bpp == &vp->left)
+            zpp = &vp->right;
           else
-            if(bp == vp->left)
-              zpp = genup(vp);
+            if(bpp == &vp->right)
+              zpp = &vp->up;
             else
               assert(FALSE);
       break;
@@ -2321,63 +2316,202 @@ smallnode **gendir(smallnode *vp, smallnode *bp, direction dir)
 
   if(!zpp)
     {
-      fprintf(stderr, "%s: Internal error in pruning network (1): %s\n", vp->name, vp->debug);
+      fprintf(stderr, "%s: Internal error in pruning network (E1): %s\n", vp->name, vp->debug);
       exit_failure();
     }
 
   return zpp;
 }
 
-link_code occurrence(smallnode *from, smallnode *to)
+link_code *dirdir(smallnode *vp, smallnode **bpp, link_code dir)
 {
-  if(!from || !to)
+  link_code *lcp;
+
+  assert(vp);
+
+  lcp = NULL;
+
+  switch(dir)
+    {
+      case left_son:
+        if(bpp == &vp->up)
+          lcp = &vp->right_dir;
+        else
+          if(bpp == &vp->left)
+             lcp = &vp->up_dir;
+          else
+            if(bpp == &vp->right)
+              lcp = &vp->left_dir;
+            else
+              assert(FALSE);
+      break;
+
+      case right_son:
+        if(bpp == &vp->up)
+          lcp = &vp->left_dir;
+        else
+          if(bpp == &vp->left)
+            lcp = &vp->right_dir;
+          else
+            if(bpp == &vp->right)
+              lcp = &vp->up_dir;
+            else
+              assert(FALSE);
+      break;
+
+      default:
+        assert(FALSE);
+      break;
+    }
+
+  if(!lcp)
+    {
+      fprintf(stderr, "%s: Internal error in pruning network (E2): %s\n", vp->name, vp->debug);
+      exit_failure();
+    }
+
+  return lcp;
+}
+
+smallnode **get_neighbor_handle(smallnode *vp, smallnode **bpp, link_code dir)
+{
+  smallnode *wp;
+  smallnode **zpp;
+  link_code lc;
+
+  assert(vp);
+
+  zpp = NULL;
+
+  wp = *gendir(vp, bpp, dir);
+  lc = *dirdir(vp, bpp, dir);
+
+  if(wp && wp != SPECIAL)
+    {
+      switch(lc)
+        {
+          case parent:
+            zpp = &wp->up;
+          break;
+
+          case left_son:
+            zpp = &wp->left;
+          break;
+
+          case right_son:
+            zpp = &wp->right;
+          break;
+
+          default:
+            return NULL;
+          break;
+        }
+    }
+  else
+    return NULL;
+
+  if(!zpp || (*zpp != NULL && *zpp != SPECIAL && *zpp != vp))
+    {
+      fprintf(stderr, "%s: Internal error in pruning network (E3): %s\n", vp->name, vp->debug);
+      exit_failure();
+    }
+
+  return zpp;
+}
+
+link_code *get_neighbor_dir(smallnode *vp, smallnode **bpp, link_code dir)
+{
+  smallnode *wp;
+  link_code *zlcp;
+  link_code lc;
+
+  assert(vp);
+
+  zlcp = NULL;
+
+  wp = *gendir(vp, bpp, dir);
+  lc = *dirdir(vp, bpp, dir);
+
+  if(wp && wp != SPECIAL)
+    {
+      switch(lc)
+        {
+          case parent:
+            zlcp = &wp->up_dir;
+          break;
+
+          case left_son:
+            zlcp = &wp->left_dir;
+          break;
+
+          case right_son:
+            zlcp = &wp->right_dir;
+          break;
+
+          default:
+            return NULL;
+          break;
+        }
+    }
+  else
+    return NULL;
+
+  if(!zlcp)
+    {
+      fprintf(stderr, "%s: Internal error in pruning network (E4): %s\n", vp->name, vp->debug);
+      exit_failure();
+    }
+
+  return zlcp;
+}
+
+void validate(c_base *cb)
+{
+  smallnode *vp;
+
+  vp = cb->network;
+
+  while(vp)
+    {
+      if(vp->nclass != literal)
+        {
+          get_neighbor_handle(vp, &vp->up, left_son);
+          get_neighbor_handle(vp, &vp->left, left_son);
+          get_neighbor_handle(vp, &vp->right, left_son);
+        }
+
+      vp = vp->vp;
+    }
+}
+
+link_code occurrence(smallnode **fromto, smallnode *to)
+{
+  if(!*fromto || *fromto == SPECIAL || !to || to == SPECIAL)
     return no_link;
   else
     {
-      if(from == *genup(to))
+      if(fromto == &to->up)
         return parent;
       else
-        if(from == to->left)
+        if(fromto == &to->left)
           return left_son;
         else
-          if(from == to->right)
+          if(fromto == &to->right)
             return right_son;
           else
             return no_link;
     }
 }
 
-link_code occurrence_neg(smallnode *from, smallnode *to)
+void purge_smallnode(c_base *cb, smallnode *vp, smallnode **bpp, litval val)
 {
-  if(!from || !to)
-    return no_link;
-  else
-    {
-      if(from == to->right)
-        return right_son;
-      else
-        if(from == to->left)
-          return left_son;
-        else
-          if(from == *genup(to))
-            return parent;
-          else
-            return no_link;
-    }
-}
-
-void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
-{
-  io_signal *sp;
   smallnode *lp, *rp;
-  int i;
+  io_signal *sp;
   io_type_3 def;
+  int i;
 
   assert(vp);
   assert(!vp->zombie);
-
-  lp = *gendir(vp, bp, dir_left);
-  rp = *gendir(vp, bp, dir_right);
 
   for(i = 0; i < cb->num_signals; i++)
     {
@@ -2388,7 +2522,7 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
         {
           if(val != undefined)
             {
-              if(sp->to == vp && (sp->from != vp || sp->occurr == parent))
+              if(sp->to == vp && (sp->from != vp || occurrence(sp->fromto, sp->to) == parent))
                 def = (val == negated)? io_true : io_false;
               else
                 def = (val == negated)? io_false : io_true;
@@ -2405,39 +2539,26 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
             }
           else
             {
+              lp = *gendir(vp, bpp, left_son);
+              rp = *gendir(vp, bpp, right_son);
+
               if(sp->from == vp)
                 {
                   if(sp->to == lp)
                     {
                       sp->from = rp;
 
-                      if(sp->occurr == parent)
-                        {
-                          sp->occurr = occurrence(vp, lp);
-                          sp->occurr_neg = occurrence_neg(vp, rp);
-                        }
-                      else
-                        {
-                          sp->occurr = occurrence_neg(vp, lp);
-                          sp->occurr_neg = occurrence(vp, rp);
-                        }
+                      sp->fromto = get_neighbor_handle(vp, bpp, left_son);
+                      sp->tofrom = get_neighbor_handle(vp, bpp, right_son);
                     }
                   else
                     if(sp->to == rp)
                       {
                         sp->from = lp;
 
-                        if(sp->occurr == parent)
-                          {
-                            sp->occurr = occurrence(vp, rp);
-                            sp->occurr_neg = occurrence_neg(vp, lp);
-                          }
-                        else
-                          {
-                            sp->occurr = occurrence_neg(vp, rp);
-                            sp->occurr_neg = occurrence(vp, lp);
-                          }
-                      }
+                        sp->fromto = get_neighbor_handle(vp, bpp, right_son);
+                        sp->tofrom = get_neighbor_handle(vp, bpp, left_son);
+                       }
                 }
 
               if(sp->to == vp)
@@ -2446,37 +2567,21 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
                     {
                       sp->to = rp;
 
-                      if(sp->occurr != parent)
-                        {
-                          sp->occurr = occurrence(vp, rp);
-                          sp->occurr_neg = occurrence_neg(vp, lp);
-                        }
-                      else
-                        {
-                          sp->occurr = occurrence_neg(vp, rp);
-                          sp->occurr_neg = occurrence(vp, lp);
-                        }
+                      sp->fromto = get_neighbor_handle(vp, bpp, right_son);
+                      sp->tofrom = get_neighbor_handle(vp, bpp, left_son);
                     }
                   else
                     if(sp->from == rp)
                       {
                         sp->to = lp;
 
-                        if(sp->occurr != parent)
-                          {
-                            sp->occurr = occurrence(vp, lp);
-                            sp->occurr_neg = occurrence_neg(vp, rp);
-                          }
-                        else
-                          {
-                            sp->occurr = occurrence_neg(vp, lp);
-                            sp->occurr_neg = occurrence(vp, rp);
-                          }
+                        sp->fromto = get_neighbor_handle(vp, bpp, left_son);
+                        sp->tofrom = get_neighbor_handle(vp, bpp, right_son);
                       }
                 }
             }
-    
-          if(sp->from == vp || sp->to == vp)
+
+          if(!sp->from || sp->from == SPECIAL || sp->from == vp || !sp->to || sp->to == SPECIAL || sp->to == vp)
             {
               sp->from = NULL;
               sp->to = NULL;
@@ -2492,118 +2597,320 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val)
   vp->zombie = TRUE;
 }
 
-void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp)
+void add_erase_vector(c_base *cb, smallnode *vp, smallnode **bpp)
 {
-  smallnode **zpp;
+  cb->erasearrow[cb->num_erasearrows].vp = vp;
+  cb->erasearrow[cb->num_erasearrows].bp = *bpp;
+  cb->erasearrow[cb->num_erasearrows].bpp = bpp;
 
+  cb->num_erasearrows++;
+
+  if(cb->num_erasearrows == NUM_VECTORS)
+    {
+      fprintf(stderr, "Network too large for pruning\n");
+      exit_failure();
+    }
+}
+
+void erase_vectors(c_base *cb)
+{
+  smallnode *vp;
+  int i;
+
+  for(i = 0; i < cb->num_erasearrows; i++)
+    {
+      vp = cb->erasearrow[i].vp;
+      cb->erasearrow[i].vp = NULL;
+
+      erase_smalltree(cb, vp, cb->erasearrow[i].bpp);
+    }
+
+  cb->num_erasearrows = 0;
+}
+
+void add_purge_vector(c_base *cb, smallnode *vp, smallnode **bpp)
+{
+  cb->purgearrow[cb->num_purgearrows].vp = vp;
+  cb->purgearrow[cb->num_purgearrows].bp = *bpp;
+  cb->purgearrow[cb->num_purgearrows].bpp = bpp;
+
+  cb->num_purgearrows++;
+
+  if(cb->num_purgearrows == NUM_VECTORS)
+    {
+      fprintf(stderr, "Network too large for pruning\n");
+      exit_failure();
+    }
+}
+
+void purge_vectors(c_base *cb)
+{
+  smallnode *vp;
+  int i;
+
+  for(i = 0; i < cb->num_purgearrows; i++)
+    {
+      vp = cb->purgearrow[i].vp;
+      cb->purgearrow[i].vp = NULL;
+
+      purge_smalltree(cb, vp, cb->purgearrow[i].bpp);
+    }
+
+  cb->num_purgearrows = 0;
+}
+
+void link_directions(smallnode *vp, smallnode **bpp)
+{
+  link_code *xlcp, *ylcp;
+
+  xlcp = get_neighbor_dir(vp, bpp, left_son);
+  ylcp = get_neighbor_dir(vp, bpp, right_son);
+
+  if(xlcp)
+    *xlcp = *dirdir(vp, bpp, right_son);
+
+  if(ylcp)
+    *ylcp = *dirdir(vp, bpp, left_son);
+}
+
+bool clean_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode **xbpp, smallnode **ybpp)
+{
   if(!xp)
     {
-      if(bp->open)
-        erase_smalltree(cb, yp, bp);
-      else
-        purge_smalltree(cb, yp, bp);
+      if(yp && yp != SPECIAL)
+        {
+          *ybpp = NULL;
 
-      return;
+          add_purge_vector(cb, yp, ybpp);
+        }
+
+      return FALSE;
+    }
+
+  if(xp == SPECIAL)
+    {
+      if(yp && yp != SPECIAL)
+        {
+          *ybpp = SPECIAL;
+
+          add_erase_vector(cb, yp, ybpp);
+        }
+
+      return FALSE;
     }
 
   if(!yp)
     {
-      if(bp->open)
-        erase_smalltree(cb, xp, bp);
-      else
-        purge_smalltree(cb, xp, bp);
+      if(xp && xp != SPECIAL)
+        {
+          *xbpp = NULL;
 
-      return;
+          add_purge_vector(cb, xp, xbpp);
+        }
+
+      return FALSE;
     }
 
-  if(xp != bp)
-    *get_neighbor_handle(xp, bp) = NULL;
+  if(yp == SPECIAL)
+    {
+      if(xp && xp != SPECIAL)
+        {
+          *xbpp = SPECIAL;
 
-  if(yp != bp)
-    *get_neighbor_handle(yp, bp) = NULL;
+          add_erase_vector(cb, xp, xbpp);
+        }
 
-  zpp = get_neighbor_handle(bp, xp);
-  *zpp = NULL;
+      return FALSE;
+    }
 
-  *get_neighbor_handle(bp, yp) = xp;
-  *zpp = yp;
+  return TRUE;
 }
 
-void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
+void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode **xbpp, smallnode **ybpp, smallnode *vp)
 {
-  smallnode **lpp, **rpp;
+  int i;
 
-  if(bp)
-    *get_neighbor_handle(vp, bp) = NULL;
-
-  if(!vp)
+  for(i = 0; i < cb->num_purgearrows; i++)
     {
-      if(bp && bp->open)
+      if(cb->purgearrow[i].vp == vp)
         {
-          bp->open--;
-          return;
-        }
-      else
-        {
-          fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", bp->name, bp->debug);
-          exit_failure();
+          if(cb->purgearrow[i].bp == xp)
+            {
+              cb->purgearrow[i].vp = yp;
+              cb->purgearrow[i].bpp = ybpp;
+            }
+          else
+            if(cb->purgearrow[i].bp == yp)
+              {
+                cb->purgearrow[i].vp = xp;
+                cb->purgearrow[i].bpp = xbpp;
+              }
         }
     }
 
-  if(vp->zombie)
+  for(i = 0; i < cb->num_erasearrows; i++)
+    {
+      if(cb->erasearrow[i].vp == vp)
+        {
+          if(cb->erasearrow[i].bp == xp)
+            {
+              cb->erasearrow[i].vp = yp;
+              cb->erasearrow[i].bpp = ybpp;
+            }
+          else
+            if(cb->erasearrow[i].bp == yp)
+              {
+                cb->erasearrow[i].vp = xp;
+                cb->erasearrow[i].bpp = xbpp;
+              }
+        }
+    }
+
+  if(*xbpp && *xbpp != SPECIAL)
+    *xbpp = yp;
+
+  if(*ybpp && *ybpp != SPECIAL)
+    *ybpp = xp;
+}
+
+void erase_smalltree(c_base *cb, smallnode *vp, smallnode **bpp)
+{
+  smallnode **lpp, **rpp, **lvpp, **rvpp;
+  smallnode *lp, *rp;
+
+  if(!vp)
     return;
+
+  if(vp == SPECIAL)
+    {
+      fprintf(stderr, "%s: Warning, abnormal logical relation between clauses (B1): %s\n", *bpp && *bpp != SPECIAL? (*bpp)->name : "<blank>", *bpp && *bpp != SPECIAL? (*bpp)->debug : "<blank>");
+      return;
+    }
 
   switch(vp->nclass)
     {
       case gate:
-        lpp = gendir(vp, bp, dir_left);
-        rpp = gendir(vp, bp, dir_right);
+        lpp = gendir(vp, bpp, left_son);
+        rpp = gendir(vp, bpp, right_son);
 
-        if(*lpp == vp && *rpp == vp)
+        lp = *lpp;
+        rp = *rpp;
+
+        if(lp && lp != SPECIAL)
+          lvpp = get_neighbor_handle(vp, bpp, left_son);
+        else
+          lvpp = &vp->self;
+
+        if(rp && rp != SPECIAL)
+          rvpp = get_neighbor_handle(vp, bpp, right_son);
+        else
+          rvpp = &vp->self;
+
+        if(lp == vp && rp == vp)
           {
-            fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", vp->name, vp->debug);
-            exit_failure();
+            fprintf(stderr, "%s: Warning, abnormal logical relation between clauses (B2): %s\n", vp->name, vp->debug);
+            return;
           }
 
-        purge_smallnode(cb, vp, bp, negated);
+        purge_smallnode(cb, vp, bpp, negated);
 
-        erase_smalltree(cb, *lpp, vp);
-        erase_smalltree(cb, *rpp, vp);
+        *bpp = SPECIAL;
+        *lpp = NULL;
+        *rpp = NULL;
+
+        add_erase_vector(cb, lp, lvpp);
+        add_erase_vector(cb, rp, rvpp);
       break;
 
       case joint:
-        lpp = gendir(vp, bp, dir_left);
-        rpp = gendir(vp, bp, dir_right);
+        lpp = gendir(vp, bpp, left_son);
+        rpp = gendir(vp, bpp, right_son);
 
-        if(bp == *genup(vp))
+        lp = *lpp;
+        rp = *rpp;
+
+        if(lp && lp != SPECIAL)
+          lvpp = get_neighbor_handle(vp, bpp, left_son);
+        else
+          lvpp = &vp->self;
+
+        if(rp && rp != SPECIAL)
+          rvpp = get_neighbor_handle(vp, bpp, right_son);
+        else
+          rvpp = &vp->self;
+
+        if(bpp == &vp->up)
           {
-            if(*lpp == vp && *rpp == vp)
+            if(lp == vp && rp == vp)
               {
-                fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", vp->name, vp->debug);
-                exit_failure();
+                fprintf(stderr, "%s: Warning, abnormal logical relation between clauses (B3): %s\n", vp->name, vp->debug);
+                return;
               }
 
-            purge_smallnode(cb, vp, bp, negated);
+            purge_smallnode(cb, vp, bpp, negated);
 
-            erase_smalltree(cb, *lpp, vp);
-            erase_smalltree(cb, *rpp, vp);
+            *bpp = SPECIAL;
+            *lpp = NULL;
+            *rpp = NULL;
+
+            add_erase_vector(cb, lp, lvpp);
+            add_erase_vector(cb, rp, rvpp);
           }
         else
           {
-            purge_smallnode(cb, vp, bp, undefined);
+            if(lp && lp != SPECIAL && rp && rp != SPECIAL)
+              {
+                link_directions(vp, bpp);
 
-            close_smallbranches(cb, *lpp, *rpp, vp);
+                purge_smallnode(cb, vp, bpp, undefined);
+
+                *bpp = SPECIAL;
+                *lpp = NULL;
+                *rpp = NULL;
+
+                close_smallbranches(cb, lp, rp, lvpp, rvpp, vp);
+              }
+            else
+              {
+                purge_smallnode(cb, vp, bpp, undefined);
+
+                *bpp = SPECIAL;
+                *lpp = NULL;
+                *rpp = NULL;
+
+                clean_smallbranches(cb, lp, rp, lvpp, rvpp);
+              }
           }
       break;
 
       case delay:
-        lpp = gendir(vp, bp, dir_left);
-        if(!*lpp)
-          lpp = gendir(vp, bp, dir_right);
+        lpp = gendir(vp, bpp, left_son);
 
-        purge_smallnode(cb, vp, bp, negated);
+        lp = *lpp;
 
-        erase_smalltree(cb, *lpp, vp);
+        if(lp && lp != SPECIAL)
+          lvpp = get_neighbor_handle(vp, bpp, left_son);
+        else
+          lvpp = &vp->self;
+
+        if(!lp)
+          {
+            lpp = gendir(vp, bpp, right_son);
+
+            lp = *lpp;
+
+            if(lp && lp != SPECIAL)
+              lvpp = get_neighbor_handle(vp, bpp, right_son);
+            else
+              lvpp = &vp->self;
+          }
+
+        purge_smallnode(cb, vp, bpp, negated);
+
+        *bpp = SPECIAL;
+        *lpp = NULL;
+
+        add_erase_vector(cb, lp, lvpp);
       break;
 
       default:
@@ -2612,84 +2919,139 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
     }
 }
 
-void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
+void purge_smalltree(c_base *cb, smallnode *vp, smallnode **bpp)
 {
-  smallnode **lpp, **rpp;
+  smallnode **lpp, **rpp, **lvpp, **rvpp;
+  smallnode *lp, *rp;
 
-  if(bp)
-    *get_neighbor_handle(vp, bp) = NULL;
+  if(vp == SPECIAL)
+    return;
 
   if(!vp)
     {
-      if(bp && bp->open)
-        {
-          bp->open--;
-          return;
-        }
-      else
-        {
-          fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", bp->name, bp->debug);
-          exit_failure();
-        }
+      fprintf(stderr, "%s: Error, logical contradiction between clauses (A1): %s\n", *bpp && *bpp != SPECIAL? (*bpp)->name : "<blank>", *bpp && *bpp != SPECIAL? (*bpp)->debug : "<blank>");
+      exit_failure();
     }
-
-  if(vp->zombie)
-    return;
 
   switch(vp->nclass)
     {
       case gate:
-        lpp = gendir(vp, bp, dir_left);
-        rpp = gendir(vp, bp, dir_right);
+        lpp = gendir(vp, bpp, left_son);
+        rpp = gendir(vp, bpp, right_son);
 
-        purge_smallnode(cb, vp, bp, undefined);
+        lp = *lpp;
+        rp = *rpp;
 
-        close_smallbranches(cb, *lpp, *rpp, vp);
+        if(lp && lp != SPECIAL)
+          lvpp = get_neighbor_handle(vp, bpp, left_son);
+        else
+          lvpp = &vp->self;
+
+        if(rp && rp != SPECIAL)
+          rvpp = get_neighbor_handle(vp, bpp, right_son);
+        else
+          rvpp = &vp->self;
+
+        if(lp && lp != SPECIAL && rp && rp != SPECIAL)
+          {
+            link_directions(vp, bpp);
+
+            purge_smallnode(cb, vp, bpp, undefined);
+
+            *bpp = NULL;
+            *lpp = SPECIAL;
+            *rpp = SPECIAL;
+
+            close_smallbranches(cb, lp, rp, lvpp, rvpp, vp);
+          }
+        else
+          {
+            purge_smallnode(cb, vp, bpp, undefined);
+
+            *bpp = NULL;
+            *lpp = SPECIAL;
+            *rpp = SPECIAL;
+
+            clean_smallbranches(cb, lp, rp, lvpp, rvpp);
+          }
       break;
 
       case joint:
-        lpp = gendir(vp, bp, dir_left);
-        rpp = gendir(vp, bp, dir_right);
+        lpp = gendir(vp, bpp, left_son);
+        rpp = gendir(vp, bpp, right_son);
 
-        if(bp == *genup(vp))
+        lp = *lpp;
+        rp = *rpp;
+
+        if(lp && lp != SPECIAL)
+          lvpp = get_neighbor_handle(vp, bpp, left_son);
+        else
+          lvpp = &vp->self;
+
+        if(rp && rp != SPECIAL)
+          rvpp = get_neighbor_handle(vp, bpp, right_son);
+        else
+          rvpp = &vp->self;
+
+        purge_smallnode(cb, vp, bpp, asserted);
+
+        *bpp = NULL;
+        *lpp = SPECIAL;
+        *rpp = SPECIAL;
+
+        if(bpp == &vp->up)
           {
-            if(*lpp == vp && *rpp == vp)
+            if(lp == vp && rp == vp)
               {
-                fprintf(stderr, "%s: Error, logical contradiction between clauses: %s\n", vp->name, vp->debug);
+                fprintf(stderr, "%s: Error, logical contradiction between clauses (A2): %s\n", vp->name, vp->debug);
                 exit_failure();
               }
 
-            purge_smallnode(cb, vp, bp, asserted);
-
-            purge_smalltree(cb, *lpp, vp);
-            purge_smalltree(cb, *rpp, vp);
+            add_purge_vector(cb, lp, lvpp);
+            add_purge_vector(cb, rp, rvpp);
           }
         else
-          if(*lpp == *genup(vp))
+          if(lpp == &vp->up)
             {
-              purge_smallnode(cb, vp, bp, asserted);
-
-              purge_smalltree(cb, *lpp, vp);
-              erase_smalltree(cb, *rpp, vp);
+              add_purge_vector(cb, lp, lvpp);
+              add_erase_vector(cb, rp, rvpp);
             }
           else
-            if(*rpp == *genup(vp))
+            if(rpp == &vp->up)
               {
-                purge_smallnode(cb, vp, bp, asserted);
-
-                erase_smalltree(cb, *lpp, vp);
-                purge_smalltree(cb, *rpp, vp);
+                add_erase_vector(cb, lp, lvpp);
+                add_purge_vector(cb, rp, rvpp);
               }
       break;
 
       case delay:
-        lpp = gendir(vp, bp, dir_left);
-        if(!*lpp)
-          lpp = gendir(vp, bp, dir_right);
+        lpp = gendir(vp, bpp, left_son);
 
-        purge_smallnode(cb, vp, bp, asserted);
+        lp = *lpp;
 
-        purge_smalltree(cb, *lpp, vp);
+        if(lp && lp != SPECIAL)
+          lvpp = get_neighbor_handle(vp, bpp, left_son);
+        else
+          lvpp = &vp->self;
+
+        if(!lp)
+          {
+            lpp = gendir(vp, bpp, right_son);
+
+            lp = *lpp;
+
+            if(lp && lp != SPECIAL)
+              lvpp = get_neighbor_handle(vp, bpp, right_son);
+            else
+              lvpp = &vp->self;
+          }
+
+        purge_smallnode(cb, vp, bpp, asserted);
+
+        *bpp = NULL;
+        *lpp = SPECIAL;
+
+        add_purge_vector(cb, lp, lvpp);
       break;
 
       default:
@@ -2700,7 +3062,7 @@ void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp)
 
 int save_smalltree(c_base *cb, FILE *fp)
 {
-  smallnode *vp, *up;
+  smallnode *vp;
   int rv;
 
   vp = cb->network;
@@ -2710,25 +3072,26 @@ int save_smalltree(c_base *cb, FILE *fp)
     {
       assert(!vp->zombie);
 
-      up = *genup(vp);
-
-      if(!up || !vp->left || (!vp->right && vp->nclass != delay))
+      if(!vp->up || vp->up == SPECIAL || !vp->left || vp->left == SPECIAL || ((!vp->right || vp->right == SPECIAL) && vp->nclass != delay))
         fprintf(stderr, "%s: Warning, network not closed: %s\n", vp->name, vp->debug);
 
-      if(vp == up || vp == vp->left || vp == vp->right)
+#if !defined NDEBUG
+      if(vp == vp->up || vp == vp->left || vp == vp->right)
         fprintf(stderr, "%s: Warning, tight loop on node: %s\n", vp->name, vp->debug);
+#endif
 
       switch(vp->nclass)
         {
           case gate:
           case joint:
             rv = fprintf(fp, "%s: %c ; %s, %s, %s\n",
-                    vp->name, class_symbol[vp->nclass], up? up->name : "*", vp->left? vp->left->name : "*", vp->right? vp->right->name : "*");
+                    vp->name, class_symbol[vp->nclass], vp->up && vp->up != SPECIAL? vp->up->name : "*",
+                    vp->left && vp->left != SPECIAL? vp->left->name : "*", vp->right && vp->right != SPECIAL? vp->right->name : "*");
           break;
 
           case delay:
             rv = fprintf(fp, "%s: %c"TIME_FMT" ; %s, %s\n",
-                    vp->name, class_symbol[vp->nclass], vp->k, up? up->name : "*", vp->left? vp->left->name : "*");
+                    vp->name, class_symbol[vp->nclass], vp->k, vp->up && vp->up != SPECIAL? vp->up->name : "*", vp->left && vp->left != SPECIAL? vp->left->name : "*");
           break;
 
           default:
@@ -2754,24 +3117,24 @@ int save_signals(c_base *cb, FILE *fp)
     {
       sp = &cb->sigtab[i];
 
-      if(sp->from && sp->to)
+      if(sp->from && sp->from != SPECIAL && sp->to && sp->to != SPECIAL)
         {
           switch(sp->sclass)
             {
               case input_class:
                 rv = fprintf(fp, "! %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
-                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
               break;
 
               case output_class:
                 rv = fprintf(fp, "? %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
-                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
               break;
 
               case aux_class:
                 if(cb->outaux)
                   rv = fprintf(fp, ". %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
-                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
                 else
                   rv = 0;
               break;
@@ -2779,7 +3142,7 @@ int save_signals(c_base *cb, FILE *fp)
               case internal_class:
                 if(cb->outint)
                   rv = fprintf(fp, ". %s (%s, %s) # %d / %d, %d, %d, %d, %d\n",
-                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, sp->occurr, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+                             *sp->root? sp->root : sp->name, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
                 else
                   rv = 0;
               break;
@@ -2793,9 +3156,14 @@ int save_signals(c_base *cb, FILE *fp)
         {
           if(cb->constout && sp->sclass == output_class && sp->defaultval != io_unknown)
             {
-              rv = fprintf(fp, "? %s (*, *) # 0 / %d, %d, %d, %d, %d\n", *sp->root? sp->root : sp->name, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
+              if(sp->val)
+                {
+                  rv = fprintf(fp, "? %s (*, *) # 0 / %d, %d, %d, %d, %d\n", *sp->root? sp->root : sp->name, sp->stype, sp->packed, sp->packedbit, sp->defaultval, sp->omissions);
 
-              fprintf(stderr, "%s: Warning, constant output signal generated as %s by default (%s deduction)\n", sp->name, sp->defaultval == io_false? "false" : "true", sp->val? "strong" : "weak");
+                  fprintf(stderr, "%s: Warning, constant output signal generated as %s by default\n", sp->name, sp->defaultval == io_false? "false" : "true");
+                }
+              else
+                fprintf(stderr, "%s: Warning, constant or unknown output signal suggested as %s by default\n", sp->name, sp->defaultval == io_false? "false" : "true");
             }
           else
             if(sp->sclass != internal_class && !sp->removed)
@@ -2822,12 +3190,12 @@ int save_ics(c_base *cb, FILE *fp)
 
       sp = name2signal(cb, icp->name, FALSE);
 
-      if(sp && sp->from && sp->to)
+      if(sp && sp->from && sp->from != SPECIAL && sp->to && sp->to != SPECIAL)
         {
           if(!icp->neg)
-            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->from->name, sp->to->name, sp->occurr, icp->t);
+            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), icp->t);
           else
-            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->to->name, sp->from->name, sp->occurr_neg, icp->t);
+            rv = fprintf(fp, "(%s, %s) # %d @ "TIME_FMT"\n", sp->to->name, sp->from->name, occurrence(sp->tofrom, sp->from), icp->t);
         }
       else
         {
@@ -2862,7 +3230,7 @@ int save_xref(c_base *cb, FILE *fp)
 
 void link_cotree(c_base *cb)
 {
-  smallnode *vp, *up, *up_2;
+  smallnode *vp, *up, *up_2, *up_left;
   io_signal *sp;
   int i, j, k;
 
@@ -2875,22 +3243,36 @@ void link_cotree(c_base *cb)
 
           up = vp->up;
           up_2 = vp->up_2;
+          up_left = up->left;
+
           assert(up && up_2);
           assert(up != up_2);
 
           assert(vp == up->left || vp == up->right);
 
-          if(vp == up->left)
-            up->left = up_2;
+          if(vp == up_left)
+            {
+              up->left = up_2;
+              up->left_dir = (vp == up_2->left? left_son : right_son);
+            }
           else
-            up->right = up_2;
+            {
+              up->right = up_2;
+              up->right_dir = (vp == up_2->left? left_son : right_son);
+            }
 
           assert(vp == up_2->left || vp == up_2->right);
 
           if(vp == up_2->left)
-            up_2->left = up;
+            {
+              up_2->left = up;
+              up_2->left_dir = (vp == up_left? left_son : right_son);
+            }
           else
-            up_2->right = up;
+            {
+              up_2->right = up;
+              up_2->right_dir = (vp == up_left? left_son : right_son);
+            }
 
           for(k = 0; k < cb->num_signals; k++)
             {
@@ -2940,7 +3322,7 @@ void raise_signals(c_base *cb, smallnode *vp)
       else
         wp = vp->right;
 
-      if(wp && vp == wp->up_2)
+      if(wp != SPECIAL && vp == wp->up)
         {
           raise_signals(cb, wp);
 
@@ -2995,8 +3377,14 @@ smallnode *build_smalltree(c_base *cb, int i, bool neg)
               xp->left = vp;
               xp->right = yp;
 
+              xp->left_dir = parent;
+              xp->right_dir = parent;
+
               vp->up_2 = xp;
               yp->up_2 = xp;
+
+              vp->up_2_dir = left_son;
+              yp->up_2_dir = right_son;
 
               snprintf(xp->debug, DEBUG_STRLEN, "(%s & %s)", vp->debug, yp->debug);
 
@@ -3037,10 +3425,13 @@ smallnode *build_twotrees(c_base *cb, int i)
       if(cb->symtab[i][0]->name[0] != '+' && cb->symtab[i][0]->name[0] != '-')
         fprintf(stderr, "%s: Warning, missing asserted literal for signal\n", cb->symtab[i][0]->name);
 
-      xp->open++;
+      vp = SPECIAL;
     }
   else
-    vp->up_2 = xp;
+   {
+     vp->up_2 = xp;
+     vp->up_2_dir = left_son;
+   }
 
   wp = build_smalltree(cb, i, TRUE);
 
@@ -3049,15 +3440,21 @@ smallnode *build_twotrees(c_base *cb, int i)
       if(cb->symtab[i][0]->name[0] != '+' && cb->symtab[i][0]->name[0] != '-')
         fprintf(stderr, "%s: Warning, missing negated literal for signal\n", cb->symtab[i][0]->name);
 
-      xp->open++;
+      wp = SPECIAL;
     }
   else
-    wp->up_2 = xp;
+    {
+      wp->up_2 = xp;
+      wp->up_2_dir = right_son;
+    }
 
   xp->left = vp;
   xp->right = wp;
 
-  snprintf(xp->debug, DEBUG_STRLEN, "(%s | %s)", vp? vp->debug : "<blank>", wp? wp->debug : "<blank>");
+  xp->left_dir = parent;
+  xp->right_dir = parent;
+
+  snprintf(xp->debug, DEBUG_STRLEN, "(%s | %s)", vp != SPECIAL? vp->debug : "<blank>", wp != SPECIAL? wp->debug : "<blank>");
 
   if(strlen(xp->debug) == DEBUG_STRLEN - 1)
     {
@@ -3092,8 +3489,14 @@ smallnode *build_cotree(c_base *cb)
           xp->left = vp;
           xp->right = yp;
 
+          xp->left_dir = parent;
+          xp->right_dir = parent;
+
           vp->up_2 = xp;
           yp->up_2 = xp;
+
+          vp->up_2_dir = left_son;
+          yp->up_2_dir = right_son;
 
           snprintf(xp->debug, DEBUG_STRLEN, "(%s & %s)", vp->debug, yp->debug);
 
@@ -3108,18 +3511,111 @@ smallnode *build_cotree(c_base *cb)
       else
         {
           xp = vp;
-          yp = vp;
+          yp = xp;
         }
     }
 
   link_cotree(cb);
 
-  raise_signals(cb, xp);
+  vp = cb->network;
+
+  while(vp)
+    {
+      if((!vp->up || vp->up == SPECIAL) && vp->up_2 && vp->up_2 != SPECIAL)
+        {
+          vp->up = vp->up_2;
+          vp->up_dir = vp->up_2_dir;
+        }
+
+      vp = vp->vp;
+    }
+
+  if(xp)
+    raise_signals(cb, xp);
 
   return xp;
 }
 
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit_fe, bool seplit_su, bool merge, bool constout, bool outaux, bool outint)
+void remove_pair(c_base *cb, smallnode *vp)
+{
+  smallnode *wp, *xp, *yp;
+  smallnode **xbpp, **ybpp;
+  link_code *xlcp, *ylcp;
+
+  wp = vp->left;
+
+  xp = vp->up;
+  yp = wp->up;
+
+  if(yp == vp)
+    {
+      if(vp != wp->left)
+        yp = wp->left;
+      else
+        yp = wp->right;
+    }
+
+  xbpp = get_neighbor_handle(vp, &vp->left, left_son);
+  ybpp = get_neighbor_handle(wp, &wp->left, left_son);
+
+  xlcp = get_neighbor_dir(vp, &vp->left, left_son);
+  ylcp = get_neighbor_dir(wp, &wp->left, left_son);
+
+  purge_smallnode(cb, vp, &vp->left, undefined);
+
+  vp->up = NULL;
+  vp->left = NULL;
+  vp->right = NULL;
+
+  if(*xbpp && *xbpp != SPECIAL)
+    *xbpp = wp;
+
+  if(*ybpp && *ybpp != SPECIAL)
+    *ybpp = wp;
+
+  purge_smallnode(cb, wp, &wp->left, undefined);
+
+  wp->up = NULL;
+  wp->left = NULL;
+  wp->right = NULL;
+
+  if(*xbpp && *xbpp != SPECIAL)
+    *xbpp = yp;
+
+  if(*ybpp && *ybpp != SPECIAL)
+    *ybpp = xp;
+
+  *xlcp = *dirdir(wp, &wp->left, left_son);
+  *ylcp = *dirdir(vp, &vp->left, left_son);
+}
+
+void postoptimize(c_base *cb)
+{
+  smallnode *vp, *wp;
+  bool changed;
+
+  do
+    {
+      vp = cb->network;
+      changed = FALSE;
+
+      while(vp)
+        {
+          wp = vp->left;
+
+          if(!vp->zombie && vp->nclass == joint && wp == vp->right && (wp->nclass == gate || (vp == wp->left && vp == wp->right)))
+            {
+              remove_pair(cb, vp);
+              changed = TRUE;
+            }
+
+          vp = vp->vp;
+       }
+    }
+  while(changed);
+}
+
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit_fe, bool seplit_su, bool merge, bool constout, bool outaux, bool outint, bool postopt)
 {
   c_base *cb;
   btl_specification *e, *f;
@@ -3172,7 +3668,7 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   if(fread(cb->source, SOURCE_BUFSIZE, sizeof(char), fp) == SOURCE_BUFSIZE)
     {
-      fprintf(stderr, "%s: Error, source file too long\n", source_filename);
+      fprintf(stderr, "%s: Error, source file too large\n", source_filename);
       free(cb);
       return cperf;
     }
@@ -3208,18 +3704,34 @@ compinfo compile(char *source_name, char *base_name, char *state_name, char *xre
 
   printf("Generating network\n");
 
-  stv = eval(cb, f, NULL, FALSE, internal_class, io_any, io_binary, io_unknown, io_raw, 0);
+  stv = eval(cb, f, NULL, left_son, FALSE, internal_class, io_any, io_binary, io_unknown, io_raw, 0);
 
   delete_specification(f);
 
   cvp = build_cotree(cb);
 
-  printf("Pruning network\n");
+  if(cb->network)
+    {
+      printf("Pruning network\n");
 
-  purge_smalltree(cb, stv.vp, NULL);
-  purge_smalltree(cb, cvp, NULL);
+      add_purge_vector(cb, stv.vp, &stv.vp->up);
+      add_purge_vector(cb, cvp, &cvp->up);
 
-  delete_zombies(cb);
+      do
+        {
+          purge_vectors(cb);
+          erase_vectors(cb);
+        }
+      while(cb->num_purgearrows || cb->num_erasearrows);
+
+      if(postopt)
+        {
+          printf("Post optimizing network\n");
+          postoptimize(cb);
+        }
+
+      delete_zombies(cb);
+    }
 
   if(!cb->network)
     fprintf(stderr, "Warning, network empty\n");
@@ -3296,13 +3808,13 @@ int main(int argc, char *argv[])
 {
   char *source_name, *base_name, *state_name, *xref_name, *path, *option, *ext;
   char default_state_name[MAX_STRLEN], default_xref_name[MAX_STRLEN];
-  bool seplit_fe, seplit_su, merge, constout, outaux, outint;
+  bool seplit_fe, seplit_su, merge, constout, outaux, outint, postopt;
   compinfo cperf;
   int i;
 
   source_name = base_name = state_name = xref_name = NULL;
   path = "";
-  seplit_fe = seplit_su = merge = constout = outaux = outint = FALSE;
+  seplit_fe = seplit_su = merge = constout = outaux = outint = postopt = FALSE;
 
   for(i = 1; i < argc; i++)
     {
@@ -3312,7 +3824,7 @@ int main(int argc, char *argv[])
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-bBkuwWx] [-I state] [-o base] [-P path] [-X symbols] [source]\n",
+              fprintf(stderr, "Usage: %s [-bBkOuwWx] [-I state] [-o base] [-P path] [-X symbols] [source]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -3436,6 +3948,10 @@ int main(int argc, char *argv[])
                         constout = TRUE;
                       break;
 
+                      case 'O':
+                        postopt = TRUE;
+                      break;
+
                       case 'u':
                         merge = TRUE;
                       break;
@@ -3498,7 +4014,7 @@ int main(int argc, char *argv[])
   printf("\nTING "VER" - Temporal Inference Network Generator\n"
          "Design & coding by Andrea Giotti, 2017-2020\n\n");
 
-  cperf = compile(source_name, base_name, state_name, xref_name, path, seplit_fe, seplit_su, merge, constout, outaux, outint);
+  cperf = compile(source_name, base_name, state_name, xref_name, path, seplit_fe, seplit_su, merge, constout, outaux, outint, postopt);
 
   if(cperf.ok)
     printf("Network generated -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d signals, %d initial conditions\n",

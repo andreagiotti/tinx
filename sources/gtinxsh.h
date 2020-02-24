@@ -124,6 +124,7 @@ typedef struct config
     bool seplit_fe;
     bool seplit_su;
     bool merge;
+    bool postopt;
     bool constout;
     bool outaux;
     bool outint;
@@ -274,7 +275,7 @@ void print(s_base *sb, char *string, ...);
 void print_add(s_base *sb, char *string, ...);
 pid_t pidof(s_base *sb, char *name);
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge, bool postopt,
          bool outaux, bool outint, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, double prob,
          bool batch_in, bool batch_out, bool draw_undef);
 

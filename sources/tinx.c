@@ -11,7 +11,7 @@
 
 #include "tinx.h"
 
-#define VER "8.0.2 (single core)"
+#define VER "8.0.3 (single core)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
@@ -1540,7 +1540,15 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
               if(!packed_ios)
                 ios->fp = open_input_file(ios->file_name);
               else
-                ios->fp = packed_ios->fp;
+                {
+                  if(packed_ios->file_io)
+                    ios->fp = packed_ios->fp;
+                  else
+                    {
+                      fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                      exit(EXIT_FAILURE);
+                    }
+                }
             }
         }
       else
@@ -1562,7 +1570,15 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                   ios->fp = open_output_file(ios->file_name);
                 }
               else
-                ios->fp = packed_ios->fp;
+                {
+                  if(packed_ios->file_io)
+                    ios->fp = packed_ios->fp;
+                  else
+                    {
+                      fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                      exit(EXIT_FAILURE);
+                    }
+                }
             }
         }
 
@@ -1594,7 +1610,15 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                   if(!packed_ios)
                     ios->chan = add_queue_posix(ios->chan_name, sclass);
                   else
-                    ios->chan = packed_ios->chan;
+                    {
+                      if(!packed_ios->file_io)
+                        ios->chan = packed_ios->chan;
+                      else
+                        {
+                          fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                          exit(EXIT_FAILURE);
+                        }
+                    }
                 }
             }
           else
@@ -1612,7 +1636,15 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                   if(!packed_ios)
                     ios->chan = add_queue_posix(ios->chan_name, sclass);
                   else
-                    ios->chan = packed_ios->chan;
+                    {
+                      if(!packed_ios->file_io)
+                        ios->chan = packed_ios->chan;
+                      else
+                        {
+                          fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                          exit(EXIT_FAILURE);
+                        }
+                    }
                 }
             }
 
@@ -1639,7 +1671,15 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                   if(!packed_ios)
                     ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
                   else
-                    ios->chan5 = packed_ios->chan5;
+                    {
+                      if(!packed_ios->file_io)
+                        ios->chan5 = packed_ios->chan5;
+                      else
+                        {
+                          fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                          exit(EXIT_FAILURE);
+                        }
+                    }
                 }
             }
           else
@@ -1657,7 +1697,15 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                   if(!packed_ios)
                     ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
                   else
-                    ios->chan5 = packed_ios->chan5;
+                    {
+                      if(!packed_ios->file_io)
+                        ios->chan5 = packed_ios->chan5;
+                      else
+                        {
+                          fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                          exit(EXIT_FAILURE);
+                        }
+                    }
                 }
             }
 
@@ -3015,7 +3063,7 @@ int main(int argc, char **argv)
     step = default_step;
 
   printf("\nTINX "VER" - Temporal Inference Network eXecutor\n"
-         "Design & coding by Andrea Giotti, 1998-1999, 2016-2019\n\n");
+         "Design & coding by Andrea Giotti, 1998-1999, 2016-2020\n\n");
 
   fflush(stdout);
 

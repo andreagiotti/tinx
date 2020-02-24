@@ -12,8 +12,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "9.2.0"
-#define VER "4.1.0"
+#define PACK_VER "9.3.0"
+#define VER "4.2.0"
 
 INLINE m_time get_time()
 {
@@ -1140,6 +1140,9 @@ void gen_button_clicked(GtkWidget *widget, s_base *sb)
   if(sb->cfg.merge)
     strcat(cmd, " -u");
 
+  if(sb->cfg.postopt)
+    strcat(cmd, " -O");
+
   if(sb->cfg.constout)
     strcat(cmd, " -k");
 
@@ -1594,6 +1597,30 @@ void merge_box(GtkWidget *widget, s_base *sb)
     sb->cfg.merge = TRUE;
   else
     sb->cfg.merge = FALSE;
+
+  if(!sb->regenerate)
+    {
+      sb->regenerate = TRUE;
+      gtk_image_set_from_stock(sb->reg_warning_icon, GTK_STOCK_DIALOG_WARNING, GTK_ICON_SIZE_BUTTON);
+      gtk_label_set_markup(sb->reg_warning, "  <i>Please regenerate network</i>");
+    }
+
+  if(!sb->changed)
+    {
+      sb->changed = TRUE;
+
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+      if(sb->save_button)
+        gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+    }
+}
+
+void postopt_box(GtkWidget *widget, s_base *sb)
+{
+  if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
+    sb->cfg.postopt = TRUE;
+  else
+    sb->cfg.postopt = FALSE;
 
   if(!sb->regenerate)
     {
@@ -3027,7 +3054,7 @@ void configure(GtkWidget *widget, s_base *sb)
   GtkWidget *window;
   GtkWidget *btn5, *btn6, *btn7, *btn8;
   GtkWidget *tabf, *tabk, *tabh, *tabg, *tabs, *tabw;
-  GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15, *cb16, *cb17, *cb18, *cb19, *cb20;
+  GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15, *cb16, *cb17, *cb18, *cb19, *cb20, *cb21;
   GtkWidget *lbl2, *ent2, *lbl3, *ent3, *lbl4, *ent4, *lbl7, *ent7, *lbl10, *ent10, *lbl11, *ent11, *lbl12, *ent12, *lbl13, *ent13, *lbl14, *ent14, *lbl15, *ent15, *lbl16, *ent16, *lbl17, *ent17,
             *lbl18, *ent18, *lbl19, *ent19, *lbl20, *ent20, *lbl21, *ent21, *lbl22, *ent22;
   GtkWidget *fr1, *fr2, *fr3, *fr4;
@@ -3369,24 +3396,29 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_table_attach_defaults(GTK_TABLE(tabh), cb13, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(cb13), "clicked", G_CALLBACK(merge_box), (gpointer)sb);
 
+  cb21 = gtk_check_button_new_with_label("Post optimization");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb21), sb->cfg.postopt);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb21, 1, 2, 1, 2);
+  g_signal_connect(G_OBJECT(cb21), "clicked", G_CALLBACK(postopt_box), (gpointer)sb);
+
   cb19 = gtk_check_button_new_with_label("Generate constant signals");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb19), sb->cfg.constout);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb19, 1, 2, 1, 2);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb19, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb19), "clicked", G_CALLBACK(constout_box), (gpointer)sb);
 
   cb8 = gtk_check_button_new_with_label("Hard real time (root access only)");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb8), sb->cfg.hard);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb8, 0, 1, 2, 3);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb8, 1, 2, 2, 3);
   g_signal_connect(G_OBJECT(cb8), "clicked", G_CALLBACK(hard_box), (gpointer)sb);
 
   cb12 = gtk_check_button_new_with_label("Wait running");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb12), sb->cfg.busywait);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb12, 1, 2, 2, 3);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb12, 0, 1, 3, 4);
   g_signal_connect(G_OBJECT(cb12), "clicked", G_CALLBACK(busywait_box), (gpointer)sb);
 
   cb20 = gtk_check_button_new_with_label("Display full signal names");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb20), sb->cfg.full_names);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb20, 0, 1, 3, 4);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb20, 1, 2, 3, 4);
   g_signal_connect(G_OBJECT(cb20), "clicked", G_CALLBACK(full_names_box), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox3), tabh);
@@ -3445,7 +3477,7 @@ void configure(GtkWidget *widget, s_base *sb)
 }
 
 int execute(char *source_name, char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait, bool seplit_fe, bool seplit_su, bool merge, bool postopt,
          bool outaux, bool outint, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *include_path, char *alpha, int num_threads, double prob,
          bool batch_in, bool batch_out, bool draw_undef)
 {
@@ -3548,6 +3580,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
       sbs.cfg.seplit_fe = seplit_fe;
       sbs.cfg.seplit_su = seplit_su;
       sbs.cfg.merge = merge;
+      sbs.cfg.postopt = postopt;
       sbs.cfg.outaux = outaux;
       sbs.cfg.outint = outint;
       sbs.cfg.batch_in = batch_in;
@@ -4028,7 +4061,7 @@ int main(int argc, char *argv[])
 {
   char *source_name, *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path, *include_path;
   char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
-  bool strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sys5, sturdy, busywait, seplit_fe, seplit_su, merge, outaux, outint, batch_in, batch_out, draw_undef;
+  bool strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sys5, sturdy, busywait, seplit_fe, seplit_su, merge, postopt, outaux, outint, batch_in, batch_out, draw_undef;
   int i, k, n;
   d_time max_time;
   m_time step, default_step;
@@ -4041,7 +4074,8 @@ int main(int argc, char *argv[])
   path = "";
   include_path = "";
   strcpy(alpha, IO_SYMBOLS);
-  strictly_causal = soundness_check = echo_stdout = file_io = quiet = hard = sys5 = sturdy = busywait = seplit_fe = seplit_su = merge = outaux = outint = batch_in = batch_out = draw_undef = FALSE;
+  strictly_causal = soundness_check = echo_stdout = file_io = quiet = hard = sys5 = sturdy = busywait = seplit_fe = seplit_su = merge = postopt =
+                    outaux = outint = batch_in = batch_out = draw_undef = FALSE;
   bufexp = DEFAULT_BUFEXP;
   max_time = 0;
   default_step = -1;
@@ -4528,7 +4562,7 @@ int main(int argc, char *argv[])
     step = default_step;
 
   return execute(source_name, base_name, state_name, logfile_name, xref_name,
-         strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sys5, sturdy, busywait, seplit_fe, seplit_su, merge, outaux, outint,
+         strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sys5, sturdy, busywait, seplit_fe, seplit_su, merge, postopt, outaux, outint,
          bufexp, max_time, step, prefix, path, include_path, alpha, num_threads, prob, batch_in, batch_out, draw_undef);
 }
 

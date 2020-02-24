@@ -95,14 +95,20 @@ typedef struct smallnode
   int literal_id;
   bool neg;
   bool zombie;
-  int open;
   struct smallnode *up;
+  link_code up_dir;
   struct smallnode *up_2;
+  link_code up_2_dir;
   struct smallnode *left;
+  link_code left_dir;
   struct smallnode *right;
+  link_code right_dir;
+  struct smallnode *self;
   char debug[DEBUG_STRLEN];
   struct smallnode *vp;
 } smallnode;
+
+#define SPECIAL ((smallnode *)(-1))
 
 typedef struct subtreeval
 {
@@ -138,10 +144,10 @@ typedef struct io_signal
 {
   char name[MAX_NAMELEN];
   char root[MAX_NAMELEN];
+  smallnode **tofrom;
   smallnode *from;
+  smallnode **fromto;
   smallnode *to;
-  link_code occurr;
-  link_code occurr_neg;
   io_class sclass;
   io_type stype;
   int packed;
@@ -183,8 +189,16 @@ typedef struct initial_condition
 #define NUM_ICS 8192
 #define NUM_INTEGERS 8192
 #define NUM_LEVELS 256
+#define NUM_VECTORS 32768
 
 #define BTL_HISTORY_LEN 256
+
+typedef struct vector
+{
+  smallnode **bpp;
+  smallnode *bp;
+  smallnode *vp;
+} vector;
 
 typedef struct c_base
 {
@@ -205,6 +219,10 @@ typedef struct c_base
   group *grpptr[SYMTAB_SIZE][SYMTAB_DEPTH];
   int num_groups;
   int iterator[NUM_LEVELS];
+  vector purgearrow[NUM_VECTORS];
+  int num_purgearrows;
+  vector erasearrow[NUM_VECTORS];
+  int num_erasearrows;
   int num_nodes[NODE_CLASSES_NUMBER];
   int num_vargen;
   char path[MAX_STRLEN];
@@ -226,14 +244,6 @@ typedef struct compinfo
   int num_signals;
   int num_ics;
 } compinfo;
-
-typedef enum direction
-{
-  dir_left,
-  dir_right
-} direction;
-
-#define genup(VP) ((VP)->up? &((VP)->up) : &((VP)->up_2))
 
 #define CREATE_IMPLY(P, Q) create_operation(op_or, create_operation(op_not, P, NULL, "(~ %s)"), Q, "(%s | %s)")
 #define CREATE_EQV(P, Q) create_operation(op_and, CREATE_IMPLY(P, Q), CREATE_IMPLY(copy_specification(Q), copy_specification(P)), "(%s & %s)")
@@ -258,13 +268,14 @@ void gensym(c_base *cb, char *symbol, char *type, litval val, bool incr);
 subtreeval preval(c_base *cb, btl_specification *spec, int level, int param);
 subtreeval at_happen(c_base *cb, btl_specification *spec, int level, int param, bool dual);
 subtreeval since_until(c_base *cb, btl_specification *spec, int level, int param, bool dual);
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3 defaultval, io_type_4 omissions, d_time t);
-void purge_smallnode(c_base *cb, smallnode *vp, smallnode *bp, litval val);
-void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode *bp);
-void purge_smalltree(c_base *cb, smallnode *vp, smallnode *bp);
-void erase_smalltree(c_base *cb, smallnode *vp, smallnode *bp);
-smallnode **gendir(smallnode *vp, smallnode *bp, direction dir);
-smallnode **get_neighbor_handle(smallnode *vp, smallnode *wp);
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ext_dir, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3 defaultval, io_type_4 omissions, d_time t);
+void purge_smallnode(c_base *cb, smallnode *vp, smallnode **bpp, litval val);
+void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode **xbpp, smallnode **ybpp, smallnode *vp);
+void purge_smalltree(c_base *cb, smallnode *vp, smallnode **bpp);
+void erase_smalltree(c_base *cb, smallnode *vp, smallnode **bpp);
+smallnode **gendir(smallnode *vp, smallnode **bpp, link_code dir);
+link_code *dirdir(smallnode *vp, smallnode **bpp, link_code dir);
+smallnode **get_neighbor_handle(smallnode *vp, smallnode **bpp, link_code dir);
 int save_smalltree(c_base *cb, FILE *fp);
 int save_signals(c_base *cb, FILE *fp);
 int save_ics(c_base *cb, FILE *fp);
@@ -274,6 +285,6 @@ void raise_signals(c_base *cb, smallnode *vp);
 smallnode *build_smalltree(c_base *cb, int i, bool neg);
 smallnode *build_twotrees(c_base *cb, int i);
 smallnode *build_cotree(c_base *cb);
-compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit_fe, bool seplit_su, bool merge, bool constant, bool outaux, bool outint);
+compinfo compile(char *source_name, char *base_name, char *state_name, char *xref_name, char *path, bool seplit_fe, bool seplit_su, bool merge, bool constant, bool outaux, bool outint, bool postopt);
 char *opname(op_type ot);
 
