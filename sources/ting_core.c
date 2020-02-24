@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "5.0.0"
+#define VER "5.0.1"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 const char *signal_class[IO_CLASSES_NUMBER] = { "internal", "auxiliary", "input", "output" };
@@ -2730,6 +2730,12 @@ void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode **x
 {
   int i;
 
+  if(*xbpp && *xbpp != SPECIAL)
+    *xbpp = yp;
+
+  if(*ybpp && *ybpp != SPECIAL)
+    *ybpp = xp;
+
   for(i = 0; i < cb->num_purgearrows; i++)
     {
       if(cb->purgearrow[i].vp == vp)
@@ -2737,12 +2743,14 @@ void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode **x
           if(cb->purgearrow[i].bp == xp)
             {
               cb->purgearrow[i].vp = yp;
+              cb->purgearrow[i].bp = *ybpp;
               cb->purgearrow[i].bpp = ybpp;
             }
           else
             if(cb->purgearrow[i].bp == yp)
               {
                 cb->purgearrow[i].vp = xp;
+                cb->purgearrow[i].bp = *xbpp;
                 cb->purgearrow[i].bpp = xbpp;
               }
         }
@@ -2755,22 +2763,18 @@ void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode **x
           if(cb->erasearrow[i].bp == xp)
             {
               cb->erasearrow[i].vp = yp;
+              cb->erasearrow[i].bp = *ybpp;
               cb->erasearrow[i].bpp = ybpp;
             }
           else
             if(cb->erasearrow[i].bp == yp)
               {
                 cb->erasearrow[i].vp = xp;
+                cb->erasearrow[i].bp = *xbpp;
                 cb->erasearrow[i].bpp = xbpp;
               }
         }
     }
-
-  if(*xbpp && *xbpp != SPECIAL)
-    *xbpp = yp;
-
-  if(*ybpp && *ybpp != SPECIAL)
-    *ybpp = xp;
 }
 
 void erase_smalltree(c_base *cb, smallnode *vp, smallnode **bpp)
@@ -2783,7 +2787,8 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode **bpp)
 
   if(vp == SPECIAL)
     {
-      fprintf(stderr, "%s: Warning, abnormal logical relation between clauses (B1): %s\n", *bpp && *bpp != SPECIAL? (*bpp)->name : "<blank>", *bpp && *bpp != SPECIAL? (*bpp)->debug : "<blank>");
+      fprintf(stderr, "%s: Warning, logical contradiction or incompleteness between clauses (B1): %s\n",
+                      *bpp && *bpp != SPECIAL? (*bpp)->name : "<blank>", *bpp && *bpp != SPECIAL? (*bpp)->debug : "<blank>");
       return;
     }
 
@@ -2807,10 +2812,7 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode **bpp)
           rvpp = &vp->self;
 
         if(lp == vp && rp == vp)
-          {
-            fprintf(stderr, "%s: Warning, abnormal logical relation between clauses (B2): %s\n", vp->name, vp->debug);
-            return;
-          }
+          fprintf(stderr, "%s: Warning, logical contradiction or incompleteness between clauses (B2): %s\n", vp->name, vp->debug);
 
         purge_smallnode(cb, vp, bpp, negated);
 
@@ -2842,10 +2844,7 @@ void erase_smalltree(c_base *cb, smallnode *vp, smallnode **bpp)
         if(bpp == &vp->up)
           {
             if(lp == vp && rp == vp)
-              {
-                fprintf(stderr, "%s: Warning, abnormal logical relation between clauses (B3): %s\n", vp->name, vp->debug);
-                return;
-              }
+              fprintf(stderr, "%s: Warning, logical contradiction or incompleteness between clauses (B3): %s\n", vp->name, vp->debug);
 
             purge_smallnode(cb, vp, bpp, negated);
 
