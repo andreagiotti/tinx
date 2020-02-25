@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "5.0.1"
+#define VER "5.0.2"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 const char *signal_class[IO_CLASSES_NUMBER] = { "internal", "auxiliary", "input", "output" };
@@ -2509,9 +2509,12 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode **bpp, litval val)
   io_signal *sp;
   io_type_3 def;
   int i;
+  bool neg;
 
   assert(vp);
   assert(!vp->zombie);
+
+  neg = (val == negated);
 
   for(i = 0; i < cb->num_signals; i++)
     {
@@ -2522,10 +2525,21 @@ void purge_smallnode(c_base *cb, smallnode *vp, smallnode **bpp, litval val)
         {
           if(val != undefined)
             {
-              if(sp->to == vp && (sp->from != vp || occurrence(sp->fromto, sp->to) == parent))
-                def = (val == negated)? io_true : io_false;
+              if(sp->to == vp)
+                {
+                  if(sp->fromto == bpp)
+                    neg = !neg;
+
+                  def = neg? io_true : io_false;
+                }
               else
-                def = (val == negated)? io_false : io_true;
+                if(sp->from == vp)
+                  {
+                    if(sp->tofrom == bpp)
+                      neg = !neg;
+
+                    def = neg? io_false : io_true;
+                  }
 
               if(sp->defaultval != io_unknown && sp->defaultval != def)
                 {
@@ -3229,7 +3243,7 @@ int save_xref(c_base *cb, FILE *fp)
 
 void link_cotree(c_base *cb)
 {
-  smallnode *vp, *up, *up_2, *up_left;
+  smallnode *vp, *up, *up_2, *up_left, *up_2_left;
   io_signal *sp;
   int i, j, k;
 
@@ -3243,6 +3257,7 @@ void link_cotree(c_base *cb)
           up = vp->up;
           up_2 = vp->up_2;
           up_left = up->left;
+          up_2_left = up_2->left;
 
           assert(up && up_2);
           assert(up != up_2);
@@ -3252,17 +3267,17 @@ void link_cotree(c_base *cb)
           if(vp == up_left)
             {
               up->left = up_2;
-              up->left_dir = (vp == up_2->left? left_son : right_son);
+              up->left_dir = (vp == up_2_left? left_son : right_son);
             }
           else
             {
               up->right = up_2;
-              up->right_dir = (vp == up_2->left? left_son : right_son);
+              up->right_dir = (vp == up_2_left? left_son : right_son);
             }
 
           assert(vp == up_2->left || vp == up_2->right);
 
-          if(vp == up_2->left)
+          if(vp == up_2_left)
             {
               up_2->left = up;
               up_2->left_dir = (vp == up_left? left_son : right_son);
@@ -3285,6 +3300,9 @@ void link_cotree(c_base *cb)
 
                   sp->from = up;
                   sp->to = up_2;
+
+                  sp->tofrom = (vp == up_left? &up->left : &up->right);
+                  sp->fromto = (vp == up_2_left? &up_2->left : &up_2->right);
                 }
               else
                 if(sp->to == vp)
@@ -3294,6 +3312,9 @@ void link_cotree(c_base *cb)
 
                     sp->from = up_2;
                     sp->to = up;
+
+                    sp->tofrom = (vp == up_2_left)? &up_2->left : &up_2->right;
+                    sp->fromto = (vp == up_left)? &up->left : &up->right;
                   }
             }
 
@@ -3336,12 +3357,18 @@ void raise_signals(c_base *cb, smallnode *vp)
                     {
                        sp->from = vp;
                        sp->to = wp;
+
+                       sp->tofrom = !branch? &vp->left : &vp->right;
+                       sp->fromto = &wp->up;
                     }
                   else
                     if(sp->to == wp)
                       {
                          sp->from = wp;
                          sp->to = vp;
+
+                         sp->tofrom = &wp->up;
+                         sp->fromto = !branch? &vp->left : &vp->right;
                       }
                 }
             }
