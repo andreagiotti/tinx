@@ -1,7 +1,7 @@
 /*
   TINX - Temporal Inference Network eXecutor
   Design & coding by Andrea Giotti, 1998-1999
-  Revised 2016-2019
+  Revised 2016-2024
 */
 
 #if !defined INLINE
@@ -17,6 +17,7 @@
 #include <limits.h>
 #include <time.h>
 #include <math.h>
+#include <float.h>
 #include <errno.h>
 
 #include <unistd.h>
@@ -28,6 +29,9 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h> 
 
 typedef char bool;
 
@@ -50,6 +54,11 @@ typedef double m_time;
 
 #define IO_INFERENCE_RATIO 3  /* 90.625 % */
 
+typedef double real;
+#define REAL_IN_FMT "%lg"
+#define REAL_OUT_FMT "%.12g"
+#define REAL_MAX DBL_MAX
+
 typedef enum link_code
 {
   no_link = -1,
@@ -60,10 +69,19 @@ typedef enum link_code
 } link_code;
 
 typedef struct node node;
+typedef struct sh_literal sh_literal;
+
+/*
+typedef union extnode
+{
+  node *vp;
+  sh_literal *ls;
+} extnode;
+*/
 
 typedef struct arc
 {
-  node *vp;
+  node *vp;	/* Should be 'extnode ext' */
   link_code lc;
 } arc;
 
@@ -73,8 +91,16 @@ typedef struct event
   d_time t;
 } event;
 
-#define ev_eq(R, S) ((R).e.vp == (S).e.vp && (R).e.lc == (S).e.lc && \
-                     (R).t == (S).t)
+#define arc_eq(E, F) ((E).vp == (F).vp && (E).lc == (F).lc)
+#define ev_eq(R, S) (arc_eq((R).e, (S).e) && (R).t == (S).t)
+
+/*
+#if defined NDEBUG
+#define valid(S) ((S).e.lc >= 0 || (S).e.ext.ls)
+#else
+#define valid(S) (((S).e.vp && (S).e.lc >= 0 && (S).e.lc < LINK_CODES_NUMBER) || ((S).e.ls && (S).e.lc == no_link))
+#endif
+*/
 
 #if defined NDEBUG
 #define valid(S) ((S).e.vp)
@@ -84,17 +110,20 @@ typedef struct event
 
 typedef int phase;
 #define NULL_PHASE INT_MAX
+#define CONSTANT_PHASE (INT_MAX - 1)
 
 typedef struct record
 {
   phase stated;
   phase chosen;
+  real value;
   event other;
   event next;
 } record;
 
 typedef enum stream_class
 {
+  quiet_stream = -1,
   input_stream,
   output_stream,
   STREAM_CLASSES_NUMBER
@@ -199,11 +228,36 @@ int delete_queues_sys5(void);
 
 long int queue_key(char *name);
 
+typedef struct safesocket
+{
+  int lsid;
+  int asid;
+} safesocket;
+
+#define PORTBASE 7777
+#define SOCKETFLAGS MSG_DONTWAIT
+
+safesocket add_socket(char *name, stream_class sclass);
+#define open_input_socket(A) add_socket((A), input_stream)
+#define open_output_socket(A) add_socket((A), output_stream)
+#define is_socket_open(S) ((S).asid >= 0)
+int close_socket(safesocket sock);
+#define clean_socket(A) FALSE
+#define get_socket(S, XP) (recv((S).asid, (XP), sizeof(* (XP)), SOCKETFLAGS) < sizeof(* (XP)))
+#define put_socket(S, XP) (send((S).asid, (XP), sizeof(* (XP)), SOCKETFLAGS) < sizeof(* (XP)))
+#define mget_socket(S, XP, N) (recv((S).asid, (XP), (N) * sizeof(* (XP)), SOCKETFLAGS) < (N) * sizeof(* (XP)))
+#define mput_socket(S, XP, N) (send((S).asid, (XP), (N) * sizeof(* (XP)), SOCKETFLAGS) < (N) * sizeof(* (XP)))
+#define sync_socket(S) FALSE
+#define socket_error(S) FALSE
+#define reset_socket(S) FALSE
+
 typedef enum io_type
 {
   io_any,
   io_ipc,
   io_file,
+  io_socket,
+  io_quiet,
   IO_TYPES_NUMBER
 } io_type;
 
@@ -219,6 +273,7 @@ typedef enum io_type_3
   io_false,
   io_true,
   io_unknown,
+  io_other,
   IO_TYPES_3_NUMBER
 } io_type_3;
 
@@ -262,24 +317,40 @@ struct stream
   stream_class sclass;
   arc e;
   arc ne;
+  io_type stype;
   io_type_3 defaultval;
+  real defaultreal;
+  bool sys5;
   bool skip[IO_TYPES_3_NUMBER];
   char file_name[MAX_STRLEN];
   char chan_name[MAX_STRLEN];
+  char socket_name[MAX_STRLEN];
   file fp;
   channel_posix chan;
   channel_sys5 chan5;
+  safesocket sock;
   int fails;
   int errors;
   packet pack;
   stream *packed_ios;
   stream *next_ios;
   stream *prev_ios;
-  bool file_io;
-  bool sys5;
   bool open;
+  char buffer[MAX_STRLEN];
+  int pos;
   bool (* io_perform)(k_base *kb, stream *ios);
 };
+
+#define MAX_NUMERIC_LITERALS 65536
+
+typedef struct sh_literal
+{
+  char name[MAX_NAMELEN];
+  arc e;
+  arc ne;
+  record *history;
+  sh_literal *other;
+} sh_literal;
 
 typedef enum node_class
 {
@@ -288,10 +359,26 @@ typedef enum node_class
   joint,
   delay,
   literal,
+  math_delay,
+  math_chs,
+  math_inv,
+  math_sin,
+  math_add,
+  math_mul,
+  math_pow,
+  math_eqv0,
+  math_neq0,
+  math_gteq0,
+  math_lt0,
   NODE_CLASSES_NUMBER
 } node_class;
 
-#define CLASS_SYMBOLS "GJDL"
+#define CLASS_SYMBOLS "GJDLEUVTABCZXMW"
+#define NODE_MATH_BASE math_delay
+#define NODE_REL_BASE math_eqv0
+#define NODE_LARGE_CLASSES 6
+#define NODE_LARGE_MATH NODE_MATH_BASE
+#define NODE_LARGE_REL (NODE_MATH_BASE + 1)
 
 struct node
 {
@@ -299,15 +386,22 @@ struct node
   node_class nclass;
   d_time k;
   linkage pin[LINK_CODES_NUMBER];
+  sh_literal *ls;
   char *debug;
   node *vp;
 };
 
+/*
+#define link_of(E) ((E).ext.vp->pin[(E).lc])
+#define literal_of(E) (*(E).ext.ls)
+*/
 #define link_of(E) ((E).vp->pin[(E).lc])
-#define arc_neg(E) (link_of(E).e)
+#define literal_of(E) (*(sh_literal *)(E).vp)
+#define arc_neg(E) (((E).lc >= 0) ? link_of(E).e : literal_of(E).e)
 #define phase_of(KB, S) ((S).t >> (KB)->bsbt)
 #define index_of(KB, S) ((S).t & (KB)->bsm1)
-#define record_of(KB, S) (link_of((S).e).history[index_of(KB, S)])
+#define base_of(KB, S) (((S).e.lc >= 0) ? link_of((S).e).history : literal_of((S).e).history)
+#define record_of(KB, S) (base_of(KB, S)[index_of(KB, S)])
 
 #define is_stated(KB, S) (record_of(KB, S).stated == phase_of(KB, S))
 #define is_chosen(KB, S) (record_of(KB, S).chosen == phase_of(KB, S))
@@ -319,7 +413,12 @@ struct node
 #define other(KB, S) (record_of(KB, S).other)
 #define next(KB, S) (record_of(KB, S).next)
 
-#define safe_state(KB, S) { if(!is_stated(KB, S)) state(KB, S); }
+#define safe_state(KB, S) { if(!is_stated(KB, S)) state(KB, S, (KB)->soundness_check); }
+
+#define is_math_stated(KB, S) (record_of(KB, S).stated == phase_of(KB, S) || record_of(KB, S).stated == CONSTANT_PHASE)
+#define is_math_chosen(KB, S) (record_of(KB, S).chosen == phase_of(KB, S) || record_of(KB, S).chosen == CONSTANT_PHASE)
+
+#define value_of(KB, S) (record_of(KB, S).value)
 
 #define HASH_SIZE 8191    /* Prime */
 #define HASH_DEPTH 64
@@ -328,7 +427,7 @@ struct node
 typedef struct info
 {
   int nodes;
-  int num_nodes[NODE_CLASSES_NUMBER];
+  int num_nodes[NODE_LARGE_CLASSES];
   int edges;
   d_time horizon;
   unsigned long int count;
@@ -354,6 +453,7 @@ typedef struct k_base
   d_time curr_time;
   d_time max_time;
   d_time offset;
+  d_time anchor_time;
   bool far;
   bool bound;
   bool strictly_causal;
@@ -365,6 +465,8 @@ typedef struct k_base
   bool sturdy;
   bool busywait;
   bool io_busy;
+  sh_literal *lits;
+  int max_lit;
   FILE *logfp;
   m_time time_base;
   m_time step;
@@ -373,12 +475,11 @@ typedef struct k_base
 } k_base;
 
 #define BLANKS " \t\n\r"
-#define SEPARATORS BLANKS"(,;:.?!)@"
+#define SEPARATORS BLANKS"(,;:.?!_^)@"
 #define NAME_FMT "%"MAX_NAMEBUF_C"[^"SEPARATORS"]"
-#define LESS_SEPARATORS BLANKS";:.?!@"
-#define FUN_FMT "%"MAX_NAMEBUF_C"[^"LESS_SEPARATORS"]"
+#define FUN_FMT "%"MAX_NAMEBUF_C"[^"BLANKS"]"
 #define OP_FMT "%c"
-#define ARG_FMT TIME_FMT
+#define ARG_FMT REAL_FMT
 
 #define DEFAULT_NAME "default"
 #define STATE_SUFFIX "_ic"
@@ -397,7 +498,7 @@ arc arc_between(node *vp, node *wp, link_code lc);
 INLINE m_time get_time(void);
 unsigned long int hashnode(char *name);
 
-INLINE void state(k_base *kb, event s);
+INLINE void state(k_base *kb, event s, bool soundness_check);
 INLINE event choose(k_base *kb);
 INLINE void process(k_base *kb, event s);
 INLINE void scan_ios(k_base *kb, stream_class sclass);
@@ -408,27 +509,27 @@ bool output_f(k_base *kb, stream *ios);
 bool input_m(k_base *kb, stream *ios);
 bool output_m(k_base *kb, stream *ios);
 void trace(k_base *kb, event s);
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5,
-                    char *prefix, char *path, io_type_3 defaultval, io_type_4 omissions, int packed, int packedbit, stream *packed_ios);
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, io_type stype, bool sys5,
+                    char *prefix, char *path, char *netpath, io_type_3 defaultval, real defaultreal, io_type_4 omissions, int packed, int packedbit, stream *packed_ios);
 void close_stream(stream *ios, char *alpha);
 INLINE void add_stream(stream **handle, stream *ios);
 INLINE void remove_stream(stream **handle);
 
 node *alloc_node(char *name);
-void init_node(node *vp, node_class nclass, d_time k, int bs);
+void init_node(node *vp, node_class nclass, real val, int bs);
 void free_node(node *vp);
 node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
-                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sys5, bool sturdy, bool busywait,
-                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha);
+                  bool strictly_causal, bool soundness_check, bool echo_stdout, io_type rtype, bool sys5, bool sturdy, bool busywait,
+                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *netpath, char *alpha);
 void close_base(k_base *kb);
 int init_state(k_base *kb, char *state_name);
 
 void trap(void);
-info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait,
-         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha);
+void run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, io_type rtype, bool hard, bool sys5, bool sturdy, bool busywait,
+         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *netpath, char *alpha);
 
 /* End of protos */
 

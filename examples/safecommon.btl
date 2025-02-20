@@ -1,0 +1,20 @@
+
+define port = 7777, tau = 4, delta = 8, epsilon = 2;
+
+aux request_1(par), request_2(par), grant_1(par), grant_2(par), diff(par);
+
+input sync(par);
+output commit(par), err_mismatch(par), err_spurious(par), err_connection(par);
+
+init ~ sync(par) @ (- delta, 0);
+
+request_1(par) == sync(par) ! (- delta, 0];
+grant_1(par) == request_2(par);
+
+diff(par) == request_1(par) ? (- epsilon, 0] & ~ grant_2(par);
+err_connection(par) == diff(par) @ (- epsilon, 0];
+err_spurious(par) == ~ request_1(par) & sync(par) ? (- delta, 0];
+err_mismatch(par) == (grant_1(par) \ grant_2(par)) @ (- tau, 0];
+commit(par) == (grant_1(par) & grant_2(par)) @ (- tau, 0];
+
+

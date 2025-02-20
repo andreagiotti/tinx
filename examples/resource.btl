@@ -32,6 +32,7 @@ iter(j on numpos)
 }
 
 iter(i on numtasks)
+	{
 	iter(j on numpos)
 		{
                         init ~ up(i, j) @ 0, down(i, j) @ 0;
@@ -48,6 +49,7 @@ iter(i on numtasks)
 					roll(i, j) == (free(j) & queued(i, j + 1)) @ -1;
 				}
 		}
+	}
 
 iter(i on numtasks)
 {

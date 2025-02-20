@@ -1,0 +1,14 @@
+
+define num = 1000, beta = 0.4, gamma = 0.05, beta_on_num = beta / num, omega = 0.01;
+
+input V;
+aux W;
+output S, I, R;
+init S @ 0 = num, I @ 0 = 1, R @ 0 = 0;
+
+W = omega * (V + 1) / 2;
+S @ 1 = S * (1 - beta_on_num * I - W);
+I @ 1 = I * (1 - gamma + beta_on_num * S);
+R @ 1 = R + gamma * I + S * W;
+
+

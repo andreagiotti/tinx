@@ -1,0 +1,22 @@
+/*
+  Benchmark by Andrea Giotti, 2017-2022
+  Execute as: tinx -ciq -z 10000000 -r 5 loopmark
+*/
+
+define n = 3, b = - n * (n + 1) / 2;
+
+iter(k on n)
+	{
+	output out(k);
+	aux up(k);
+	}
+
+iter(k on n)
+	{
+	out(k) == since(up(k), ~ up((k + 1) % n));
+	up(k) == up((k + 1) % n) @ k + 1;
+	}
+
+init up(0) @ b, ~ up(0) @ [b + 1, -1];
+
+

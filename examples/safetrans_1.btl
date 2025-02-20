@@ -1,0 +1,15 @@
+
+define par = 1;
+
+include "safecommon.btl";
+
+output [remote, false, omit] `127.0.0.1`(port), `127.0.0.1`(port + 1);
+input [remote, false, omit] `127.0.0.1`(port + 2), `127.0.0.1`(port + 3);
+
+request_1(par) == `127.0.0.1`(port);
+grant_1(par) == `127.0.0.1`(port + 1);
+
+request_2(par) == `127.0.0.1`(port + 2);
+grant_2(par) == `127.0.0.1`(port + 3);
+
+

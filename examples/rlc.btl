@@ -1,0 +1,49 @@
+
+/* Voltage source */
+
+define tau = 0.001, a = 220, omega = 50;
+output Vin;
+aux T, Din;
+init T @ 0 = 0;
+
+T @ 1 = T + tau;
+
+Vin = a * sin(omega * T);
+Vin @ 1 = Vin + Din * tau;
+
+/* RLC */
+
+define	r(0) = 200, l(0) = 0.25, c(0) = 0.00004,
+	r(1) = 100, l(1) = 0.25, c(1) = 0.00001,
+	r(2) = 100, l(2) = 0.25, c(2) = 0.00001;
+
+iter(k on 3)
+	{
+	output Iout(k);
+	aux Dout(k), D2out(k), Ein(k);
+	init Iout(k) @ 0 = 0, Dout(k) @ 0 = 0;
+
+	Iout(k) @ 1 = Iout(k) + Dout(k) * tau;
+	Dout(k) @ 1 = Dout(k) + D2out(k) * tau;
+
+	l(k) * D2out(k) + r(k) * Dout(k) + Iout(k) / c(k) = Ein(k);
+	}
+
+Ein(0) = Din;
+Ein(1) = Din;
+
+/* Logic controller */
+
+define tol = 0.1, kappa = 0.01, alpha = 100, beta = 10;
+output ok;
+aux DeltaI, DeltaD, Eps;
+
+DeltaI = Iout(2) - Iout(0);
+DeltaD = Dout(2) - Dout(0);
+Eps = DeltaI ^ 2 + (kappa * DeltaD) ^ 2;
+
+ok == Eps < tol;
+ok --> Ein(2) = Din;
+~ ok --> Ein(2) = Din - (alpha * DeltaI + beta * DeltaD);
+
+

@@ -1,0 +1,107 @@
+
+/*
+	The tower of Hanoi described as a satisfiability problem of a set of constraints, with the traditional recursive resolution algorithm to act as a drive
+	
+	Written by Andrea Giotti, revision 2, June 2022
+	
+	The variable "state(i, j)" represents j-th level of i-th rod and contains the character corresponding to each disk ("A"-"Z") or underscore ("_") if empty
+*/
+
+define tot = 8;
+
+/* Constraints */
+
+iter(disk on tot)
+	{
+	aux move(disk);
+	
+	iter(base on 3)
+		iter(level on tot)
+			aux hanoi(disk, base, level);
+	}
+
+unique(move(disk), disk on tot);
+
+iter(base on 3)
+	{
+	iter(dest on 3)
+		aux hint(base, dest);
+
+	iter(level on tot)
+		exists(hanoi(disk, base, level), disk on tot) --> unique(hanoi(disk, base, level), disk on tot);	/* Redundant due to mutex character output */
+	}
+
+iter(disk on tot)
+	{
+	unique(hanoi(disk, pos / tot, pos % tot), pos on 3 * tot);
+	
+	~ move(disk) --> forall(forall(hanoi(disk, base, level) == hanoi(disk, base, level) @ 1, level on tot), base on 3);	
+
+	iter(base on 3)
+		{
+		iter(level on tot)
+			{
+			when(disk is 0)
+				{
+				when(level in 1 : tot - 1)
+					~ hanoi(0, base, level);
+				}
+			else
+				when(level in 1 : tot - 1)
+					hanoi(disk, base, level) --> exists(hanoi(k, base, level - 1), k on disk);
+
+			when(disk in 0 : tot - 2)
+				when(level in 0 : tot - 2)
+					hanoi(disk, base, level) & exists(hanoi(k, base, level + 1), k in disk + 1 : tot - 1) --> ~ move(disk);
+			}
+
+		iter(dest on 3)
+			move(disk) & hint(base, dest) --> exists(hanoi(disk, base, level), level on tot) & exists(hanoi(disk, dest, level) @ 1, level on tot);
+		}
+
+	init hanoi(disk, 0, disk) @ 0;
+	/* init hanoi(disk, 2, disk) @ 2 ^ tot - 1;  // Enable to check optimal moves given the final state */
+	}
+
+/* Output */
+
+iter(disk on 27)
+	iter(n on 8)
+		aux symbol(disk, n);
+
+code(symbol, "_ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+iter(base on 3)
+	iter(level on tot)
+		{
+		iter(n on 8)
+			output [packed] state(base, level, 0, n);
+
+		forall(~ hanoi(disk, base, level), disk on tot) --> forall(symbol(0, n) == state(base, level, 0, n), n on 8);
+		
+		iter(disk on tot)
+			hanoi(disk, base, level) --> forall(symbol(disk + 1, n) == state(base, level, 0, n), n on 8);
+		}
+
+/* Drive */
+
+iter(source on 3)
+	iter(inter on 3)
+		iter(dest on 3)
+			iter(order on tot)
+				aux drive(order, source, inter, dest);
+
+iter(source on 3)
+	iter(inter on 3)
+		iter(dest on 3)
+			{
+			drive(0, source, inter, dest) --> hint(source, dest);
+
+			iter(order on tot - 1)
+				drive(order + 1, source, inter, dest) ==
+					drive(order, source, dest, inter) @ - (2 ^ order) & hint(source, dest) & drive(order, inter, source, dest) @ 2 ^ order;
+			}
+
+init drive(tot - 1, 0, 1, 2) @ 2 ^ (tot - 1) - 1;
+
+

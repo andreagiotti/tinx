@@ -2,8 +2,11 @@ cd sources/
 make all
 mv tinx /usr/bin/
 mv tinx_mt /usr/bin/
+mv tinx_dt /usr/bin/
+mv tinx_zt /usr/bin/
 mv ting /usr/bin/
 mv gtinxsh /usr/bin/
+mv extserv /usr/bin/
 cd ../desktop/
 cp tinx.desktop /usr/share/applications/
 cp tinx.png /usr/share/icons/hicolor/512x512/apps/
@@ -11,5 +14,4 @@ gtk-update-icon-cache -f -t /usr/share/icons/hicolor/
 cd ../examples/
 make all
 cd ../
-cat documents/readme.txt
 

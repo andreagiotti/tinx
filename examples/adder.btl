@@ -1,0 +1,21 @@
+
+define bits = 8;
+
+aux c(0);
+
+~ c(0);
+
+iter(k on bits)
+	{
+	input [packed] x(k), y(k);
+	aux c(k + 1);
+	output [packed] z(k);
+
+	c(k + 1) == (x(k) & y(k)) | (y(k) & c(k)) | (c(k) & x(k));
+	z(k) == ((x(k) | y(k) | c(k)) & ~ c(k + 1)) | (x(k) & y(k) & c(k));
+	}
+
+output o;
+
+o == c(bits);
+

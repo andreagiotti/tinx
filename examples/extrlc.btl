@@ -1,0 +1,54 @@
+
+define	cmd_clock = 1,
+	cmd_random(0) = 2, cmd_random(1) = 4, cmd_random(2) = 8, cmd_random(3) = 16,
+	cmd_button(0) = 32, cmd_button(1) = 64, cmd_button(2) = 128, cmd_button(3) = 256,
+	cmd_slider(0) = 512, cmd_slider(1) = 1024, cmd_slider(2) = 2048, cmd_slider(3) = 4096,
+        cmd_message = 8192,
+	cmd_light(0) = 16384, cmd_light(1) = 32768, cmd_light(2) = 65536, cmd_light(3) = 131072,
+	cmd_display(0) = 262144, cmd_display(1) = 524288, cmd_display(2) = 1048576, cmd_display(3) = 2097152,
+        cmd_sleep = 4194304,
+	cmd_quit = 8388608,
+	cmd_exec = 16777216;
+
+define cmdbits = 32;
+
+iter(k on cmdbits)
+	output [packed] command(k);
+
+input Slider(0), Slider(1), Slider(2);
+output Display(0);
+
+code(command(#), cmd_slider(0) + cmd_slider(1) + cmd_slider(2) + cmd_display(0) + cmd_exec);
+
+/* Voltage source */
+
+define tau = 0.001, a = 220, f = 50;
+output Vin;
+aux T, Din;
+init T @ 0 = 0;
+
+T @ 1 = T + tau;
+
+Vin = a * sin(2 * Kpi * f * T);
+Vin @ 1 = Vin + Din * tau;
+
+/* RLC */
+
+define	l = 1, r = 100, c = 0.0001;
+
+output Iout;
+aux Dout, D2out, R, L, Cinv;
+init Iout @ 0 = 0, Dout @ 0 = 0;
+
+L = l * (Slider(0) + 0.001);
+R = r * (Slider(1) + 0.001);
+Cinv = (Slider(2) + 0.001) / c;
+
+Iout @ 1 = Iout + Dout * tau;
+Dout @ 1 = Dout + D2out * tau;
+
+L * D2out + R * Dout + Cinv * Iout = Din;
+
+Display(0) = Iout;
+
+

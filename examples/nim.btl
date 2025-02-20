@@ -1,0 +1,102 @@
+
+/*
+	The Nim game described as a satisfiability problem of a set of constraints, with the traditional strategy based on Nim-sum to act as a drive
+	
+	Written by Andrea Giotti, revision 1.1, December 2023
+	
+	The variable "nim_level(i)" represents the number of items on the i-th level and contains the corresponding character ("0"-"9")
+	The variables "choose_level(i)" and "choose_number(i)" contains the bitwise representation ("0"/"1") of the level from which to take the items and their number
+*/
+
+define levbits = 2, levels = 2 ^ levbits, numbits = levbits + 1, nums = 2 ^ numbits;
+
+iter(numbit on numbits)
+	input choose_number(numbit);
+
+iter(num on nums)
+	aux mv_number_user(num);
+
+iter(levbit on levbits)
+	input choose_level(levbit);
+
+iter(level on levels)
+	{
+	aux mv_level_user(level), check_system(level);
+
+	iter(numbit on numbits)
+		aux bin(level, numbit), nimsum(level, numbit), bintarget(level, numbit);
+
+	iter(num on nums)
+		aux number(level, num), target(level, num), remove_user(level, num), remove_system(level, num), request_remove(level, num), remove(level, num);
+
+	iter(bit on 8)
+		output [packed] nim_level(level, 0, bit);
+	}
+
+iter(pos on 16)
+	iter(bit on 8)
+		aux symbol(pos, bit);
+
+aux end, turn_system;
+output win_user, win_system;
+
+end == forall(number(level, 0), level on levels);
+
+end --> ~ turn_system @ 1;
+~ end --> (turn_system == turn_system @ 1) \ exists(exists(remove(level, num), num in 1 : nums - 1), level on levels);
+
+win_user == end & turn_system;
+win_system == end & ~ turn_system;
+
+combine(choose_level(levbit), mv_level_user(#), levbit on levbits);
+combine(choose_number(numbit), mv_number_user(#), numbit on numbits);
+
+iter(numbit on numbits)
+	nimsum(0, numbit) == bin(0, numbit);
+
+check_system(0);
+
+iter(level on levels)
+	{
+	when(level in 1 : _)
+		{
+		forall(nimsum(level, numbit) == bin(level, numbit) \ nimsum(level - 1, numbit), numbit on numbits);
+		check_system(level) \ exists(exists(remove_system(level_1, num), num on nums), level_1 on level);
+		}
+
+	unique(number(level, num), num on nums);
+	combine(bin(level, numbit), number(level, #), numbit on numbits);
+	combine(bintarget(level, numbit), target(level, #), numbit on numbits);
+
+	iter(numbit on numbits)
+		bintarget(level, numbit) == bin(level, numbit) \ nimsum(levels - 1, numbit);
+
+	~ remove_system(level, 0);
+	remove_system(level, 1) == check_system(level) & exists(number(level, k) & (target(level, k) | target(level, k - 1)), k in 1 : nums - 1);
+
+	iter(num on nums)
+		{
+		when(num in 2 : _)
+			remove_system(level, num) == check_system(level) & exists(number(level, k) & target(level, k - num), k in num : nums - 1);
+
+		remove_user(level, num) == mv_level_user(level) & mv_number_user(num);
+
+		request_remove(level, num) == (remove_user(level, num) & ~ turn_system) | (remove_system(level, num) & turn_system);
+
+		number(level, num) --> forall(symbol(num, bit) == nim_level(level, 0, bit), bit on 8);
+		}
+
+	remove(level, 0) == request_remove(level, 0);
+	forall(remove(level, n) == request_remove(level, n) & forall(~ number(level, k), k on n), n in 1 : nums - 1);
+
+	~ end --> forall(forall(remove(level, num) & number(level, k) --> number(level, k - num) @ 1, k in num : nums - 1), num on nums);
+	~ end --> (forall(~ remove(level, num), num on nums) --> forall(number(level, num) --> number(level, num) @ 1, num on nums));
+
+	end --> number(level, 2 * level + 1) @ 1;
+	}
+
+code(symbol(##, #), "0123456789ABCDEF");
+
+init end @ -1;
+
+

@@ -1,7 +1,7 @@
 /*
   TINX - Temporal Inference Network eXecutor
   Design & coding by Andrea Giotti, 1998-1999
-  Revised 2016-2019
+  Revised 2016-2021
 */
 
 #define NDEBUG
@@ -11,13 +11,15 @@
 
 #include "tinx_mt.h"
 
-#define VER "8.0.3 MT (multiple cores)"
+#define VER "9.1.3 MT (multiple cores)"
 
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
-const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
+const char class_symbol[NODE_CLASSES_NUMBER + 1] = CLASS_SYMBOLS;
 
+volatile sig_atomic_t rst = FALSE;
 volatile sig_atomic_t irq = FALSE;
+volatile sig_atomic_t frz = FALSE;
 
 /******** Tools ********/
 
@@ -108,8 +110,12 @@ INLINE void state(k_base *kb, event s)
 
   if(kb->soundness_check && is_stated(kb, ev_neg(s)))
     {
-      fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT": Soundness violation\n",
-              arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t);
+      if(s.e.vp->debug)
+        fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT": Soundness violation%s%s\n",
+                arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t, s.e.lc? ": ~ " : ": ", s.e.vp->debug);
+      else
+        fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT": Soundness violation\n",
+                arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t);
 
       irq = TRUE;
       return;
@@ -216,7 +222,12 @@ INLINE event choose(k_base *kb, int tid)
               pvp->focus = r;
             }
           else
-            pvp->focus = next(kb, s);
+            {
+              pvp->focus = next(kb, s);
+
+              if(dt <= 0 && kb->anchor_time < pvp->focus.t)
+                kb->deny = FALSE;
+            }
 
           if(pvp->last_input.t <= s.t)
             pvp->last_input = null_event;
@@ -236,6 +247,7 @@ INLINE event choose(k_base *kb, int tid)
  
           s = null_event;
           pvp->dstate = far;
+          kb->call = TRUE;
         }
     }
   else
@@ -253,29 +265,34 @@ INLINE event choose(k_base *kb, int tid)
 INLINE void process(k_base *kb, event s, int tid)
 {
   event r;
-  link_code lc1, lc2;
+  linkage *pin1, *pin2;
+  d_time phi, idx;
 
   assert(kb);
   assert(valid(s));
 
+  kb->perf.count++;
   switch(s.e.vp->nclass)
     {
     case gate:
 
-      lc1 = (s.e.lc + 1) % LINK_CODES_NUMBER;
-      lc2 = (s.e.lc + 2) % LINK_CODES_NUMBER;
+      pin1 = &s.e.vp->pin[(s.e.lc + 1) % LINK_CODES_NUMBER];
+      pin2 = &s.e.vp->pin[(s.e.lc + 2) % LINK_CODES_NUMBER];
 
-      if(s.e.vp->pin[lc1].history[index_of(kb, s)].chosen == phase_of(kb, s))
+      phi = phase_of(kb, s);
+      idx = index_of(kb, s);
+
+      if(pin1->history[idx].chosen == phi)
         {
-          r.e = s.e.vp->pin[lc2].e;
+          r.e = pin2->e;
           r.t = s.t;
 
           safe_state(kb, r);
         }
       else
-        if(s.e.vp->pin[lc2].history[index_of(kb, s)].chosen == phase_of(kb, s))
+        if(pin2->history[idx].chosen == phi)
           {
-            r.e = s.e.vp->pin[lc1].e;
+            r.e = pin1->e;
             r.t = s.t;
 
             safe_state(kb, r);
@@ -361,7 +378,7 @@ INLINE void scan_ios(k_base *kb, stream_class sclass)
     }
 }
 
-INLINE bool loop(k_base *kb, int tid)
+INLINE int loop(k_base *kb, int tid)
 {
   event s;
 
@@ -376,6 +393,12 @@ INLINE bool loop(k_base *kb, int tid)
     {
       process(kb, s, tid);
       kb->pv[tid].count++;
+
+      if(kb->meet)
+        {
+          kb->pv[tid].halts++;
+          join_barrier(kb, tid);
+        }
     }
   else
     {
@@ -386,46 +409,62 @@ INLINE bool loop(k_base *kb, int tid)
   return kb->exiting;
 }
 
-INLINE bool loop_io(k_base *kb)
+INLINE int loop_io(k_base *kb)
 {
   m_time delta_time;
 
   assert(kb);
 
-  if(kb->barrier_count == kb->num_threads)
-    broadcast_barrier(kb);
-
-  if(kb->curr_time - kb->anchor_time < kb->bsd4)
+  if(frz)
     {
-      scan_ios(kb, input_stream);
-      scan_ios(kb, output_stream);
-
-      if(!kb->io_stream[input_stream] && !kb->io_stream[output_stream])
+      kb->meet = TRUE;
+      usleep(1000);
+      kb->time_base = get_time() - (kb->curr_time - kb->offset) * kb->step;
+    }
+  else
+    {
+      if(kb->curr_time - kb->anchor_time < kb->bsd4)
         {
-          if(kb->quiet && kb->last_empty == kb->curr_time)
-            kb->exiting = kb->num_threads;
-          else
-            {
-              delta_time = get_time() - kb->time_base - (kb->curr_time - kb->offset + 1) * kb->step;
+          scan_ios(kb, input_stream);
+          scan_ios(kb, output_stream);
 
-              if(delta_time >= 0)
+          if(!kb->io_stream[input_stream])
+            {          
+              if(!kb->io_stream[output_stream] && !kb->meet)
                 {
-                  kb->io_stream[input_stream] = kb->io_stream_2[input_stream];
-                  kb->io_stream_2[input_stream] = NULL;
-
-                  kb->io_stream[output_stream] = kb->io_stream_2[output_stream];
-                  kb->io_stream_2[output_stream] = NULL;
-
-                  kb->curr_time++;
-
-                  if(kb->max_time && kb->curr_time >= kb->max_time)
+                  if(kb->quiet && kb->last_empty == kb->curr_time)
                     kb->exiting = kb->num_threads;
+                  else
+                    {
+                      delta_time = get_time() - kb->time_base - (kb->curr_time - kb->offset + 1) * kb->step;
+
+                      if(delta_time >= 0)
+                        {
+                           kb->io_stream[input_stream] = kb->io_stream_2[input_stream];
+                           kb->io_stream_2[input_stream] = NULL;
+
+                           kb->io_stream[output_stream] = kb->io_stream_2[output_stream];
+                           kb->io_stream_2[output_stream] = NULL;
+
+                           kb->curr_time++;
+
+                           if(kb->max_time && kb->curr_time >= kb->max_time)
+                             kb->exiting = kb->num_threads;
+                        }
+                      else
+                        if(!kb->busywait && kb->last_far == kb->curr_time)
+                          usleep(1000000 * (- delta_time));
+                    }
                 }
               else
-                if(!kb->busywait && kb->last_far == kb->curr_time)
-                  usleep(1000000 * (- delta_time));
+                broadcast_barrier(kb);
             }
         }
+      else
+        broadcast_barrier(kb);
+
+      if(kb->call && !kb->deny && kb->anchor_time < kb->curr_time)
+        kb->meet = TRUE;
     }
 
   if(irq)
@@ -473,39 +512,75 @@ INLINE void leave_barrier(k_base *kb, int tid)
 INLINE void broadcast_barrier(k_base *kb)
 {
   int tid;
-  bool all_empty;
+  bool all_empty, all_far;
+  d_time new_anchor, min_sigma;
 
   lock_barrier(kb);
 
-  if(kb->anchor_time < kb->curr_time)
+  if(kb->barrier_count == kb->num_threads)
     {
-      kb->anchor_time = min(kb->anchor_time + kb->bsd4 + 1, kb->curr_time);
+      kb->call = FALSE;
+      kb->meet = FALSE;
+
+      min_sigma = NULL_TIME;
+      for(tid = 0; tid < kb->num_threads; tid++)
+        if(min_sigma > kb->pv[tid].focus.t)
+          min_sigma = kb->pv[tid].focus.t;
+
+      if(min_sigma <= kb->curr_time)
+        {
+          new_anchor = min_sigma;
+          kb->deny = TRUE;
+        }
+      else
+        {
+          new_anchor = kb->curr_time;
+          kb->deny = FALSE;
+        }
+
+      if(kb->anchor_time < new_anchor)
+        kb->anchor_time = new_anchor;
+
       all_empty = TRUE;
+      all_far = TRUE;
 
       for(tid = 0; tid < kb->num_threads; tid++)
-        if(kb->pv[tid].dstate == far)
+        if(!valid(kb->pv[tid].focus))
+          kb->pv[tid].dstate = empty;
+        else
           {
             all_empty = FALSE;
-            kb->pv[tid].dstate = normal;
 
-            if(kb->pv[tid].done)
+            if(kb->pv[tid].focus.t - kb->anchor_time <= kb->bsd4)
               {
-                kb->barrier_count--;
-
-                kb->pv[tid].done = FALSE;
-                signal_deadline(kb, tid);
+                all_far = FALSE;
+                kb->pv[tid].dstate = normal;
+              }
+            else
+              {
+                kb->pv[tid].dstate = far;
+                kb->call = TRUE;
               }
           }
 
-      if(all_empty && !kb->io_stream[input_stream])
+      if(!kb->io_stream[input_stream])
         {
-          kb->last_empty = kb->curr_time;
-          kb->last_far = kb->curr_time;
+          if(all_empty)
+            kb->last_empty = kb->curr_time;
+
+          if(all_far)
+            kb->last_far = kb->curr_time;
         }
+
+      for(tid = 0; tid < kb->num_threads; tid++)
+        if(kb->pv[tid].dstate == normal && kb->pv[tid].done)
+          {
+            kb->barrier_count--;
+
+            kb->pv[tid].done = FALSE;
+            signal_deadline(kb, tid);
+          }
     }
-  else
-    if(!kb->io_stream[input_stream])
-      kb->last_far = kb->curr_time;
 
   unlock_barrier(kb);
 }
@@ -519,6 +594,7 @@ bool input_f(k_base *kb, stream *ios)
 
   s.t = kb->curr_time;
 
+  c = EOF;
   if(get_file(ios->fp, &c) && file_error(ios->fp))
     {
       perror(ios->file_name);
@@ -594,14 +670,14 @@ bool input_packed_f(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   s.t = kb->curr_time;
 
   if(pack->packedcount == pack->packedtot)
     {
-      if(mget_file(ios->fp, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))) && file_error(ios->fp))
+      if(mget_file(ios->fp, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3) && file_error(ios->fp))
         {
           perror(ios->file_name);
           irq = TRUE;
@@ -649,6 +725,152 @@ bool input_packed_f(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool input_s(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+
+  s.t = kb->curr_time;
+
+  c = EOF;
+  if(get_socket(ios->sock, &c))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->socket_name);
+          irq = TRUE;
+          return FALSE;
+        }
+
+      ios->errors++;
+    }
+  else
+    ios->errors = 0;
+
+  switch(strchr(kb->alpha, c) - kb->alpha)
+    {
+    case eof_symbol:
+      if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    break;
+
+    case unknown_symbol:
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    break;
+
+    case false_symbol:
+      s.e = ios->ne;
+    break;
+
+    case true_symbol:
+      s.e = ios->e;
+    break;
+
+    case end_symbol:
+      ios->open = FALSE;
+      return FALSE;
+    break;
+
+    case term_symbol:
+      irq = TRUE;
+      return FALSE;
+    break;
+
+    default:
+      fprintf(stderr, "%s, %c (dec %d): Invalid character in stream\n",
+              ios->socket_name, c, c);
+      irq = TRUE;
+      return FALSE;
+    }
+
+  safe_state(kb, s);
+
+  return TRUE;
+}
+
+bool input_packed_s(k_base *kb, stream *ios)
+{
+  event s;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
+  else
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
+
+  s.t = kb->curr_time;
+
+  if(pack->packedcount == pack->packedtot)
+    {
+      if(mget_socket(ios->sock, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
+        {
+          if(errno != EAGAIN)
+            {
+              perror(ios->socket_name);
+              irq = TRUE;
+              return FALSE;
+            }
+
+          ios->errors++;
+
+          if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+            return FALSE;
+
+          pack->gen = FALSE;
+        }
+      else
+        {
+          ios->errors = 0;
+          pack->gen = TRUE;
+        }
+    }
+
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    pack->packedcount = pack->packedtot;
+
+  if(pack->gen)
+    {
+      if(!(pack->packedchar[h] & (1 << k)))
+        s.e = ios->ne;
+      else
+        s.e = ios->e;
+    }
+  else
+    {
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    }
+
+  safe_state(kb, s);
+
+  return TRUE;
+}
+
 bool input_m_posix(k_base *kb, stream *ios)
 {
   event s;
@@ -656,6 +878,7 @@ bool input_m_posix(k_base *kb, stream *ios)
 
   s.t = kb->curr_time;
 
+  c = EOF;
   if(read_message_posix(ios->chan, &c))
     {
       if(errno != EAGAIN)
@@ -736,14 +959,14 @@ bool input_packed_m_posix(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   s.t = kb->curr_time;
 
   if(pack->packedcount == pack->packedtot)
     {
-      if(mread_message_posix(ios->chan, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+      if(mread_message_posix(ios->chan, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
         {
           if(errno != EAGAIN)
             {
@@ -801,6 +1024,7 @@ bool input_m_sys5(k_base *kb, stream *ios)
 
   s.t = kb->curr_time;
 
+  c = EOF;
   if(read_message_sys5(ios->chan5, &c))
     {
       if(errno != ENOMSG)
@@ -881,14 +1105,14 @@ bool input_packed_m_sys5(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   s.t = kb->curr_time;
 
   if(pack->packedcount == pack->packedtot)
     {
-      if(mread_message_sys5(ios->chan5, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+      if(mread_message_sys5(ios->chan5, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
         {
           if(errno != ENOMSG)
             {
@@ -1031,8 +1255,8 @@ bool output_packed_f(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   c = pack->packedchar[h];
 
@@ -1112,7 +1336,7 @@ bool output_packed_f(k_base *kb, stream *ios)
     {
       if(pack->gen)
         {
-          if(mput_file(ios->fp, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+          if(mput_file(ios->fp, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
             {
               perror(ios->file_name);
               irq = TRUE;
@@ -1122,6 +1346,236 @@ bool output_packed_f(k_base *kb, stream *ios)
           if(sync_file(ios->fp))
             {
               perror(ios->file_name);
+              irq = TRUE;
+              return FALSE;
+            }
+
+          pack->gen = FALSE;
+        }
+
+      pack->packedcount = pack->packedtot;
+    }
+
+  return TRUE;
+}
+
+bool output_s(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+
+  if(!ios->e.vp)
+    {
+      if(ios->skip[ios->defaultval])
+        return TRUE;
+
+      c = kb->alpha[ios->defaultval];
+    }
+  else
+    {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_stated(kb, s))
+        {
+          if(ios->skip[io_false])
+            return TRUE;
+
+          ios->fails = 0;
+          c = kb->alpha[io_false];
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              if(ios->skip[io_true])
+                return TRUE;
+
+              ios->fails = 0;
+              c = kb->alpha[io_true];
+            }
+          else
+            {
+              if(kb->last_far != kb->curr_time)
+                return FALSE;
+              else
+                {
+                  if(ios->skip[io_unknown])
+                    return TRUE;
+
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  if(ios->skip[ios->defaultval])
+                    c = kb->alpha[io_unknown];
+                  else
+                    c = kb->alpha[ios->defaultval];
+                }
+            }
+        }
+    }
+
+  if(put_socket(ios->sock, &c))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->socket_name);
+          irq = TRUE;
+          return FALSE;
+        }
+
+      ios->errors++;
+
+      if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+        {
+          ios->open = FALSE;
+
+          fprintf(stderr, "%s: Remote channel error bound exceeded\n", ios->socket_name);
+        }
+
+      return FALSE;
+    }
+  else
+    ios->errors = 0;
+
+  if(sync_socket(ios->sock))
+    {
+      perror(ios->socket_name);
+      irq = TRUE;
+      return FALSE;
+    }
+
+  return TRUE;
+}
+
+bool output_packed_s(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
+  else
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
+
+  c = pack->packedchar[h];
+
+  if(!ios->e.vp)
+    {
+      if(ios->defaultval == io_false)
+        c &= ~ (1 << k);
+       else
+         if(ios->defaultval == io_true)
+           c |= (1 << k);
+
+      if(!ios->skip[ios->defaultval])
+        pack->gen = TRUE;
+    }
+  else
+   {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_stated(kb, s))
+        {
+          c &= ~ (1 << k);
+
+          if(!ios->skip[io_false])
+            {
+              ios->fails = 0;
+              pack->gen = TRUE;
+            }
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              c |= (1 << k);
+
+              if(!ios->skip[io_true])
+                {
+                  ios->fails = 0;
+                  pack->gen = TRUE;
+                }
+            }
+          else
+            {
+              if(kb->last_far != kb->curr_time)
+                return FALSE;
+              else
+                {
+                  if(ios->defaultval == io_false)
+                    c &= ~ (1 << k);
+                  else
+                    if(ios->defaultval == io_true)
+                      c |= (1 << k);
+
+                  if(!ios->skip[io_unknown])
+                    {
+                      ios->fails++;
+
+                      if(!kb->max_time && ios->fails > kb->bsd4)
+                        {
+                          ios->open = FALSE;
+                          return FALSE;
+                        }
+
+                      pack->gen = TRUE;
+                    }
+                }
+            }
+        }
+    }
+
+  pack->packedchar[h] = c;
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    {
+      if(pack->gen)
+        {
+          if(mput_socket(ios->sock, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
+            {
+              if(errno != EAGAIN)
+                {
+                  perror(ios->socket_name);
+                  irq = TRUE;
+                  return FALSE;
+                }
+
+              ios->errors++;
+
+              if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+                {
+                  ios->open = FALSE;
+
+                  fprintf(stderr, "%s: Remote channel error bound exceeded\n", ios->socket_name);
+                }
+
+              (pack->packedcount)++;
+
+              return FALSE;
+            }
+          else
+            ios->errors = 0;
+
+          if(sync_socket(ios->sock))
+            {
+              perror(ios->socket_name);
               irq = TRUE;
               return FALSE;
             }
@@ -1236,8 +1690,8 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   c = pack->packedchar[h];
 
@@ -1317,7 +1771,7 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
     {
       if(pack->gen)
         {
-          if(msend_message_posix(ios->chan, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+          if(msend_message_posix(ios->chan, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
             {
               if(errno != EAGAIN)
                 {
@@ -1452,8 +1906,8 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   c = pack->packedchar[h];
 
@@ -1533,7 +1987,7 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
     {
       if(pack->gen)
         {
-          if(msend_message_sys5(ios->chan5, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+          if(msend_message_sys5(ios->chan5, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
             {
               if(errno != EAGAIN)
                 {
@@ -1644,7 +2098,7 @@ void trace(k_base *kb, event s, int tid)
       }
 }
 
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5, char *prefix, char *path, io_type_3 defaultval, io_type_4 omissions,
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, io_type stype, bool sys5, char *prefix, char *path, char *netpath, io_type_3 defaultval, io_type_4 omissions,
                     int packed, int packedbit, stream *packed_ios)
 {
   stream *ios;
@@ -1667,6 +2121,12 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 
       ios->e = e;
       ios->ne = pin->e;
+
+      if(sclass == input_stream)
+        {
+          pin->shared = TRUE;
+          link_of(pin->e).shared = TRUE;
+        }
     }
   else
     {
@@ -1674,8 +2134,10 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
       ios->ne = e;
     }
 
-  if(file_io)
+  switch(stype)
     {
+      case io_file:
+
       if(*path)
         {
           strcpy(ios->file_name, path);
@@ -1703,7 +2165,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                 ios->fp = open_input_file(ios->file_name);
               else
                 {
-                  if(packed_ios->file_io)
+                  if(packed_ios->stype == io_file)
                     ios->fp = packed_ios->fp;
                   else
                     {
@@ -1733,7 +2195,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                 }
               else
                 {
-                  if(packed_ios->file_io)
+                  if(packed_ios->stype == io_file)
                     ios->fp = packed_ios->fp;
                   else
                     {
@@ -1749,9 +2211,92 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
           perror(ios->file_name);
           exit(EXIT_FAILURE);
         }
-    }
-  else
-    {
+    
+      break;
+
+      case io_socket:
+
+      if(*netpath)
+        {
+          strcpy(ios->socket_name, netpath);
+          strcat(ios->socket_name, ".");
+        }
+      else
+        *(ios->socket_name) = '\0';
+
+      strcat(ios->socket_name, name);
+
+      if(sclass == input_stream)
+        {
+          if(!packed)
+            {
+              ios->io_perform = &input_s;
+
+              printf("Opening remote channnel to %s for input\n", ios->socket_name);
+              ios->sock = open_input_socket(ios->socket_name);
+            }
+          else
+            {
+              ios->io_perform = &input_packed_s;
+
+              if(!packed_ios)
+                {
+                  printf("Opening remote channnel to %s for input\n", ios->socket_name);
+                  ios->sock = open_input_socket(ios->socket_name);
+                }
+              else
+                {
+                  if(packed_ios->stype == io_socket)
+                    ios->sock = packed_ios->sock;
+                  else
+                    {
+                      fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                      exit(EXIT_FAILURE);
+                    }
+                }
+            }
+        }
+      else
+        {
+          if(!packed)
+            {
+              ios->io_perform = &output_s;
+
+              printf("Opening remote channnel to %s for output\n", ios->socket_name);
+              ios->sock = open_output_socket(ios->socket_name);
+            }
+          else
+            {
+              ios->io_perform = &output_packed_s;
+
+              if(!packed_ios)
+                {
+                  printf("Opening remote channnel to %s for output\n", ios->socket_name);
+                  ios->sock = open_output_socket(ios->socket_name);
+                }
+              else
+                {
+                  if(packed_ios->stype == io_socket)
+                    ios->sock = packed_ios->sock;
+                  else
+                    {
+                      fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                      exit(EXIT_FAILURE);
+                    }
+                }
+            }
+        }
+
+      if(!is_socket_open(ios->sock))
+        {
+          perror(ios->socket_name);
+          exit(EXIT_FAILURE);
+        }
+
+      break;
+
+      case io_ipc:
+
       strcpy(ios->chan_name, prefix);
       strcat(ios->chan_name, name);
 
@@ -1773,7 +2318,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                     ios->chan = add_queue_posix(ios->chan_name, sclass);
                   else
                     {
-                      if(!packed_ios->file_io)
+                      if(packed_ios->stype == io_ipc)
                         ios->chan = packed_ios->chan;
                       else
                         {
@@ -1799,7 +2344,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                     ios->chan = add_queue_posix(ios->chan_name, sclass);
                   else
                     {
-                      if(!packed_ios->file_io)
+                      if(packed_ios->stype == io_ipc)
                         ios->chan = packed_ios->chan;
                       else
                         {
@@ -1834,7 +2379,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                     ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
                   else
                     {
-                      if(!packed_ios->file_io)
+                      if(packed_ios->stype == io_ipc)
                         ios->chan5 = packed_ios->chan5;
                       else
                         {
@@ -1860,7 +2405,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                     ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
                   else
                     {
-                      if(!packed_ios->file_io)
+                      if(packed_ios->stype == io_ipc)
                         ios->chan5 = packed_ios->chan5;
                       else
                         {
@@ -1877,14 +2422,18 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
               exit(EXIT_FAILURE);
             }
         }
+          
+      break;
+      
+      default:
+      break;
     }
-
-  ios->defaultval = defaultval;
 
   for(i = 0; i < IO_TYPES_3_NUMBER; i++)
     ios->skip[i] = (omissions >= io_filter && i == defaultval) || (omissions == io_omit && i == io_unknown);
 
-  ios->file_io = file_io;
+  ios->defaultval = defaultval;
+  ios->stype = stype;
   ios->sys5 = sys5;
   ios->pack.packed = packed;
 
@@ -1901,22 +2450,26 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   return ios;
 }
 
-void close_stream(stream *ios, char *alpha)
+bool close_stream(stream *ios, char *alpha)
 {
-  if(ios->file_io)
+  switch(ios->stype)
     {
+      case io_file:
+
       if(!ios->pack.packed)
         {
           if(ios->sclass == output_stream && put_file(ios->fp, &alpha[end_symbol]))
             {
               perror(ios->file_name);
-              exit(EXIT_FAILURE);
+              irq = TRUE;
+              return FALSE;
             }
 
           if(close_file(ios->fp))
             {
               perror(ios->file_name);
-              exit(EXIT_FAILURE);
+              irq = TRUE;
+              return FALSE;
             }
         }
       else
@@ -1928,72 +2481,124 @@ void close_stream(stream *ios, char *alpha)
             if(close_file(ios->fp))
               {
                 perror(ios->file_name);
-                exit(EXIT_FAILURE);
+                irq = TRUE;
+                return FALSE;
               }
           }
         else
           ios->packed_ios->pack.packedtot--;
-    }
-  else
-    if(!ios->sys5)
-      {
-        if(!ios->pack.packed)
+
+      break;
+
+      case io_socket:
+
+      if(!ios->pack.packed)
+        {
+          if(ios->sclass == output_stream && put_socket(ios->sock, &alpha[end_symbol]))
+            {
+              perror(ios->socket_name);
+              irq = TRUE;
+              return FALSE;
+            }
+
+          if(close_socket(ios->sock))
+            {
+              perror(ios->socket_name);
+              irq = TRUE;
+              return FALSE;
+            }
+        }
+      else
+        if(!ios->packed_ios)
           {
-            if(ios->sclass == output_stream)
-              send_message_posix(ios->chan, &alpha[end_symbol]);
+            ios->pack.packedcount = 0;
+            ios->pack.packedtot--;
 
-            if(commit_queue_posix(ios->chan))
+            if(close_socket(ios->sock))
               {
-                perror(ios->chan_name);
-                exit(EXIT_FAILURE);
-              }
-
-            if(remove_queue_posix(ios->chan_name))
-              {
-                perror(ios->chan_name);
-                exit(EXIT_FAILURE);
+                perror(ios->socket_name);
+                irq = TRUE;
+                return FALSE;
               }
           }
         else
-          if(!ios->packed_ios)
+          ios->packed_ios->pack.packedtot--;
+
+      break;
+
+      case io_ipc:
+
+      if(!ios->sys5)
+        {
+          if(!ios->pack.packed)
             {
-              ios->pack.packedcount = 0;
-              ios->pack.packedtot--;
+              if(ios->sclass == output_stream)
+                send_message_posix(ios->chan, &alpha[end_symbol]);
 
               if(commit_queue_posix(ios->chan))
                 {
                   perror(ios->chan_name);
-                  exit(EXIT_FAILURE);
+                  irq = TRUE;
+                  return FALSE;
                 }
 
               if(remove_queue_posix(ios->chan_name))
                 {
                   perror(ios->chan_name);
-                  exit(EXIT_FAILURE);
+                  irq = TRUE;
+                  return FALSE;
                 }
             }
           else
-            ios->packed_ios->pack.packedtot--;
-      }
-    else
-      {
-        if(!ios->pack.packed && ios->sclass == output_stream)
-          send_message_sys5(ios->chan5, &alpha[end_symbol]);
-        else
-          if(!ios->packed_ios)
-            {
-              ios->pack.packedcount = 0;
-              ios->pack.packedtot--;
-            }
+            if(!ios->packed_ios)
+              {
+                ios->pack.packedcount = 0;
+                ios->pack.packedtot--;
+
+                if(commit_queue_posix(ios->chan))
+                  {
+                    perror(ios->chan_name);
+                    irq = TRUE;
+                    return FALSE;
+                  }
+
+                if(remove_queue_posix(ios->chan_name))
+                  {
+                    perror(ios->chan_name);
+                    irq = TRUE;
+                    return FALSE;
+                  }
+              }
+            else
+              ios->packed_ios->pack.packedtot--;
+        }
+      else
+        {
+          if(!ios->pack.packed && ios->sclass == output_stream)
+            send_message_sys5(ios->chan5, &alpha[end_symbol]);
           else
-            ios->packed_ios->pack.packedtot--;
-      }
+            if(!ios->packed_ios)
+              {
+                ios->pack.packedcount = 0;
+                ios->pack.packedtot--;
+              }
+            else
+              ios->packed_ios->pack.packedtot--;
+        }
+        
+      break;
+      
+      default:
+      break;
+    }
 
   if(ios->packed_ios && !ios->packed_ios->pack.packedtot)
     free(ios->packed_ios);
 
   if(!ios->pack.packed || ios->packed_ios || !ios->pack.packedtot)
     free(ios);
+
+  return TRUE;
 }
 
 INLINE void add_stream(stream **handle, stream *ios)
@@ -2244,7 +2849,7 @@ void thread_network(node *network)
     }
 }
 
-void assign_threads(k_base *kb)
+void assign_threads(k_base *kb, node **seednode, int numseednode)
 {
   node *(*fifo)[MAX_THREADS][FIFO_SIZE];
   int fifo_start[MAX_THREADS];
@@ -2268,35 +2873,29 @@ void assign_threads(k_base *kb)
       fifo_end[tid] = 0;
     }
 
+  for(n = 0; n < numseednode; n++)
+    {
+      tid = kb->num_threads * n / numseednode;
+
+      (*fifo)[tid][fifo_end[tid]] = seednode[n];
+      inc_idx(fifo_end[tid]);
+
+      if(fifo_start[tid] == fifo_end[tid])
+        {
+          fprintf(stderr, "Breadth-first queue full\n");
+          exit(EXIT_FAILURE);
+        }
+    }
+
   nodes = kb->perf.nodes;
+  to_go = 0;
+
+  for(tid = 0; tid < kb->num_threads; tid++)
+    if(fifo_end[tid])
+      to_go++;
 
   while(nodes)
     {
-      n = 0;
-      to_go = 0;
-      tid_2 = NO_THREAD;
-
-      for(vp = kb->network; vp; vp = vp->vp)
-        {
-          tid = kb->num_threads * n / kb->perf.nodes;
-          n++;
-
-          if(tid_2 != tid && vp->def_proc == NO_THREAD)
-            {
-              (*fifo)[tid][fifo_end[tid]] = vp;
-              inc_idx(fifo_end[tid]);
-
-              if(fifo_start[tid] == fifo_end[tid])
-                {
-                  fprintf(stderr, "Breadth-first queue full\n");
-                  exit(EXIT_FAILURE);
-                }
-
-              to_go++;
-              tid_2 = tid;
-            }
-        }
-
       tid = 0;
 
       while(to_go)
@@ -2348,6 +2947,31 @@ void assign_threads(k_base *kb)
 
           tid = (tid + 1) % kb->num_threads;
         }
+
+      n = 0;
+      to_go = 0;
+      tid_2 = NO_THREAD;
+
+      for(vp = kb->network; vp; vp = vp->vp)
+        {
+          tid = kb->num_threads * n / kb->perf.nodes;
+          n++;
+
+          if(tid_2 != tid && vp->def_proc == NO_THREAD)
+            {
+              (*fifo)[tid][fifo_end[tid]] = vp;
+              inc_idx(fifo_end[tid]);
+
+              if(fifo_start[tid] == fifo_end[tid])
+                {
+                  fprintf(stderr, "Breadth-first queue full\n");
+                  exit(EXIT_FAILURE);
+                }
+
+              to_go++;
+              tid_2 = tid;
+            }
+        }
     }
 
   free(fifo);
@@ -2367,8 +2991,8 @@ void assign_threads(k_base *kb)
   kb->perf.shared /= 2;
 }
 
-k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sys5, bool sturdy,
-                  bool busywait, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads)
+k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, io_type rtype, bool sys5, bool sturdy,
+                  bool busywait, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *netpath, char *alpha, int num_threads)
 {
   k_base *kb;
   FILE *fp;
@@ -2387,9 +3011,12 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   int packed, packedbit;
   io_type_3 defaultval;
   io_type_4 omissions;
+  bool seed;
   arc e;
+  node *seednode[FIFO_SIZE];
+  int numseednode;
   int bufsiz;
-  link_code lc;
+  link_code lc, lcup, lcleft, lcright;
   int i, tid;
 
   kb = malloc(sizeof(k_base));
@@ -2406,7 +3033,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       kb->pv[tid].focus = null_event;
       kb->pv[tid].last_input = null_event;
       kb->pv[tid].delta_len = 0;
-      kb->pv[tid].dstate = normal;
+      kb->pv[tid].dstate = empty;
       kb->pv[tid].bound = FALSE;
       kb->pv[tid].io_busy = FALSE;
       kb->pv[tid].count = 0;
@@ -2439,13 +3066,15 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       exit(EXIT_FAILURE);
     }
 
-  for(nclass = 0; nclass < NODE_CLASSES_NUMBER; nclass++)
+  for(nclass = 0; nclass < NODE_LARGE_CLASSES; nclass++)
     kb->perf.num_nodes[nclass] = 0;
 
   *left = *right = '\0';
-  while(fscanf(fp, " "NAME_FMT" : "NAME_FMT" ; "NAME_FMT" , "
-                   NAME_FMT" , "NAME_FMT" ",
-               name, type, up, left, right) >= 3)
+  lcup = lcleft = lcright = no_link;
+
+  while(fscanf(fp, " "NAME_FMT" : "NAME_FMT" ; "NAME_FMT" # %d , "
+                   NAME_FMT" # %d , "NAME_FMT" # %d",
+               name, type, up, &lcup, left, &lcleft, right, &lcright) >= 3)
     {
       if(strlen(name) >= MAX_NAMELEN)
         {
@@ -2485,9 +3114,16 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       vp->pin[left_son].e.vp = name2node(kb, left, TRUE);
       vp->pin[right_son].e.vp = name2node(kb, right, TRUE);
 
+      vp->pin[parent].e.lc = lcup;
+      vp->pin[left_son].e.lc = lcleft;
+
+      if(nclass != delay)
+        vp->pin[right_son].e.lc = lcright;
+
       kb->perf.num_nodes[nclass]++;
 
       *left = *right = '\0';
+      lcup = lcleft = lcright = no_link;
     }
 
   if(ferror(fp))
@@ -2521,6 +3157,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   omissions = io_raw;
   k = 0;
 
+  numseednode = 0;
+
   while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) # %d / %u , %u , %u , %u, %u @ "TIME_FMT" ",
                &c, name, name_v, name_w, &lc, &stype, &packed, &packedbit, &defaultval, &omissions, &k) >= 4)
     {
@@ -2543,6 +3181,28 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           fprintf(stderr, "%s, %d: too many characters for I/O buffer size\n",
                   file_name, packedbit);
           exit(EXIT_FAILURE);
+        }
+
+      switch(c)
+        {
+          case '!':
+            sclass = input_stream;
+            seed = TRUE;
+          break;
+
+          case '?':
+            sclass = output_stream;
+            seed = TRUE;
+          break;
+
+          case '.':
+            sclass = output_stream;
+            seed = FALSE;
+          break;
+
+          default:
+            fprintf(stderr, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
+            exit(EXIT_FAILURE);
         }
 
       if(!strcmp(name_v, "*") && !strcmp(name_w, "*"))
@@ -2569,6 +3229,17 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
                       file_name, name_v, name_w, lc);
               exit(EXIT_FAILURE);
             }
+
+          if(seed)
+            {
+              seednode[numseednode++] = vp;
+              if(numseednode == FIFO_SIZE)
+                fprintf(stderr, "Breadth-first queue full\n");
+
+              seednode[numseednode++] = wp;
+              if(numseednode == FIFO_SIZE)
+                fprintf(stderr, "Breadth-first queue full\n");
+            }
         }
 
       if(offset == NULL_TIME)
@@ -2593,25 +3264,10 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       if(offset != NULL_TIME)
         kb->offset = offset;
 
-      if(!quiet)
+      if(rtype != io_quiet)
         {
-          switch(c)
-            {
-              case '!':
-                sclass = input_stream;
-              break;
-
-              case '?':
-              case '.':
-                sclass = output_stream;
-              break;
-
-              default:
-                fprintf(stderr, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
-                exit(EXIT_FAILURE);
-            }
-
-          ios = open_stream(name, sclass, e, kb->offset, (file_io && stype == io_any) || stype == io_file, sys5, prefix, path, defaultval, omissions, packed, packedbit, packed_ios[packed]);
+          ios = open_stream(name, sclass, e, kb->offset, stype == io_any? rtype : stype, sys5, prefix, path, netpath, defaultval, omissions,
+                            packed, packedbit, packed > 0? packed_ios[packed] : NULL);
 
           kb->io_num[sclass]++;
           kb->io_open++;
@@ -2634,6 +3290,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       packed = 0;
       packedbit = 0;
       defaultval = io_unknown;
+      omissions = io_raw;
       k = 0;
     }
 
@@ -2719,7 +3376,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
   kb->strictly_causal = strictly_causal;
   kb->soundness_check = soundness_check;
-  kb->quiet = quiet || !ios;
+  kb->quiet = (rtype == io_quiet) || !ios;
   kb->trace_focus = echo_stdout || echo_debug || logfile_name;
   kb->echo_stdout = echo_stdout || echo_debug;
   kb->echo_debug = echo_debug;
@@ -2747,6 +3404,9 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
   kb->last_empty = NULL_TIME;
   kb->last_far = NULL_TIME;
+  kb->call = FALSE;
+  kb->deny = TRUE;
+  kb->meet = FALSE;
   kb->exiting = 0;
 
   kb->step = step;
@@ -2755,7 +3415,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->perf.depth = 0;
   kb->perf.halts = 0;
 
-  assign_threads(kb);
+  assign_threads(kb, seednode, numseednode);
 
   pthread_mutex_init(&kb->mutex_barrier, NULL);
 
@@ -2767,7 +3427,7 @@ void close_base(k_base *kb)
   node *vp, *wp;
   stream *ios, *next_ios;
   stream_class sclass;
-  bool file_io;
+  bool ipc_io;
   int tid;
 
   for(tid = 0; tid < kb->num_threads; tid++)
@@ -2786,7 +3446,7 @@ void close_base(k_base *kb)
 
   if(!kb->quiet)
     {
-      file_io = TRUE;
+      ipc_io = FALSE;
       for(sclass = 0; sclass < STREAM_CLASSES_NUMBER; sclass++)
         {
           ios = kb->io_stream[sclass];
@@ -2795,8 +3455,11 @@ void close_base(k_base *kb)
               {
                 next_ios = ios->next_ios;
 
-                file_io &= ios->file_io;
-                close_stream(ios, kb->alpha);
+                if(ios->stype == io_ipc)
+                  ipc_io = TRUE;
+
+                if(!close_stream(ios, kb->alpha))
+                  return;
 
                 ios = next_ios;
               }
@@ -2808,15 +3471,18 @@ void close_base(k_base *kb)
               {
                 next_ios = ios->next_ios;
 
-                file_io &= ios->file_io;
-                close_stream(ios, kb->alpha);
+                if(ios->stype == io_ipc)
+                  ipc_io = TRUE;
+
+                if(!close_stream(ios, kb->alpha))
+                  return;
 
                 ios = next_ios;
               }
             while(ios != kb->io_stream_2[sclass]);
         }
 
-      if(!file_io && kb->sys5)
+      if(ipc_io && kb->sys5)
         delete_queues_sys5();
     }
 
@@ -2908,7 +3574,23 @@ int init_state(k_base *kb, char *state_name)
 
 void trap()
 {
+  rst = FALSE;
   irq = TRUE;
+  frz = FALSE;
+}
+
+void trap1()
+{
+  rst = TRUE;
+  irq = TRUE;
+  frz = FALSE;
+}
+
+void trap2()
+{
+  rst = FALSE;
+  irq = FALSE;
+  frz = !frz;
 }
 
 void loops(thread_arg *tp)
@@ -2949,7 +3631,6 @@ void loops_io(thread_arg *tp)
             kb->barrier_count--;
 
             kb->pv[tid].done = FALSE;
-
             signal_deadline(kb, tid);
           }
 
@@ -2960,8 +3641,8 @@ void loops_io(thread_arg *tp)
 }
 
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait,
-         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha, int num_threads)
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, io_type rtype, bool hard, bool sys5, bool sturdy, bool busywait,
+         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *netpath, char *alpha, int num_threads)
 {
   k_base *kb;
   info perf;
@@ -2975,9 +3656,9 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
   int i, n;
 
   kb = open_base(base_name, logfile_name, xref_name,
-                 strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, sys5, sturdy, busywait, bufexp, max_time, step, prefix, path, alpha, num_threads);
+                 strictly_causal, soundness_check, echo_stdout, echo_debug, rtype, sys5, sturdy, busywait, bufexp, max_time, step, prefix, path, netpath, alpha, num_threads);
 
-  printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d inputs, %d outputs, %d shared edges (%.3f %%) between %d cores\n",
+  printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d inputs, %d outputs, %d shared edges (%.3f %%) amongst %d cores\n",
          kb->perf.edges, kb->perf.nodes, kb->perf.num_nodes[gate], kb->perf.num_nodes[joint], kb->perf.num_nodes[delay], kb->io_num[input_stream], kb->io_num[output_stream], kb->perf.shared,
          kb->perf.edges? 100.0 * kb->perf.shared / kb->perf.edges : 0, kb->num_threads);
 
@@ -3000,8 +3681,6 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
       pthread_attr_setschedpolicy(&attributes, SCHED_RR);
       pthread_attr_setschedparam(&attributes, &spar);
     }
-
-  signal(SIGINT, (void (*)())&trap);
 
   if(origin > 0)
     kb->time_base = origin;
@@ -3079,8 +3758,6 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
 
   kb->perf.ticks = get_time() - kb->time_base;
 
-  signal(SIGINT, SIG_DFL);
-
   for(tid = 0; tid < num_threads; tid++)
     {
       kb->perf.count += kb->pv[tid].count;
@@ -3094,29 +3771,47 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
 
   close_base(kb);
 
+  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.6f seconds, %.3f KLIPS, %lu depth (avg %.3f), %lu halts (%.3f %%)\n",
+	irq? "Execution interrupted" : "End of execution",
+	perf.count,
+	perf.horizon && perf.edges? 100.0 * perf.count / (perf.horizon * perf.edges) : 0,
+	perf.edges,
+	perf.horizon,
+	perf.ticks,
+	perf.ticks? perf.count / (1000 * perf.ticks) : 0,
+	perf.depth,
+	perf.count? (double)perf.depth / perf.count : 0,
+	perf.halts,
+        perf.count? 100.0 * perf.halts / perf.count : 0);
+
   return perf;
 }
 
 int main(int argc, char **argv)
 {
-  char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path;
+  char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path, *netpath;
   char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
-  bool strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sys5, sturdy, busywait;
+  bool strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, socket_io, quiet, hard, sys5, sturdy, busywait;
   int i, k, n;
-  info perf;
   d_time max_time;
   m_time step, default_step, origin;
   int bufexp;
   int num_threads;
+  io_type rtype;
+
+  signal(SIGINT, (void (*)())&trap);
+  signal(SIGUSR1, (void (*)())&trap1);
+  signal(SIGUSR2, (void (*)())&trap2);
 
   base_name = state_name = logfile_name = xref_name = NULL;
-  strictly_causal = soundness_check = echo_stdout = echo_debug = file_io = quiet = hard = sys5 = sturdy = busywait = FALSE;
+  strictly_causal = soundness_check = echo_stdout = echo_debug = file_io = socket_io = quiet = hard = sys5 = sturdy = busywait = FALSE;
   bufexp = DEFAULT_BUFEXP;
   max_time = 0;
   origin = 0;
   default_step = -1;
   prefix = MAGIC_PREFIX;
   path = "";
+  netpath = "";
   strcpy(alpha, IO_SYMBOLS);
   num_threads = DEFAULT_THREADS;
 
@@ -3128,7 +3823,7 @@ int main(int argc, char **argv)
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-cdDfilqsSvVxy] [-a alphabet] [-e prefix] [-g origin] [-I state] [-L log] [-n processes] [-p path] [-r core] [-t step] [-X symbols] [-z horizon] [base]\n",
+              fprintf(stderr, "Usage: %s [-cdDfilqsSvVxy] [-a alphabet] [-e prefix] [-g origin] [-I state] [-j network] [-L log] [-n processes] [-p path] [-r core] [-t step] [-X symbols] [-z horizon] [base]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -3237,6 +3932,24 @@ int main(int argc, char **argv)
               ext = strstr(state_name, EVENT_LIST_EXT);
               if(ext && !strcmp(ext, EVENT_LIST_EXT))
                 *ext = '\0';
+            break;
+
+            case 'j':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                netpath = argv[i]; 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
             break;
 
             case 'L':
@@ -3434,6 +4147,10 @@ int main(int argc, char **argv)
                       file_io = TRUE;
                     break;
 
+                    case 'F':
+                      socket_io = TRUE;
+                    break;
+
                     case 'i':
                       if(!state_name)
                         state_name = default_state_name;
@@ -3521,26 +4238,35 @@ int main(int argc, char **argv)
   else
     step = default_step;
 
+  if(quiet)
+    rtype = io_quiet;
+  else
+    if(file_io)
+      rtype = io_file;
+    else
+      if(socket_io)
+        rtype = io_socket;
+      else
+        rtype = io_ipc;
+
   printf("\nTINX "VER" - Temporal Inference Network eXecutor\n"
-         "Design & coding by Andrea Giotti, 1998-1999, 2016-2020\n\n");
+         "Design & coding by Andrea Giotti, 1998-1999, 2016-2022\n\n");
 
   fflush(stdout);
 
-  perf = run(base_name, state_name, logfile_name, xref_name,
-      strictly_causal, soundness_check, echo_stdout, echo_debug, file_io, quiet, hard, sys5, sturdy, busywait, bufexp, max_time, step, origin, prefix, path, alpha, num_threads);
+  do
+    {
+      rst = FALSE;
+      irq = FALSE;
 
-  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.6f seconds, %.3f KLIPS, %lu depth (avg %.3f), %lu halts (%.3f %%)\n",
-	irq? "Execution interrupted" : "End of execution",
-	perf.count,
-	perf.horizon && perf.edges? 100.0 * perf.count / (perf.horizon * perf.edges) : 0,
-	perf.edges,
-	perf.horizon,
-	perf.ticks,
-	perf.ticks? perf.count / (1000 * perf.ticks) : 0,
-	perf.depth,
-	perf.count? (double)perf.depth / perf.count : 0,
-	perf.halts,
-        perf.count? 100.0 * perf.halts / perf.count : 0);
+      run(base_name, state_name, logfile_name, xref_name,
+          strictly_causal, soundness_check, echo_stdout, echo_debug, rtype, hard, sys5, sturdy, busywait, bufexp, max_time, step, origin, prefix, path, netpath, alpha, num_threads);
+    }
+  while(rst);
+
+  signal(SIGINT, SIG_DFL);
+  signal(SIGUSR1, SIG_DFL);
+  signal(SIGUSR2, SIG_DFL);
 
   return EXIT_SUCCESS;
 }

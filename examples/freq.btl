@@ -1,0 +1,30 @@
+
+define kappa = 3, enne = 2 ^ kappa;
+
+input a;
+
+aux b(0);
+
+b(0) == a;
+
+iter(n on enne)
+	{
+	aux c(n), b(n + 1);
+
+	b(n + 1) == ~ a @ - (n + 1) & b(n);
+
+	when(n in 0 : enne - 2)
+		c(n) == b(n) & ~ b(n + 1);
+	else
+		c(n) == b(n + 1);
+	}
+
+iter(k on 8)
+	output [packed] z(0, k);
+
+combine(z(0, k), c(#), k on kappa);
+
+~ z(0, 3) & ~ z(0, 6) & ~ z(0, 7);
+z(0, 4) & z(0, 5);
+
+

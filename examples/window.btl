@@ -1,0 +1,110 @@
+
+ /*
+	Variable window filter of maximum width equal to 2 * maxsize + 1
+
+	The trues of the binary input signal "origin" are cut by windows which are centered around the
+	trues of a periodic signal and the size of which is dynamically defined according to the number
+	of trues contained in the window so as to produce the binary output signal "filtered"
+ */
+
+ define bits = 4, maxsize = 2 ^ bits - 1, tau = 2 * (2 * maxsize + 1), sigma = (maxsize + 1) / 16;
+
+ input origin;
+ output periodic, filtered;
+ aux around;
+
+ /* Periodic output signal "periodic" of period tau */
+
+ init periodic @ 0;
+
+ periodic --> ~ periodic @ (0, tau) & periodic @ tau;
+
+ /* Encoded window size is sampled at the beginning of each period and hold */
+
+ iter(k on bits)
+	{
+	aux window(k), size(k / 8, k % 8);
+
+	init ~ size(k / 8, k % 8) @ [0, tau / 2);
+
+	size(k / 8, k % 8) @ tau / 2 == since(periodic & window(k) @ - tau / 2, ~ periodic);
+	}
+
+ /* The trues of the periodic signal are the centers of the windows */
+
+ around == periodic ? [-$(size, maxsize), +$(size, maxsize)];
+ filtered == origin & around;
+
+ /* Adder / Subtractor */
+
+ aux cp(0), cm(0);
+
+ ~ cp(0) & ~ cm(0);
+
+ iter(k on bits)
+	{
+	aux x(k), y(k), w(k), zp(k), cp(k + 1), vp(k), zm(k), cm(k + 1), vm(k);
+
+	when(k is 0)
+		y(k);
+	else
+		~ y(k);
+
+	w(k) == (x(k) & ~ y(k)) | (~ x(k) & y(k));
+
+	zp(k) == (w(k) & ~ cp(k)) | (~ w(k) & cp(k));
+	cp(k + 1) == (x(k) & y(k)) | (w(k) & cp(k));
+
+	zm(k) == (w(k) & ~ cm(k)) | (~ w(k) & cm(k));
+	cm(k + 1) == (~ x(k) & y(k)) | (~ w(k) & cm(k));
+	}
+
+ ~ cp(bits) --> forall(vp(k) == zp(k), k on bits);
+ cp(bits) --> forall(vp(k), k on bits);
+
+ ~ cm(bits) --> forall(vm(k) == zm(k), k on bits);
+ cm(bits) --> forall(~ vm(k), k on bits);
+
+ /* Pre-filter */
+
+ init ~ origin @ [- 2 * sigma, 0);
+
+ aux threshold;
+
+ threshold == origin @ [- sigma, sigma] ? [- sigma, sigma];
+
+ /* Dynamic window */
+
+ iter(k on bits)
+	init ~ window(k) @ [- tau / 2, 0];
+
+ around --> (
+           forall(x(k) == window(k), k on bits) &
+           (~ threshold --> forall(vp(k) == window(k) @ 1, k on bits)) &
+           (threshold --> forall(vm(k) == window(k) @ 1, k on bits))
+           );
+ ~ around --> forall(window(k) == window(k) @ 1, k on bits);
+
+ /* Input / Output */
+
+ iter(k on 8)
+	{
+	output [packed] width(k);
+
+	iter(n in 0 : maxsize)
+		aux symbol(n, k);
+
+	when(k in bits : 7)
+		{
+		aux size(0, k);
+
+		~ size(0, k);
+		}
+	}
+
+ iter(n in 0 : maxsize)
+	code(size, n) --> forall(width(k) == symbol(n, k), k on 8);
+
+ code(symbol, "0123456789ABCDEF");
+
+

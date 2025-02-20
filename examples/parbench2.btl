@@ -1,0 +1,63 @@
+
+/*
+	Optimized parametric multiple crossroad benchmark with input by Andrea Giotti, 2017-2021
+
+	Some three-state semaphores are connected in an array of crossroads with granted exclusive passage
+	The succession of states is green --> yellow --> red --> green, consequent output ligths are not produced
+	The duration of the red state is deduced from the durations of the two other states
+*/
+
+/*
+	Parameters:
+
+	"lognum" is the logarithm in base 2 of the number of instances of the single semaphore
+        "green_time" is the duration in milliseconds of the green state
+        "yellow_time" is the duration in milliseconds of the yellow state
+*/
+
+define lognum = 6, green_time = 256, yellow_time = 128, delay = 16;
+
+/* Definition of an array of semaphore instances */
+
+input req;
+aux dreq;
+
+dreq == req @ - delay;
+
+iter(k on 2 ^ lognum)
+{
+	output green(k), yellow(k), red(k);
+	aux up_green(k), up_yellow(k), up_red(k);
+
+	/* One and only one state amongst green, yellow and red states */
+
+	green(k) | yellow(k) | red(k);
+	~ (green(k) & yellow(k)) & ~ (yellow(k) & red(k)) & ~ (red(k) & green(k));
+
+	/* If previous state lasted for enough time ("@"), next state is entered and hold */
+
+	green(k) == since(up_green(k), ~ up_yellow(k));
+	yellow(k) == since(up_yellow(k), ~ up_red(k));
+
+	up_green(k) == red(k) @ -1 & ~ red(k);
+	up_yellow(k) == green(k) @ [- green_time, 0) | (green(k) @ -1 & dreq);	
+	up_red(k) == yellow(k) @ [- yellow_time, 0) | (yellow(k) @ -1 & dreq);
+}
+
+/* Interface of synchronization */
+
+iter(h on lognum)
+{
+	/* When an instance is in the red state, following istance in the hierarchy is not in such a state */
+
+	iter(k on 2 ^ (lognum - h - 1))
+		red(2 * k * 2 ^ h) == ~ red((2 * k + 1) * 2 ^ h);
+}
+
+/* Initial conditions */
+
+/* Instance zero starts in green state */
+
+init red(0) @ -1, ~ red(0) @ 0, ~ req @ [- delay, 0);
+
+

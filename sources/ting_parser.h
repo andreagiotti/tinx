@@ -1,8 +1,8 @@
-/* A Bison parser, made by GNU Bison 3.4.1.  */
+/* A Bison parser, made by GNU Bison 3.8.2.  */
 
 /* Bison interface for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2019 Free Software Foundation,
+   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
    Inc.
 
    This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 /* As a special exception, you may create a larger work that contains
    part or all of the Bison parser skeleton and distribute that work
@@ -31,8 +31,9 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
-/* Undocumented macros, especially those whose name start with YY_,
-   are private implementation details.  Do not rely on them.  */
+/* DO NOT RELY ON FEATURES THAT ARE NOT DOCUMENTED in the manual,
+   especially those whose name start with YY_ or yy_.  They are
+   private implementation details that can be changed or removed.  */
 
 #ifndef YY_YY_TING_PARSER_H_INCLUDED
 # define YY_YY_TING_PARSER_H_INCLUDED
@@ -44,7 +45,7 @@
 extern int yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 37 "ting.y"
+#line 38 "ting.y"
 
 #ifndef YY_TYPEDEF_YY_SCANNER_T
 #define YY_TYPEDEF_YY_SCANNER_T
@@ -62,113 +63,122 @@ typedef struct tracker
     int idx;
   } tracker;
 
-#line 66 "ting_parser.h"
+#line 67 "ting_parser.h"
 
-/* Token type.  */
+/* Token kinds.  */
 #ifndef YYTOKENTYPE
 # define YYTOKENTYPE
   enum yytokentype
   {
-    TOKEN_SEMICOLON = 258,
-    TOKEN_EQV = 259,
-    TOKEN_IMPLY = 260,
-    TOKEN_INVIMPLY = 261,
-    TOKEN_OR = 262,
-    TOKEN_AND = 263,
-    TOKEN_HAPPEN = 264,
-    TOKEN_AT = 265,
-    TOKEN_SINCE = 266,
-    TOKEN_UNTIL = 267,
-    TOKEN_NOT = 268,
-    TOKEN_PLUS = 269,
-    TOKEN_MINUS = 270,
-    TOKEN_MUL = 271,
-    TOKEN_DIV = 272,
-    TOKEN_MOD = 273,
-    TOKEN_POW = 274,
-    TOKEN_LBRACKET = 275,
-    TOKEN_RBRACKET = 276,
-    TOKEN_LPAREN = 277,
-    TOKEN_RPAREN = 278,
-    TOKEN_LSQUARED = 279,
-    TOKEN_RSQUARED = 280,
-    TOKEN_COMMA = 281,
-    TOKEN_COLON = 282,
-    TOKEN_ITER = 283,
-    TOKEN_WHEN = 284,
-    TOKEN_ELSE = 285,
-    TOKEN_DEFINE = 286,
-    TOKEN_INCLUDE = 287,
-    TOKEN_INPUT = 288,
-    TOKEN_OUTPUT = 289,
-    TOKEN_AUX = 290,
-    TOKEN_INIT = 291,
-    TOKEN_CODE = 292,
-    TOKEN_FORALL = 293,
-    TOKEN_EXISTS = 294,
-    TOKEN_ONE = 295,
-    TOKEN_UNIQUE = 296,
-    TOKEN_EQUAL = 297,
-    TOKEN_ON = 298,
-    TOKEN_IN = 299,
-    TOKEN_IS = 300,
-    TOKEN_NEG = 301,
-    TOKEN_ANY = 302,
-    TOKEN_IPC = 303,
-    TOKEN_FILE = 304,
-    TOKEN_BINARY = 305,
-    TOKEN_PACKED = 306,
-    TOKEN_UNKNOWN = 307,
-    TOKEN_FALSE = 308,
-    TOKEN_TRUE = 309,
-    TOKEN_RAW = 310,
-    TOKEN_FILTER = 311,
-    TOKEN_OMIT = 312,
-    TOKEN_NAME = 313,
-    TOKEN_STRING = 314,
-    TOKEN_ITERATOR = 315,
-    TOKEN_NUMBER = 316
+    YYEMPTY = -2,
+    YYEOF = 0,                     /* "end of file"  */
+    YYerror = 256,                 /* error  */
+    YYUNDEF = 257,                 /* "invalid token"  */
+    TOKEN_LBRACKET = 258,          /* TOKEN_LBRACKET  */
+    TOKEN_RBRACKET = 259,          /* TOKEN_RBRACKET  */
+    TOKEN_SEMICOLON = 260,         /* TOKEN_SEMICOLON  */
+    TOKEN_LPAREN = 261,            /* TOKEN_LPAREN  */
+    TOKEN_RPAREN = 262,            /* TOKEN_RPAREN  */
+    TOKEN_LSQUARED = 263,          /* TOKEN_LSQUARED  */
+    TOKEN_RSQUARED = 264,          /* TOKEN_RSQUARED  */
+    TOKEN_COMMA = 265,             /* TOKEN_COMMA  */
+    TOKEN_COLON = 266,             /* TOKEN_COLON  */
+    TOKEN_ITER = 267,              /* TOKEN_ITER  */
+    TOKEN_WHEN = 268,              /* TOKEN_WHEN  */
+    TOKEN_WHENX = 269,             /* TOKEN_WHENX  */
+    TOKEN_ELSE = 270,              /* TOKEN_ELSE  */
+    TOKEN_DEFINE = 271,            /* TOKEN_DEFINE  */
+    TOKEN_INCLUDE = 272,           /* TOKEN_INCLUDE  */
+    TOKEN_INPUT = 273,             /* TOKEN_INPUT  */
+    TOKEN_OUTPUT = 274,            /* TOKEN_OUTPUT  */
+    TOKEN_AUX = 275,               /* TOKEN_AUX  */
+    TOKEN_INIT = 276,              /* TOKEN_INIT  */
+    TOKEN_CODE = 277,              /* TOKEN_CODE  */
+    TOKEN_PVALUE = 278,            /* TOKEN_PVALUE  */
+    TOKEN_NVALUE = 279,            /* TOKEN_NVALUE  */
+    TOKEN_EQV = 280,               /* TOKEN_EQV  */
+    TOKEN_IMPLY = 281,             /* TOKEN_IMPLY  */
+    TOKEN_INVIMPLY = 282,          /* TOKEN_INVIMPLY  */
+    TOKEN_XOR = 283,               /* TOKEN_XOR  */
+    TOKEN_OR = 284,                /* TOKEN_OR  */
+    TOKEN_AND = 285,               /* TOKEN_AND  */
+    TOKEN_FORALL = 286,            /* TOKEN_FORALL  */
+    TOKEN_EXISTS = 287,            /* TOKEN_EXISTS  */
+    TOKEN_ONE = 288,               /* TOKEN_ONE  */
+    TOKEN_UNIQUE = 289,            /* TOKEN_UNIQUE  */
+    TOKEN_COMBINE = 290,           /* TOKEN_COMBINE  */
+    TOKEN_SINCE = 291,             /* TOKEN_SINCE  */
+    TOKEN_UNTIL = 292,             /* TOKEN_UNTIL  */
+    TOKEN_ONLY = 293,              /* TOKEN_ONLY  */
+    TOKEN_HAPPEN = 294,            /* TOKEN_HAPPEN  */
+    TOKEN_AT = 295,                /* TOKEN_AT  */
+    TOKEN_NOT = 296,               /* TOKEN_NOT  */
+    TOKEN_EQUAL = 297,             /* TOKEN_EQUAL  */
+    TOKEN_NEQ = 298,               /* TOKEN_NEQ  */
+    TOKEN_LT = 299,                /* TOKEN_LT  */
+    TOKEN_GT = 300,                /* TOKEN_GT  */
+    TOKEN_LTEQ = 301,              /* TOKEN_LTEQ  */
+    TOKEN_GTEQ = 302,              /* TOKEN_GTEQ  */
+    TOKEN_PLUS = 303,              /* TOKEN_PLUS  */
+    TOKEN_MINUS = 304,             /* TOKEN_MINUS  */
+    TOKEN_MUL = 305,               /* TOKEN_MUL  */
+    TOKEN_DIV = 306,               /* TOKEN_DIV  */
+    TOKEN_MOD = 307,               /* TOKEN_MOD  */
+    TOKEN_POW = 308,               /* TOKEN_POW  */
+    TOKEN_ROOT = 309,              /* TOKEN_ROOT  */
+    TOKEN_LOG = 310,               /* TOKEN_LOG  */
+    TOKEN_SIN = 311,               /* TOKEN_SIN  */
+    TOKEN_COS = 312,               /* TOKEN_COS  */
+    TOKEN_TAN = 313,               /* TOKEN_TAN  */
+    TOKEN_ASIN = 314,              /* TOKEN_ASIN  */
+    TOKEN_ACOS = 315,              /* TOKEN_ACOS  */
+    TOKEN_ATAN = 316,              /* TOKEN_ATAN  */
+    TOKEN_SUM = 317,               /* TOKEN_SUM  */
+    TOKEN_PROD = 318,              /* TOKEN_PROD  */
+    TOKEN_KE = 319,                /* TOKEN_KE  */
+    TOKEN_KPI = 320,               /* TOKEN_KPI  */
+    TOKEN_ON = 321,                /* TOKEN_ON  */
+    TOKEN_IN = 322,                /* TOKEN_IN  */
+    TOKEN_IS = 323,                /* TOKEN_IS  */
+    TOKEN_NEG = 324,               /* TOKEN_NEG  */
+    TOKEN_ANY = 325,               /* TOKEN_ANY  */
+    TOKEN_IPC = 326,               /* TOKEN_IPC  */
+    TOKEN_FILE = 327,              /* TOKEN_FILE  */
+    TOKEN_REMOTE = 328,            /* TOKEN_REMOTE  */
+    TOKEN_BINARY = 329,            /* TOKEN_BINARY  */
+    TOKEN_PACKED = 330,            /* TOKEN_PACKED  */
+    TOKEN_UNKNOWN = 331,           /* TOKEN_UNKNOWN  */
+    TOKEN_FALSE = 332,             /* TOKEN_FALSE  */
+    TOKEN_TRUE = 333,              /* TOKEN_TRUE  */
+    TOKEN_DEFAULT = 334,           /* TOKEN_DEFAULT  */
+    TOKEN_RAW = 335,               /* TOKEN_RAW  */
+    TOKEN_FILTER = 336,            /* TOKEN_FILTER  */
+    TOKEN_OMIT = 337,              /* TOKEN_OMIT  */
+    TOKEN_UNDERSCORE = 338,        /* TOKEN_UNDERSCORE  */
+    TOKEN_NAME = 339,              /* TOKEN_NAME  */
+    TOKEN_RICHNAME = 340,          /* TOKEN_RICHNAME  */
+    TOKEN_REALNAME = 341,          /* TOKEN_REALNAME  */
+    TOKEN_REALRICH = 342,          /* TOKEN_REALRICH  */
+    TOKEN_STRING = 343,            /* TOKEN_STRING  */
+    TOKEN_ITERATOR = 344,          /* TOKEN_ITERATOR  */
+    TOKEN_NUMBER = 345,            /* TOKEN_NUMBER  */
+    TOKEN_REAL = 346               /* TOKEN_REAL  */
   };
+  typedef enum yytokentype yytoken_kind_t;
 #endif
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 67 "ting.y"
+#line 69 "ting.y"
 
   char symbol[MAX_NAMELEN];
   d_time value;
-  btl_specification *specification;
-  btl_specification *formblock;
-  btl_specification *declblock;
-  btl_specification *extformula;
-  btl_specification *extdeclaration;
-  btl_specification *formula;
-  btl_specification *interval;
-  btl_specification *declaration;
-  btl_specification *io_decl;
-  btl_specification *io_decllist;
-  btl_specification *decllist;
-  btl_specification *eventlist;
-  btl_specification *filelist;
-  btl_specification *assignlist;
-  btl_specification *assignment;
-  btl_specification *varname;
-  btl_specification *indexedname;
-  btl_specification *declname;
-  btl_specification *initname;
-  btl_specification *eventname;
-  btl_specification *qualname;
-  btl_specification *constname;
-  btl_specification *filename;
-  btl_specification *expression;
-  btl_specification *varrange;
-  btl_specification *selrange;
-  btl_specification *number;
-  btl_specification *string;
+  real realval;
+  btl_specification *other;
 
-#line 172 "ting_parser.h"
+#line 182 "ting_parser.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -192,6 +202,8 @@ struct YYLTYPE
 
 
 
+
 int yyparse (btl_specification **spec_handle, yyscan_t scanner);
+
 
 #endif /* !YY_YY_TING_PARSER_H_INCLUDED  */

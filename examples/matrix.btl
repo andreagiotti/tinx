@@ -1,0 +1,31 @@
+
+define nx = 2, nu = 2, ny = 2;
+
+define	a(_, _) =	[[ 0.7, 0.7 ],
+			[ -0.7, 0.7 ]];
+
+define	b(_, _) =	[[ -1, -0.5 ],
+			[ 0.5, -1 ]];
+
+define	c(_, _) =	[[ 0.5, -1 ],
+			[ 1, 0.5 ]];
+
+define	d(_, _) =	[[ -0.25, 0.25 ],
+			[ -0.25, -0.25 ]];
+
+iter(h on nu)
+	input U(h);
+
+iter(k on ny)
+	output Y(k);
+
+iter(i on nx)
+	{
+	aux X(i);
+	init X(i) @ 0 = 0;
+	}
+
+forall(X(i) @ 1 = sum(a(i, j) * X(j), j on nx) + sum(b(i, h) * U(h), h on nu), i on nx);
+forall(Y(k) = sum(c(k, i) * X(i), i on nx) + sum(d(k, h) * U(h), h on nu), k on ny);
+
+

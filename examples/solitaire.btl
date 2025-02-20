@@ -1,0 +1,67 @@
+
+/* Solitaire by Andrea Giotti, 2023 */
+
+define rows = 4, cols = 5, size = rows * cols, numrand = 2;
+
+iter(k on numrand)
+	input random(k);
+
+iter(n on 2 ^ numrand)
+	aux comb(n);
+
+output success, failure;
+aux reset, closed;
+
+init reset @ 0;
+
+iter(i on rows)
+	iter(j on cols)
+		{
+		aux open(i, j), turn(i, j);
+
+		iter(h on rows)
+			iter(k on cols)
+				aux poscard(i, j, h, k), gencard(i, j, h, k);
+
+		iter(b on 8)
+			output [packed] card(i, j, 0, b);
+		}
+
+iter(z on 27)
+	iter(b on 8)
+		aux symbol(z, b);
+
+iter(i on rows)
+	iter(j on cols)
+		{
+		~ reset --> ((open(i, j) | turn(i, j)) @ -1 == open(i, j)) & forall(poscard(i, j, z / cols, z % cols) @ -1 == poscard(i, j, z / cols, z % cols), z on size);
+
+		unique(poscard(i, j, z / cols, z % cols), z on size);
+		unique(poscard(z / cols, z % cols, i, j), z on size);
+
+                turn(i, j) == exists(open(z / cols, z % cols) & poscard(z / cols, z % cols, i, j), z on size);
+ 
+                init gencard(i, j, i, j) @ -1;
+
+		~ open(i, j) --> forall(card(i, j, 0, b) == symbol(0, b), b on 8);
+		open(i, j) --> forall(forall(poscard(i, j, z / cols, z % cols) --> (card(i, j, 0, b) == symbol(z + 1, b)), b on 8), z on size);
+		}
+
+reset --> forall(forall(poscard(x / cols, x % cols, y / cols, y % cols) == gencard(x / cols, x % cols, y / cols, y % cols), y on size), x on size) &
+		open(0, 0) & forall(~ open(z / cols, z % cols), z in 1 : size - 1);
+
+closed == exists(open(z / cols, z % cols) & poscard(z / cols, z % cols, 0, 0), z on size);
+reset == closed @ -1;
+success == forall(open(z / cols, z % cols), z on size);
+failure == closed & ~ success;
+
+combine(random(k), comb(#), k on numrand);
+
+comb(0) --> forall(forall(gencard(x / cols, x % cols, y / cols, y % cols) @ -1 == gencard(x / cols, x % cols, (y / cols + 1) % rows, y % cols), y on size), x on size);
+comb(1) --> forall(forall(gencard(x / cols, x % cols, y / cols, y % cols) @ -1 == gencard(x / cols, x % cols, y / cols, (y % cols + 1) % cols), y on size), x on size);
+comb(2) --> forall(forall(gencard(x / cols, x % cols, y / cols, y % cols) @ -1 == gencard(x / cols, x % cols, (rows + y / cols - 1) % rows, y % cols), y on size), x on size);
+comb(3) --> forall(forall(gencard(x / cols, x % cols, y / cols, y % cols) @ -1 == gencard(x / cols, x % cols, y / cols, (cols + y % cols - 1) % cols), y on size), x on size);
+
+code(symbol, "_ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+
+

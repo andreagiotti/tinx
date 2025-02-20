@@ -1,0 +1,27 @@
+/*
+  Benchmark by Andrea Giotti, 2017-2022
+  Execute as: tinx -iq -z 10000000 -r 8 minmark
+*/
+
+define n = 16;
+
+iter(k on n)
+	{
+	output out(k);
+	aux up(k);
+
+	when(k in 1 : _)
+		init ~ out(k) @ 0;
+	}
+
+init up(0) @ 0;
+
+iter(k on n)
+	{
+	up(k) == up((k + 1) % n) @ k + 1;
+
+	up(k) | (out(k) @ -1 & ~ up((k + 1) % n)) --> out(k);
+	up((k + 1) % n) | (~ out(k) @ -1 & ~ up(k)) --> ~ out(k);
+	}
+
+

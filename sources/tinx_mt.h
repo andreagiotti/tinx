@@ -1,7 +1,7 @@
 /*
   TINX - Temporal Inference Network eXecutor
   Design & coding by Andrea Giotti, 1998-1999
-  Revised 2016-2019
+  Revised 2016-2021
 */
 
 #if !defined INLINE
@@ -19,6 +19,7 @@
 #include <limits.h>
 #include <time.h>
 #include <math.h>
+#include <float.h>
 #include <errno.h>
 
 #include <pthread.h>
@@ -31,6 +32,9 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h> 
 
 typedef char bool;
 
@@ -54,6 +58,11 @@ typedef double m_time;
 #define MAX_THREADS 256
 #define DEFAULT_THREADS 7    /* +1 */
 #define NO_THREAD -1
+
+typedef double real;
+#define REAL_IN_FMT "%lg"
+#define REAL_OUT_FMT "%.9g"
+#define REAL_MAX DBL_MAX
 
 typedef enum link_code
 {
@@ -206,11 +215,36 @@ int delete_queues_sys5(void);
 
 long int queue_key(char *name);
 
+typedef struct safesocket
+{
+  int lsid;
+  int asid;
+} safesocket;
+
+#define PORTBASE 7777
+#define SOCKETFLAGS MSG_DONTWAIT
+
+safesocket add_socket(char *name, stream_class sclass);
+#define open_input_socket(A) add_socket((A), input_stream)
+#define open_output_socket(A) add_socket((A), output_stream)
+#define is_socket_open(S) ((S).asid >= 0)
+int close_socket(safesocket sock);
+#define clean_socket(A) FALSE
+#define get_socket(S, XP) (recv((S).asid, (XP), sizeof(* (XP)), SOCKETFLAGS) < sizeof(* (XP)))
+#define put_socket(S, XP) (send((S).asid, (XP), sizeof(* (XP)), SOCKETFLAGS) < sizeof(* (XP)))
+#define mget_socket(S, XP, N) (recv((S).asid, (XP), (N) * sizeof(* (XP)), SOCKETFLAGS) < (N) * sizeof(* (XP)))
+#define mput_socket(S, XP, N) (send((S).asid, (XP), (N) * sizeof(* (XP)), SOCKETFLAGS) < (N) * sizeof(* (XP)))
+#define sync_socket(S) FALSE
+#define socket_error(S) FALSE
+#define reset_socket(S) FALSE
+
 typedef enum io_type
 {
   io_any,
   io_ipc,
   io_file,
+  io_socket,
+  io_quiet,
   IO_TYPES_NUMBER
 } io_type;
 
@@ -226,6 +260,7 @@ typedef enum io_type_3
   io_false,
   io_true,
   io_unknown,
+  io_other,
   IO_TYPES_3_NUMBER
 } io_type_3;
 
@@ -269,21 +304,23 @@ struct stream
   stream_class sclass;
   arc e;
   arc ne;
+  io_type stype;
   io_type_3 defaultval;
+  bool sys5;
   bool skip[IO_TYPES_3_NUMBER];
   char file_name[MAX_STRLEN];
   char chan_name[MAX_STRLEN];
+  char socket_name[MAX_STRLEN];
   file fp;
   channel_posix chan;
   channel_sys5 chan5;
+  safesocket sock;
   int fails;
   int errors;
   packet pack;
   stream *packed_ios;
   stream *next_ios;
   stream *prev_ios;
-  bool file_io;
-  bool sys5;
   bool open;
   bool (* io_perform)(k_base *kb, stream *ios);
 };
@@ -295,10 +332,26 @@ typedef enum node_class
   joint,
   delay,
   literal,
+  math_delay,
+  math_chs,
+  math_inv,
+  math_sin,
+  math_add,
+  math_mul,
+  math_pow,
+  math_eqv0,
+  math_neq0,
+  math_gteq0,
+  math_lt0,
   NODE_CLASSES_NUMBER
 } node_class;
 
-#define CLASS_SYMBOLS "GJDL"
+#define CLASS_SYMBOLS "GJDLEUVTABCZXMW"
+#define NODE_MATH_BASE math_delay
+#define NODE_REL_BASE math_eqv0
+#define NODE_LARGE_CLASSES 6
+#define NODE_LARGE_MATH NODE_MATH_BASE
+#define NODE_LARGE_REL (NODE_MATH_BASE + 1)
 
 struct node
 {
@@ -381,7 +434,7 @@ typedef struct priv_vars
 typedef struct info
 {
   int nodes;
-  int num_nodes[NODE_CLASSES_NUMBER];
+  int num_nodes[NODE_LARGE_CLASSES];
   int edges;
   int shared;
   d_time horizon;
@@ -411,6 +464,9 @@ typedef struct k_base
   d_time anchor_time;
   d_time last_empty;
   d_time last_far;
+  bool call;
+  bool deny;
+  bool meet;
   bool strictly_causal;
   bool soundness_check;
   bool trace_focus;
@@ -436,10 +492,9 @@ typedef struct thread_arg
 } thread_arg;
 
 #define BLANKS " \t\n\r"
-#define SEPARATORS BLANKS"(,;:.?!)@"
+#define SEPARATORS BLANKS"(,;:.?!_^)@"
 #define NAME_FMT "%"MAX_NAMEBUF_C"[^"SEPARATORS"]"
-#define LESS_SEPARATORS BLANKS";:.?!@"
-#define FUN_FMT "%"MAX_NAMEBUF_C"[^"LESS_SEPARATORS"]"
+#define FUN_FMT "%"MAX_NAMEBUF_C"[^"BLANKS"]"
 #define OP_FMT "%c"
 #define ARG_FMT TIME_FMT
 
@@ -464,8 +519,8 @@ INLINE void state(k_base *kb, event s);
 INLINE event choose(k_base *kb, int tid);
 INLINE void process(k_base *kb, event s, int tid);
 INLINE void scan_ios(k_base *kb, stream_class sclass);
-INLINE bool loop(k_base *kb, int tid);
-INLINE bool loop_io(k_base *kb);
+INLINE int loop(k_base *kb, int tid);
+INLINE int loop_io(k_base *kb);
 INLINE void join_barrier(k_base *kb, int tid);
 INLINE void leave_barrier(k_base *kb, int tid);
 INLINE void broadcast_barrier(k_base *kb);
@@ -475,9 +530,9 @@ bool input_m(k_base *kb, stream *ios);
 bool output_f(k_base *kb, stream *ios);
 bool output_m(k_base *kb, stream *ios);
 void trace(k_base *kb, event s, int tid);
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5,
-                    char *prefix, char *path, io_type_3 defaultval, io_type_4 omissions, int packed, int packedbit, stream *packed_ios);
-void close_stream(stream *ios, char *alpha);
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, io_type stype, bool sys5,
+                    char *prefix, char *path, char *netpath, io_type_3 defaultval, io_type_4 omissions, int packed, int packedbit, stream *packed_ios);
+bool close_stream(stream *ios, char *alpha);
 INLINE void add_stream(stream **handle, stream *ios);
 INLINE void remove_stream(stream **handle);
 
@@ -486,10 +541,10 @@ void init_node(node *vp, node_class nclass, d_time k, int bs);
 void free_node(node *vp, int bs);
 node *name2node(k_base *kb, char *name, bool create);
 void thread_network(node *network);
-void assign_threads(k_base *kb);
+void assign_threads(k_base *kb, node **seednode, int numseednode);
 k_base *open_base(char *base_name, char *logfile_name, char *xref_name,
-                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool sys5, bool sturdy, bool busywait,
-                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha, int num_threads);
+                  bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, io_type rtype, bool sys5, bool sturdy, bool busywait,
+                  int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *netpath, char *alpha, int num_threads);
 void close_base(k_base *kb);
 int init_state(k_base *kb, char *state_name);
 
@@ -497,8 +552,8 @@ void trap(void);
 void loops(thread_arg *tp);
 void loops_io(thread_arg *tp);
 info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait,
-         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha, int num_threads);
+         bool strictly_causal, bool soundness_check, bool echo_stdout, bool echo_debug, io_type rtype, bool hard, bool sys5, bool sturdy, bool busywait,
+         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *netpath, char *alpha, int num_threads);
 
 /* End of protos */
 

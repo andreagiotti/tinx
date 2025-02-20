@@ -1,7 +1,7 @@
 /*
 	Name:	Asynchronous, parallel and sequential state machine with multiple exclusive resource management
 	Author:	Andrea Giotti, 2020
-	Release: 1.6
+	Release: 1.7
 */
 
 define	numtasks = 8,
@@ -69,8 +69,12 @@ iter(h on 8)
 {
 	iter(l on 2)
 	{
-		output [packed, false] client_0(l, h), client_1(l, h), client_2(l, h), client_3(l, h), client_4(l, h), client_5(l, h), client_6(l, h), client_7(l, h);
-		output [packed, false] resource_A(l, h), resource_B(l, h), resource_C(l, h), resource_D(l, h);
+		iter(i on numtasks)
+			output [packed, false] client(i, l, h);
+		
+		iter(n on numres)
+			output [packed, false] resource(n, l, h);
+
 		output [packed, false] done(l, h);
 	}
 
@@ -115,16 +119,19 @@ iter(i on numtasks)
 			excl_fwd(0, n) == ~ general_request(0, n);
 			pass(0, n) == random | (~ random & excl_bck(1, n));
 		}
-		else when(i is numtasks - 1)
-		{
-			excl_bck(numtasks - 1, n) == ~ general_request(numtasks - 1, n);
-			pass(numtasks - 1, n) == (random & excl_fwd(numtasks - 2, n)) | ~ random;
-		}
 		else
 		{
-			excl_fwd(i, n) == excl_fwd(i - 1, n) & ~ general_request(i, n);
-			excl_bck(i, n) == excl_bck(i + 1, n) & ~ general_request(i, n);
-			pass(i, n) == (random & excl_fwd(i - 1, n)) | (~ random & excl_bck(i + 1, n));
+			when(i is numtasks - 1)
+			{
+				excl_bck(numtasks - 1, n) == ~ general_request(numtasks - 1, n);
+				pass(numtasks - 1, n) == (random & excl_fwd(numtasks - 2, n)) | ~ random;
+			}
+			else
+			{
+				excl_fwd(i, n) == excl_fwd(i - 1, n) & ~ general_request(i, n);
+				excl_bck(i, n) == excl_bck(i + 1, n) & ~ general_request(i, n);
+				pass(i, n) == (random & excl_fwd(i - 1, n)) | (~ random & excl_bck(i + 1, n));
+			}
 		}
 
 		delayed_request(i, n) == since(request(i, n) & ~ release(i, n) & ~ pass(i, n), ~ release(i, n) & ~ pass(i, n));
@@ -237,36 +244,19 @@ working --> forall(complete(h) == sym_string(0, h), h on 8);
 iter(i on numtasks)
 	cycle(i) --> forall(complete(h) == num_string(i, h), h on 8);
 
-forall(client_0(0, h) == owned(0, h), h on 8);
-forall(client_1(0, h) == owned(1, h), h on 8);
-forall(client_2(0, h) == owned(2, h), h on 8);
-forall(client_3(0, h) == owned(3, h), h on 8);
-forall(client_4(0, h) == owned(4, h), h on 8);
-forall(client_5(0, h) == owned(5, h), h on 8);
-forall(client_6(0, h) == owned(6, h), h on 8);
-forall(client_7(0, h) == owned(7, h), h on 8);
+iter(i on numtasks)
+	{
+	forall(client(i, 0, h) == owned(i, h), h on 8);
+	forall(~ client(i, 1, h), h on 8);
+	}
 
-forall(resource_A(0, h) == owner(0, h), h on 8);
-forall(resource_B(0, h) == owner(1, h), h on 8);
-forall(resource_C(0, h) == owner(2, h), h on 8);
-forall(resource_D(0, h) == owner(3, h), h on 8);
+iter(n on numres)
+	{
+	forall(resource(n, 0, h) == owner(n, h), h on 8);
+	forall(~ resource(n, 1, h), h on 8);
+	}
 
 forall(done(0, h) == complete(h), h on 8);
-
-forall(~ client_0(1, h), h on 8);
-forall(~ client_1(1, h), h on 8);
-forall(~ client_2(1, h), h on 8);
-forall(~ client_3(1, h), h on 8);
-forall(~ client_4(1, h), h on 8);
-forall(~ client_5(1, h), h on 8);
-forall(~ client_6(1, h), h on 8);
-forall(~ client_7(1, h), h on 8);
-
-forall(~ resource_A(1, h), h on 8);
-forall(~ resource_B(1, h), h on 8);
-forall(~ resource_C(1, h), h on 8);
-forall(~ resource_D(1, h), h on 8);
-
 forall(~ done(1, h), h on 8);
 
 

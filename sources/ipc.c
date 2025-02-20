@@ -1,9 +1,9 @@
 
 /* Linux IPC interface */
 
-#if !defined UNIX_FILE_IO
-  #define ANSI_FILE_IO
-#endif
+#define NDEBUG
+#define ANSI_FILE_IO
+/* #define UNIX_FILE_IO */
 
 #include "tinx.h"
 
@@ -27,6 +27,7 @@ int msend_message_posix(channel_posix c, char *a, int n)
   char buffer[MSG_SIZE];
 
   memcpy(buffer, a, n);
+  buffer[n] = '\0';
 
   return mq_send(c, buffer, MSG_SIZE, 0);
 }
@@ -43,6 +44,7 @@ int mread_message_posix(channel_posix c, char *a, int n)
     }
 
   memcpy(a, buffer, n);
+  a[n] = '\0';
 
   return 0;
 }
@@ -85,6 +87,7 @@ int msend_message_sys5(channel_sys5 c, char *a, int n)
 
   qbuf.mtype = c.saddr;
   memcpy(qbuf.mtext, a, n);
+  qbuf.mtext[n] = '\0';
 
   return msgsnd(c.paddr, &qbuf, MSG_SIZE, IPC_NOWAIT);
 }
@@ -103,6 +106,7 @@ int mread_message_sys5(channel_sys5 c, char *a, int n)
     }
 
   memcpy(a, qbuf.mtext, n);
+  a[n] = '\0';
 
   return 0;
 }
@@ -129,4 +133,96 @@ int delete_queues_sys5()
 
   return 0;
 }
+
+safesocket add_socket(char *name, stream_class sclass)
+{
+  char basename[MAX_NAMELEN];
+  safesocket sock;
+  int port;
+  static struct sockaddr_in address, address2;
+  static socklen_t length;
+  struct hostent *server;
+  void (*prevhand)(int);
+
+  sock.asid = -1;
+
+  if(sscanf(name, "%[^)(] ( %d )", basename, &port) < 2)
+    port = PORTBASE;
+  else
+    if(port < 1 || port > 65535)
+      return sock;
+
+  server = gethostbyname(basename);
+  if(!server)
+    return sock;
+
+  address.sin_family = AF_INET;
+  address.sin_port = htons(port);
+
+  if(sclass == output_stream)
+    {
+      sock.lsid = socket(AF_INET, SOCK_STREAM, 0);
+      if(sock.lsid < 0)
+        return sock;
+
+      address.sin_addr.s_addr = INADDR_ANY;
+
+      if(bind(sock.lsid, (struct sockaddr *)&address, sizeof(address)) < 0)
+        return sock;
+
+      if(listen(sock.lsid, 5) < 0)
+        return sock;
+
+      length = sizeof(address2);
+      
+      prevhand = signal(SIGINT, SIG_DFL);
+
+      for(;;)
+        {
+          sock.asid = accept(sock.lsid, (struct sockaddr *)&address2, &length);
+
+          if(memcmp(&address2.sin_addr.s_addr, server->h_addr, server->h_length))
+            close(sock.asid);
+          else
+            break;
+        }
+
+      signal(SIGINT, prevhand);
+    }
+  else
+    {
+      sock.lsid = -1;
+
+      sock.asid = socket(AF_INET, SOCK_STREAM, 0);
+      if(sock.asid < 0)
+        return sock;
+
+      memcpy(&address.sin_addr.s_addr, server->h_addr, server->h_length);
+
+      prevhand = signal(SIGINT, SIG_DFL);
+
+      while(connect(sock.asid, (struct sockaddr *)&address, sizeof(address)) < 0)
+        usleep(1000);
+
+      signal(SIGINT, prevhand);
+    }
+
+  return sock;
+}
+
+int close_socket(safesocket sock)
+{
+  int rv;
+
+  rv = close(sock.asid);
+  
+  if(rv < 0)
+    return rv;
+
+  if(sock.lsid >= 0)
+    rv = close(sock.lsid);
+
+  return rv;
+}
+
 

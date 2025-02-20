@@ -1,7 +1,7 @@
 /*
   TINX - Temporal Inference Network eXecutor
   Design & coding by Andrea Giotti, 1998-1999
-  Revised 2016-2019
+  Revised 2016-2024
 */
 
 #define NDEBUG
@@ -11,13 +11,16 @@
 
 #include "tinx.h"
 
-#define VER "8.0.3 (single core)"
+#define VER "11.0.8 (single core)"
 
+const arc null_arc = {NULL, no_link};
 const event null_event = {{NULL, no_link}, NULL_TIME};
 
-const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
+const char class_symbol[NODE_CLASSES_NUMBER + 1] = CLASS_SYMBOLS;
 
+volatile sig_atomic_t rst = FALSE;
 volatile sig_atomic_t irq = FALSE;
+volatile sig_atomic_t frz = FALSE;
 
 /******** Tools ********/
 
@@ -96,7 +99,7 @@ unsigned long int hashnode(char *name)
 
 /******** Inference engine ********/
 
-INLINE void state(k_base *kb, event s)
+INLINE void state(k_base *kb, event s, bool soundness_check)
 {
   event q, r;
 
@@ -104,11 +107,15 @@ INLINE void state(k_base *kb, event s)
   assert(valid(s));
   assert(!is_stated(kb, s));
 
-  if(kb->soundness_check && is_stated(kb, ev_neg(s)))
+  if(soundness_check && is_stated(kb, ev_neg(s)))
     {
-      fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT": Soundness violation\n",
-              arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t);
-
+      if(s.e.vp->debug)
+        fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT": Soundness violation%s%s\n",
+                arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t, s.e.lc? ": ~ " : ": ", s.e.vp->debug);
+      else
+        fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT": Soundness violation\n",
+                arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t);
+      
       close_base(kb);
       exit(EXIT_FAILURE);
     }
@@ -171,7 +178,7 @@ INLINE void state(k_base *kb, event s)
 INLINE event choose(k_base *kb)
 {
   event r, s;
-  d_time dt;
+  d_time dt, mt;
 
   assert(kb);
 
@@ -179,7 +186,7 @@ INLINE event choose(k_base *kb)
 
   if(valid(s))
     {
-      dt = s.t - kb->curr_time;
+      dt = s.t - kb->anchor_time;
 
       if(dt <= kb->bsd4)
         {
@@ -194,7 +201,14 @@ INLINE event choose(k_base *kb)
               kb->focus = r;
             }
           else
-            kb->focus = next(kb, s);
+            {
+              kb->focus = next(kb, s);
+
+              mt = min(kb->focus.t, kb->curr_time);
+
+              if(kb->anchor_time < mt)
+                kb->anchor_time = mt;
+            }
 
           if(kb->last_input.t <= s.t)
             kb->last_input = null_event;
@@ -216,12 +230,107 @@ INLINE event choose(k_base *kb)
   return s;
 }
 
+INLINE void math_safe_state(k_base *kb, event s, real value)
+{
+  if(is_math_stated(kb, s))
+    {
+      if(kb->soundness_check && value_of(kb, s) != value)
+        {
+          if(s.e.lc >= 0 && s.e.vp->debug)
+            fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT" = "REAL_OUT_FMT" ~= "REAL_OUT_FMT" (diff = %e): Math soundness violation, same path%s%s\n",
+                    arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t, value, value_of(kb, s), value - value_of(kb, s), s.e.lc? ": ~ " : ": ", s.e.vp->debug);
+          else
+            fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT" = "REAL_OUT_FMT" ~= "REAL_OUT_FMT" (diff = %e): Math soundness violation, same path\n",
+                    arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t, value, value_of(kb, s), value - value_of(kb, s));
+
+          close_base(kb);
+          exit(EXIT_FAILURE);
+        }
+    }
+  else
+    {
+      value_of(kb, s) = value;
+
+      state(kb, s, FALSE);
+    }
+}
+
+INLINE void math_opt_state(k_base *kb, event s, real value)
+{
+  event r;
+
+  r = ev_neg(s);
+
+  if(is_math_stated(kb, r))
+    {
+      if(kb->soundness_check && value_of(kb, r) != value)
+        {
+          if(s.e.vp->debug)
+            fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT" = "REAL_OUT_FMT" ~= "REAL_OUT_FMT" (diff = %e): Math soundness violation, different path%s%s\n",
+                    arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t, value, value_of(kb, r), value - value_of(kb, r), s.e.lc? ": ~ " : ": ", s.e.vp->debug);
+          else
+            fprintf(stderr, "(%s, %s) # %d @ "TIME_FMT" = "REAL_OUT_FMT" ~= "REAL_OUT_FMT" (diff = %e): Math soundness violation, different path\n",
+                    arc_neg(s.e).vp->name, s.e.vp->name, s.e.lc, s.t, value, value_of(kb, r), value - value_of(kb, r));
+
+          close_base(kb);
+          exit(EXIT_FAILURE);
+        }
+    }
+  else
+    math_safe_state(kb, s, value);
+}
+
+INLINE void update_literals(k_base *kb, event s)
+{
+  event r;
+
+  if(s.e.vp->ls)
+    {
+      r.e.vp = (node *)s.e.vp->ls;
+      r.e.lc = no_link;
+      r.t = s.t;
+
+      math_safe_state(kb, r, value_of(kb, s));
+    }
+}
+
+INLINE void share_literals(k_base *kb, event s)
+{
+  event q, r;
+  sh_literal *ls;
+  real val;
+
+  ls = (sh_literal *)s.e.vp;
+  val = value_of(kb, s);
+
+  r.e = ls->e;
+  r.t = s.t;
+
+  math_opt_state(kb, r, val);
+
+  q.e.vp = (node *)ls->other;
+  q.e.lc = no_link;
+  q.t = s.t;
+
+  math_safe_state(kb, q, val);
+}
+
 INLINE void process(k_base *kb, event s)
 {
   event r;
-  link_code lc1, lc2;
+  linkage *pin1, *pin2;
+  phase phi;
+  d_time idx;
+  real value_x, value_y, value_z;
 
   assert(kb);
+
+  if(s.e.lc < 0)
+    {
+      share_literals(kb, s);
+      return;
+    }
+
   assert(valid(s));
 
   kb->perf.count++;
@@ -229,20 +338,23 @@ INLINE void process(k_base *kb, event s)
     {
     case gate:
 
-      lc1 = (s.e.lc + 1) % LINK_CODES_NUMBER;
-      lc2 = (s.e.lc + 2) % LINK_CODES_NUMBER;
+      pin1 = &s.e.vp->pin[(s.e.lc + 1) % LINK_CODES_NUMBER];
+      pin2 = &s.e.vp->pin[(s.e.lc + 2) % LINK_CODES_NUMBER];
 
-      if(s.e.vp->pin[lc1].history[index_of(kb, s)].chosen == phase_of(kb, s))
+      phi = phase_of(kb, s);
+      idx = index_of(kb, s);
+
+      if(pin1->history[idx].chosen == phi)
         {
-          r.e = s.e.vp->pin[lc2].e;
+          r.e = pin2->e;
           r.t = s.t;
 
           safe_state(kb, r);
         }
       else
-        if(s.e.vp->pin[lc2].history[index_of(kb, s)].chosen == phase_of(kb, s))
+        if(pin2->history[idx].chosen == phi)
           {
-            r.e = s.e.vp->pin[lc1].e;
+            r.e = pin1->e;
             r.t = s.t;
 
             safe_state(kb, r);
@@ -289,7 +401,334 @@ INLINE void process(k_base *kb, event s)
       if(!kb->bound || r.t >= s.t)
         safe_state(kb, r);
 
-      break;
+    break;
+
+    case math_chs:
+
+      r.t = s.t;
+
+      if(s.e.lc == parent)
+        r.e = s.e.vp->pin[left_son].e;
+      else
+        r.e = s.e.vp->pin[parent].e;
+
+      math_opt_state(kb, r, - value_of(kb, s));
+
+    break;
+
+    case math_inv:
+
+      r.t = s.t;
+
+      if(s.e.lc == parent)
+        r.e = s.e.vp->pin[left_son].e;
+      else
+        r.e = s.e.vp->pin[parent].e;
+
+      value_z = 1 / value_of(kb, s);
+
+      math_opt_state(kb, r, value_z);
+
+    break;
+
+    case math_sin:
+
+      r.t = s.t;
+
+      if(s.e.lc == parent)
+        {
+          r.e = s.e.vp->pin[left_son].e;
+
+          value_z = asin(value_of(kb, s));
+        }
+      else
+        {
+          r.e = s.e.vp->pin[parent].e;
+
+          value_z = sin(value_of(kb, s));
+        }
+
+      math_opt_state(kb, r, value_z);
+
+    break;
+
+    case math_add:
+
+      phi = phase_of(kb, s);
+      idx = index_of(kb, s);
+
+      value_x = s.e.vp->pin[s.e.lc].history[idx].value;
+
+      if(s.e.lc == parent)
+        {
+          pin1 = &s.e.vp->pin[left_son];
+          pin2 = &s.e.vp->pin[right_son];
+          
+          if(pin1->history[idx].chosen == phi || pin1->history[idx].chosen == CONSTANT_PHASE)
+            {
+              r.e = pin2->e;
+              r.t = s.t;
+
+              value_y = pin1->history[idx].value;
+              value_z = value_x - value_y;
+
+              math_opt_state(kb, r, value_z);
+            }
+          else
+            if(pin2->history[idx].chosen == phi || pin2->history[idx].chosen == CONSTANT_PHASE)
+              {
+                r.e = pin1->e;
+                r.t = s.t;
+
+                value_y = pin2->history[idx].value;
+                value_z = value_x - value_y;
+
+                math_opt_state(kb, r, value_z);
+              }
+        }
+      else
+        {
+          pin1 = &s.e.vp->pin[s.e.lc == left_son? right_son : left_son];
+          pin2 = &s.e.vp->pin[parent];
+
+          if(pin1->history[idx].chosen == phi || pin1->history[idx].chosen == CONSTANT_PHASE)
+            {
+              r.e = pin2->e;
+              r.t = s.t;
+
+              value_y = pin1->history[idx].value;
+              value_z = value_x + value_y;
+
+              math_opt_state(kb, r, value_z);
+            }
+          else
+            if(pin2->history[idx].chosen == phi || pin2->history[idx].chosen == CONSTANT_PHASE)
+              {
+                r.e = pin1->e;
+                r.t = s.t;
+
+                value_y = pin2->history[idx].value;
+                value_z = value_y - value_x;
+
+                math_opt_state(kb, r, value_z);
+             }
+        }
+
+    break;
+
+    case math_mul:
+
+      phi = phase_of(kb, s);
+      idx = index_of(kb, s);
+
+      value_x = s.e.vp->pin[s.e.lc].history[idx].value;
+
+      if(s.e.lc == parent)
+        {
+          pin1 = &s.e.vp->pin[left_son];
+          pin2 = &s.e.vp->pin[right_son];
+
+          if(pin1->history[idx].chosen == phi || pin1->history[idx].chosen == CONSTANT_PHASE)
+            {
+              r.e = pin2->e;
+              r.t = s.t;
+
+              value_y = pin1->history[idx].value;
+              value_z = value_x / value_y;
+
+              math_opt_state(kb, r, value_z);
+            }
+          else
+            if(pin2->history[idx].chosen == phi || pin2->history[idx].chosen == CONSTANT_PHASE)
+              {
+                r.e = pin1->e;
+                r.t = s.t;
+
+                value_y = pin2->history[idx].value;
+                value_z = value_x / value_y;
+
+                math_opt_state(kb, r, value_z);
+             }
+        }
+      else
+        {
+          pin1 = &s.e.vp->pin[s.e.lc == left_son? right_son : left_son];
+          pin2 = &s.e.vp->pin[parent];
+
+          if(pin1->history[idx].chosen == phi || pin1->history[idx].chosen == CONSTANT_PHASE)
+            {
+              r.e = pin2->e;
+              r.t = s.t;
+
+              value_y = pin1->history[idx].value;
+              value_z = value_x * value_y;
+
+              math_opt_state(kb, r, value_z);
+            }
+          else
+            if(pin2->history[idx].chosen == phi || pin2->history[idx].chosen == CONSTANT_PHASE)
+              {
+                r.e = pin1->e;
+                r.t = s.t;
+
+                value_y = pin2->history[idx].value;
+                value_z = value_y / value_x;
+
+                math_opt_state(kb, r, value_z);
+             }
+        }
+
+    break;
+
+    case math_pow:
+
+      phi = phase_of(kb, s);
+      idx = index_of(kb, s);
+
+      value_x = s.e.vp->pin[s.e.lc].history[idx].value;
+
+      if(s.e.lc == parent)
+        {
+          pin1 = &s.e.vp->pin[left_son];
+          pin2 = &s.e.vp->pin[right_son];
+
+          if(pin1->history[idx].chosen == phi || pin1->history[idx].chosen == CONSTANT_PHASE)
+            {
+              r.e = pin2->e;
+              r.t = s.t;
+
+              value_y = pin1->history[idx].value;
+              value_z = log(value_x) / log(value_y);
+
+              math_opt_state(kb, r, value_z);
+            }
+          else
+            if(pin2->history[idx].chosen == phi || pin2->history[idx].chosen == CONSTANT_PHASE)
+              {
+                r.e = pin1->e;
+                r.t = s.t;
+
+                value_y = pin2->history[idx].value;
+                value_z = pow(value_x, 1 / value_y);
+
+                math_opt_state(kb, r, value_z);
+             }
+        }
+      else
+        {
+          pin1 = &s.e.vp->pin[s.e.lc == left_son? right_son : left_son];
+          pin2 = &s.e.vp->pin[parent];
+
+          if(pin1->history[idx].chosen == phi || pin1->history[idx].chosen == CONSTANT_PHASE)
+            {
+              r.e = pin2->e;
+              r.t = s.t;
+
+              value_y = pin1->history[idx].value;
+
+              if(s.e.lc == left_son)
+                value_z = pow(value_x, value_y);
+              else
+                value_z = pow(value_y, value_x);
+
+              math_opt_state(kb, r, value_z);
+            }
+          else
+            if(pin2->history[idx].chosen == phi || pin2->history[idx].chosen == CONSTANT_PHASE)
+              {
+                r.e = pin1->e;
+                r.t = s.t;
+
+                value_y = pin2->history[idx].value;
+
+                if(s.e.lc == left_son)
+                  value_z = log(value_y) / log(value_x);
+                else
+                  value_z = pow(value_y, 1 / value_x);
+
+                math_opt_state(kb, r, value_z);
+             }
+        }
+
+    break;
+
+    case math_eqv0:
+
+      if(s.e.lc == parent)
+        {
+          r.e = s.e.vp->pin[left_son].e;
+          r.t = s.t;
+          
+          math_opt_state(kb, r, 0);
+        }
+      else
+        if(value_of(kb, s))
+          {
+            r.e = s.e.vp->pin[parent].e;
+            r.t = s.t;
+
+            safe_state(kb, r);
+          }
+
+    break;
+
+    case math_neq0:
+
+      if(s.e.lc != parent && !value_of(kb, s))
+          {
+            r.e = s.e.vp->pin[parent].e;
+            r.t = s.t;
+
+            safe_state(kb, r);
+          }
+
+    break;
+
+    case math_gteq0:
+
+      if(s.e.lc != parent && value_of(kb, s) < 0)
+          {
+            r.e = s.e.vp->pin[parent].e;
+            r.t = s.t;
+
+            safe_state(kb, r);
+          }
+
+    break;
+
+    case math_lt0:
+
+      if(s.e.lc != parent && value_of(kb, s) >= 0)
+          {
+            r.e = s.e.vp->pin[parent].e;
+            r.t = s.t;
+
+            safe_state(kb, r);
+          }
+
+    break;
+
+    case math_delay:
+      if(s.e.lc == parent)
+        {
+          r.e = s.e.vp->pin[left_son].e;
+          r.t = s.t - s.e.vp->k;
+        }
+      else
+        {
+          r.e = s.e.vp->pin[parent].e;
+          r.t = s.t + s.e.vp->k;
+        }
+
+      if(!kb->bound || r.t >= s.t)
+        math_opt_state(kb, r, value_of(kb, s));
+    break;
+
+    case literal:
+
+      update_literals(kb, s);
+
+    break;
 
     default:
       assert(FALSE);
@@ -331,58 +770,74 @@ INLINE void scan_ios(k_base *kb, stream_class sclass)
 INLINE bool loop(k_base *kb)
 {
   event s;
+  d_time mt;
   m_time delta_time;
 
   assert(kb);
 
-  if(kb->slice)
+  if(frz)
     {
-      s = choose(kb);
-
-      if(kb->trace_focus)
-        trace(kb, s);
-
-      if(valid(s))
-          {
-            process(kb, s);
-            kb->slice--;
-
-            return irq;
-          }
+      usleep(1000);
+      kb->time_base = get_time() - (kb->curr_time - kb->offset) * kb->step;
     }
-
-  kb->slice = kb->max_slice;
-
-  if(!valid(kb->focus) || kb->curr_time - kb->focus.t < kb->bsd4)
+  else
     {
-      scan_ios(kb, input_stream);
-      scan_ios(kb, output_stream);
-
-      if(!kb->io_stream[input_stream] && !kb->io_stream[output_stream])
+      if(kb->slice)
         {
-          if(kb->quiet && !valid(kb->focus))
-            return TRUE;
-          else
+          kb->slice--;
+
+          s = choose(kb);
+
+          if(kb->trace_focus)
+            trace(kb, s);
+
+          if(valid(s))
             {
-              delta_time = get_time() - kb->time_base - (kb->curr_time - kb->offset + 1) * kb->step;
+              process(kb, s);
+              return irq;
+            }
+        }
+      else
+        kb->slice = kb->max_slice;
 
-              if(delta_time >= 0)
-                {
-                  kb->io_stream[input_stream] = kb->io_stream_2[input_stream];
-                  kb->io_stream_2[input_stream] = NULL;
+      if(kb->curr_time - kb->anchor_time < kb->bsd4)
+        {
+          scan_ios(kb, input_stream);
+          scan_ios(kb, output_stream);
 
-                  kb->io_stream[output_stream] = kb->io_stream_2[output_stream];
-                  kb->io_stream_2[output_stream] = NULL;
-
-                  kb->curr_time++;
-                  kb->far = FALSE;
-
-                  if(kb->max_time && kb->curr_time >= kb->max_time)
-                    return TRUE;
-                }
+          if(!kb->io_stream[input_stream] && !kb->io_stream[output_stream])
+            {
+              if(kb->quiet && !valid(kb->focus))
+                return TRUE;
               else
-                if(!kb->busywait && kb->far)
-                  usleep(1000000 * (- delta_time));
+                {
+                  delta_time = get_time() - kb->time_base - (kb->curr_time - kb->offset + 1) * kb->step;
+
+                  if(delta_time >= 0)
+                    {
+                      kb->io_stream[input_stream] = kb->io_stream_2[input_stream];
+                      kb->io_stream_2[input_stream] = NULL;
+
+                      kb->io_stream[output_stream] = kb->io_stream_2[output_stream];
+                      kb->io_stream_2[output_stream] = NULL;
+
+                      kb->curr_time++;
+
+                      mt = min(kb->focus.t, kb->curr_time);
+
+                      if(kb->anchor_time < mt)
+                        {
+                          kb->anchor_time = mt;
+                          kb->far = FALSE;
+                        }
+
+                      if(kb->max_time && kb->curr_time >= kb->max_time)
+                        return TRUE;
+                    }
+                  else
+                    if(!kb->busywait && kb->far)
+                      usleep(1000000 * (- delta_time));
+                }
             }
         }
     }
@@ -399,6 +854,7 @@ bool input_f(k_base *kb, stream *ios)
 
   s.t = kb->curr_time;
 
+  c = EOF;
   if(get_file(ios->fp, &c) && file_error(ios->fp))
     {
       perror(ios->file_name);
@@ -461,6 +917,74 @@ bool input_f(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool input_num_f(k_base *kb, stream *ios)
+{
+  event s;
+  real val;
+  char blanks[MAX_STRLEN];
+
+  s.t = kb->curr_time;
+
+  ios->buffer[ios->pos] = '\0';
+  if(fscanf(ios->fp, FUN_FMT, &ios->buffer[ios->pos]) == EOF)
+    {
+      if(file_error(ios->fp))
+        {
+          perror(ios->file_name);
+          exit(EXIT_FAILURE);
+        }
+      else
+        reset_file(ios->fp);
+    }
+
+  blanks[0] = '\0';
+  if(fscanf(ios->fp, "%"MAX_NAMEBUF_C"["BLANKS"]", blanks) == EOF)
+    {
+      if(file_error(ios->fp))
+        {
+          perror(ios->file_name);
+          exit(EXIT_FAILURE);
+        }
+      else
+        reset_file(ios->fp);
+    }
+
+  if(blanks[0] == '\0')
+    ios->pos = strlen(ios->buffer);
+  else
+    ios->pos = 0;
+
+  if(ios->buffer[0] == kb->alpha[end_symbol] && ios->buffer[1] == '\0')
+    {
+      ios->open = FALSE;
+      return FALSE;
+    }
+
+  if(ios->buffer[0] == '\0' || ios->pos)
+    {
+      if(!ios->skip[io_other] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+      else
+        val = ios->defaultreal;
+    }
+  else
+    if(sscanf(ios->buffer, REAL_IN_FMT, &val) != 1)
+      {
+        fprintf(stderr, "%s, %s: Invalid number in stream\n", ios->file_name, ios->buffer);
+        exit(EXIT_FAILURE);
+      }
+
+  s.e = ios->e;
+
+  math_safe_state(kb, s, val);
+
+  s.e = ios->ne;
+
+  math_safe_state(kb, s, val);
+
+  return TRUE;
+}
+
 bool input_packed_f(k_base *kb, stream *ios)
 {
   event s;
@@ -472,14 +996,14 @@ bool input_packed_f(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   s.t = kb->curr_time;
 
   if(pack->packedcount == pack->packedtot)
     {
-      if(mget_file(ios->fp, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))) && file_error(ios->fp))
+      if(mget_file(ios->fp, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3) && file_error(ios->fp))
         {
           perror(ios->file_name);
           exit(EXIT_FAILURE);
@@ -526,6 +1050,204 @@ bool input_packed_f(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool input_s(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+
+  s.t = kb->curr_time;
+
+  c = EOF;
+  if(get_socket(ios->sock, &c))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->socket_name);
+          exit(EXIT_FAILURE);
+        }
+
+      ios->errors++;
+    }
+  else
+    ios->errors = 0;
+
+  switch(strchr(kb->alpha, c) - kb->alpha)
+    {
+    case eof_symbol:
+      if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    break;
+
+    case unknown_symbol:
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    break;
+
+    case false_symbol:
+      s.e = ios->ne;
+    break;
+
+    case true_symbol:
+      s.e = ios->e;
+    break;
+
+    case end_symbol:
+      ios->open = FALSE;
+      return FALSE;
+    break;
+
+    case term_symbol:
+      irq = TRUE;
+      return FALSE;
+    break;
+
+    default:
+      fprintf(stderr, "%s, %c (dec %d): Invalid character in stream\n",
+              ios->socket_name, c, c);
+      exit(EXIT_FAILURE);
+    }
+
+  safe_state(kb, s);
+
+  return TRUE;
+}
+
+bool input_num_s(k_base *kb, stream *ios)
+{
+  event s;
+  real val;
+  char buffer[MAX_STRLEN];
+
+  s.t = kb->curr_time;
+
+  *buffer = EOF;
+  if(mget_socket(ios->sock, buffer, MSG_SIZE))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->socket_name);
+          exit(EXIT_FAILURE);
+        }
+
+      ios->errors++;
+    }
+  else
+    ios->errors = 0;
+
+  if(*buffer == EOF)
+    {
+      if(!ios->skip[io_other] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+      else
+        val = ios->defaultreal;
+    }
+  else
+    {
+      if(buffer[0] == kb->alpha[end_symbol] && buffer[1] == '\0')
+        {
+          ios->open = FALSE;
+          return FALSE;
+        }
+
+      if(sscanf(buffer, REAL_IN_FMT, &val) != 1)
+        {
+          fprintf(stderr, "%s, %s: Invalid number in stream\n", ios->socket_name, buffer);
+          exit(EXIT_FAILURE);
+        }
+    }
+
+  s.e = ios->e;
+
+  math_safe_state(kb, s, val);
+
+  s.e = ios->ne;
+
+  math_safe_state(kb, s, val);
+
+  return TRUE;
+}
+
+bool input_packed_s(k_base *kb, stream *ios)
+{
+  event s;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
+  else
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
+
+  s.t = kb->curr_time;
+
+  if(pack->packedcount == pack->packedtot)
+    {
+      if(mget_socket(ios->sock, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
+        {
+          if(errno != EAGAIN)
+            {
+              perror(ios->socket_name);
+              exit(EXIT_FAILURE);
+            }
+
+          ios->errors++;
+
+          if(!ios->skip[ios->defaultval] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+            return FALSE;
+
+          pack->gen = FALSE;
+        }
+      else
+        {
+          ios->errors = 0;
+          pack->gen = TRUE;
+        }
+    }
+
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    pack->packedcount = pack->packedtot;
+
+  if(pack->gen)
+    {
+      if(!(pack->packedchar[h] & (1 << k)))
+        s.e = ios->ne;
+      else
+        s.e = ios->e;
+    }
+  else
+    {
+      if(ios->defaultval == io_false)
+        s.e = ios->ne;
+      else
+        if(ios->defaultval == io_true)
+          s.e = ios->e;
+        else
+          return TRUE;
+    }
+
+  safe_state(kb, s);
+
+  return TRUE;
+}
+
 bool input_m_posix(k_base *kb, stream *ios)
 {
   event s;
@@ -533,6 +1255,7 @@ bool input_m_posix(k_base *kb, stream *ios)
 
   s.t = kb->curr_time;
 
+  c = EOF;
   if(read_message_posix(ios->chan, &c))
     {
       if(errno != EAGAIN)
@@ -600,6 +1323,61 @@ bool input_m_posix(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool input_num_m_posix(k_base *kb, stream *ios)
+{
+  event s;
+  real val;
+  char buffer[MAX_STRLEN];
+
+  s.t = kb->curr_time;
+
+  *buffer = EOF;
+  if(mread_message_posix(ios->chan, buffer, MSG_SIZE))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->chan_name);
+          exit(EXIT_FAILURE);
+        }
+
+      ios->errors++;
+    }
+  else
+    ios->errors = 0;
+
+  if(*buffer == EOF)
+    {
+      if(!ios->skip[io_other] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+      else
+        val = ios->defaultreal;
+    }
+  else
+    {
+      if(buffer[0] == kb->alpha[end_symbol] && buffer[1] == '\0')
+        {
+          ios->open = FALSE;
+          return FALSE;
+        }
+
+      if(sscanf(buffer, REAL_IN_FMT, &val) != 1)
+        {
+          fprintf(stderr, "%s, %s: Invalid number in stream\n", ios->chan_name, buffer);
+          exit(EXIT_FAILURE);
+        }
+    }
+
+  s.e = ios->e;
+
+  math_safe_state(kb, s, val);
+
+  s.e = ios->ne;
+
+  math_safe_state(kb, s, val);
+
+  return TRUE;
+}
+
 bool input_packed_m_posix(k_base *kb, stream *ios)
 {
   event s;
@@ -611,14 +1389,14 @@ bool input_packed_m_posix(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   s.t = kb->curr_time;
 
   if(pack->packedcount == pack->packedtot)
     {
-      if(mread_message_posix(ios->chan, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+      if(mread_message_posix(ios->chan, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
         {
           if(errno != EAGAIN)
             {
@@ -675,6 +1453,7 @@ bool input_m_sys5(k_base *kb, stream *ios)
 
   s.t = kb->curr_time;
 
+  c = EOF;
   if(read_message_sys5(ios->chan5, &c))
     {
       if(errno != ENOMSG)
@@ -742,6 +1521,61 @@ bool input_m_sys5(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool input_num_m_sys5(k_base *kb, stream *ios)
+{
+  event s;
+  real val;
+  char buffer[MAX_STRLEN];
+
+  s.t = kb->curr_time;
+
+  *buffer = EOF;
+  if(mread_message_sys5(ios->chan5, buffer, MSG_SIZE))
+    {
+      if(errno != ENOMSG)
+        {
+          perror(ios->chan_name);
+          exit(EXIT_FAILURE);
+        }
+
+      ios->errors++;
+    }
+  else
+    ios->errors = 0;
+
+  if(*buffer == EOF)
+    {
+      if(!ios->skip[io_other] || get_time() - kb->time_base < (kb->curr_time - kb->offset + 1) * kb->step)
+        return FALSE;
+      else
+        val = ios->defaultreal;
+    }
+  else
+    {
+      if(buffer[0] == kb->alpha[end_symbol] && buffer[1] == '\0')
+        {
+          ios->open = FALSE;
+          return FALSE;
+        }
+
+      if(sscanf(buffer, REAL_IN_FMT, &val) != 1)
+        {
+          fprintf(stderr, "%s, %s: Invalid number in stream\n", ios->chan_name, buffer);
+          exit(EXIT_FAILURE);
+        }
+    }
+
+  s.e = ios->e;
+
+  math_safe_state(kb, s, val);
+
+  s.e = ios->ne;
+
+  math_safe_state(kb, s, val);
+
+  return TRUE;
+}
+
 bool input_packed_m_sys5(k_base *kb, stream *ios)
 {
   event s;
@@ -753,14 +1587,14 @@ bool input_packed_m_sys5(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   s.t = kb->curr_time;
 
   if(pack->packedcount == pack->packedtot)
     {
-      if(mread_message_sys5(ios->chan5, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+      if(mread_message_sys5(ios->chan5, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
         {
           if(errno != ENOMSG)
             {
@@ -849,7 +1683,7 @@ bool output_f(k_base *kb, stream *ios)
             }
           else
             {
-              if(kb->io_stream[input_stream] || !kb->far)
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
                 return FALSE;
               else
                 {
@@ -888,6 +1722,86 @@ bool output_f(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool output_num_f(k_base *kb, stream *ios)
+{
+  event s;
+  real val;
+  char buffer[MAX_STRLEN];
+
+  if(!ios->e.vp)
+    {
+      if(ios->skip[io_other])
+        return TRUE;
+
+      val = ios->defaultreal;
+    }
+  else
+    {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_math_stated(kb, s))
+        {
+          val = value_of(kb, s);
+
+          if(ios->skip[io_other] && val == ios->defaultreal)
+            return TRUE;
+
+          ios->fails = 0;
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_math_stated(kb, s))
+            {
+              val = value_of(kb, s);
+
+              if(ios->skip[io_other] && val == ios->defaultreal)
+                return TRUE;
+
+              ios->fails = 0;
+            }
+          else
+            {
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
+                return FALSE;
+              else
+                {
+                  if(ios->skip[io_unknown])
+                    return TRUE;
+
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  val = ios->defaultreal;
+                }
+            }
+        }
+    }
+
+  sprintf(buffer, REAL_OUT_FMT"\n", val);
+
+  if(mput_file(ios->fp, buffer, strlen(buffer)))
+    {
+      perror(ios->file_name);
+      exit(EXIT_FAILURE);
+    }
+
+  if(sync_file(ios->fp))
+    {
+      perror(ios->file_name);
+      exit(EXIT_FAILURE);
+    }
+
+  return TRUE;
+}
+
 bool output_packed_f(k_base *kb, stream *ios)
 {
   event s;
@@ -900,8 +1814,8 @@ bool output_packed_f(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   c = pack->packedchar[h];
 
@@ -947,7 +1861,7 @@ bool output_packed_f(k_base *kb, stream *ios)
             }
           else
             {
-              if(kb->io_stream[input_stream] || !kb->far)
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
                 return FALSE;
               else
                 {
@@ -981,7 +1895,7 @@ bool output_packed_f(k_base *kb, stream *ios)
     {
       if(pack->gen)
         {
-          if(mput_file(ios->fp, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+          if(mput_file(ios->fp, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
             {
               perror(ios->file_name);
               exit(EXIT_FAILURE);
@@ -990,6 +1904,328 @@ bool output_packed_f(k_base *kb, stream *ios)
           if(sync_file(ios->fp))
             {
               perror(ios->file_name);
+              exit(EXIT_FAILURE);
+            }
+
+          pack->gen = FALSE;
+        }
+
+      pack->packedcount = pack->packedtot;
+    }
+
+  return TRUE;
+}
+
+bool output_s(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+
+  if(!ios->e.vp)
+    {
+      if(ios->skip[ios->defaultval])
+        return TRUE;
+
+      c = kb->alpha[ios->defaultval];
+    }
+  else
+    {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_stated(kb, s))
+        {
+          if(ios->skip[io_false])
+            return TRUE;
+
+          ios->fails = 0;
+          c = kb->alpha[io_false];
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              if(ios->skip[io_true])
+                return TRUE;
+
+              ios->fails = 0;
+              c = kb->alpha[io_true];
+            }
+          else
+            {
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
+                return FALSE;
+              else
+                {
+                  if(ios->skip[io_unknown])
+                    return TRUE;
+
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  if(ios->skip[ios->defaultval])
+                    c = kb->alpha[io_unknown];
+                  else
+                    c = kb->alpha[ios->defaultval];
+                }
+            }
+        }
+    }
+
+  if(put_socket(ios->sock, &c))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->socket_name);
+          exit(EXIT_FAILURE);
+        }
+
+      ios->errors++;
+
+      if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+        {
+          ios->open = FALSE;
+
+          fprintf(stderr, "%s: Remote channel error bound exceeded\n", ios->socket_name);
+        }
+
+      return FALSE;
+    }
+  else
+    ios->errors = 0;
+
+  if(sync_socket(ios->sock))
+    {
+      perror(ios->socket_name);
+      exit(EXIT_FAILURE);
+    }
+
+  return TRUE;
+}
+
+bool output_num_s(k_base *kb, stream *ios)
+{
+  event s;
+  real val;
+  char buffer[MAX_STRLEN];
+
+  if(!ios->e.vp)
+    {
+      if(ios->skip[io_other])
+        return TRUE;
+
+      val = ios->defaultreal;
+    }
+  else
+    {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_math_stated(kb, s))
+        {
+          val = value_of(kb, s);
+
+          if(ios->skip[io_other] && val == ios->defaultreal)
+            return TRUE;
+
+          ios->fails = 0;
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_math_stated(kb, s))
+            {
+              val = value_of(kb, s);
+
+              if(ios->skip[io_other] && val == ios->defaultreal)
+                return TRUE;
+
+              ios->fails = 0;
+            }
+          else
+            {
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
+                return FALSE;
+              else
+                {
+                  if(ios->skip[io_unknown])
+                    return TRUE;
+
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  val = ios->defaultreal;
+                }
+            }
+        }
+    }
+
+  sprintf(buffer, REAL_OUT_FMT"\n", val);
+
+  if(mput_socket(ios->sock, buffer, strlen(buffer)))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->socket_name);
+          exit(EXIT_FAILURE);
+        }
+
+      ios->errors++;
+
+      if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+        {
+          ios->open = FALSE;
+
+          fprintf(stderr, "%s: Remote channel error bound exceeded\n", ios->socket_name);
+        }
+
+      return FALSE;
+    }
+  else
+    ios->errors = 0;
+
+  if(sync_socket(ios->sock))
+    {
+      perror(ios->socket_name);
+      exit(EXIT_FAILURE);
+    }
+
+  return TRUE;
+}
+
+bool output_packed_s(k_base *kb, stream *ios)
+{
+  event s;
+  char c;
+  packet *pack;
+  int h, k;
+
+  if(!ios->packed_ios)
+    pack = &ios->pack;
+  else
+    pack = &ios->packed_ios->pack;
+
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
+
+  c = pack->packedchar[h];
+
+  if(!ios->e.vp)
+    {
+      if(ios->defaultval == io_false)
+        c &= ~ (1 << k);
+       else
+         if(ios->defaultval == io_true)
+           c |= (1 << k);
+
+      if(!ios->skip[ios->defaultval])
+        pack->gen = TRUE;
+    }
+  else
+   {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_stated(kb, s))
+        {
+          c &= ~ (1 << k);
+
+          if(!ios->skip[io_false])
+            {
+              ios->fails = 0;
+              pack->gen = TRUE;
+            }
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_stated(kb, s))
+            {
+              c |= (1 << k);
+
+              if(!ios->skip[io_true])
+                {
+                  ios->fails = 0;
+                  pack->gen = TRUE;
+                }
+            }
+          else
+            {
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
+                return FALSE;
+              else
+                {
+                  if(ios->defaultval == io_false)
+                    c &= ~ (1 << k);
+                  else
+                    if(ios->defaultval == io_true)
+                      c |= (1 << k);
+
+                  if(!ios->skip[io_unknown])
+                    {
+                      ios->fails++;
+
+                      if(!kb->max_time && ios->fails > kb->bsd4)
+                        {
+                          ios->open = FALSE;
+                          return FALSE;
+                        }
+
+                      pack->gen = TRUE;
+                    }
+                }
+            }
+        }
+    }
+
+  pack->packedchar[h] = c;
+  (pack->packedcount)--;
+
+  if(!pack->packedcount)
+    {
+      if(pack->gen)
+        {
+          if(mput_socket(ios->sock, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
+            {
+              if(errno != EAGAIN)
+                {
+                  perror(ios->socket_name);
+                  exit(EXIT_FAILURE);
+                }
+
+              ios->errors++;
+
+              if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+                {
+                  ios->open = FALSE;
+
+                  fprintf(stderr, "%s: Remote channel error bound exceeded\n", ios->socket_name);
+                }
+
+              (pack->packedcount)++;
+
+              return FALSE;
+            }
+          else
+            ios->errors = 0;
+
+          if(sync_socket(ios->sock))
+            {
+              perror(ios->socket_name);
               exit(EXIT_FAILURE);
             }
 
@@ -1041,7 +2277,7 @@ bool output_m_posix(k_base *kb, stream *ios)
             }
           else
             {
-              if(kb->io_stream[input_stream] || !kb->far)
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
                 return FALSE;
               else
                 {
@@ -1090,6 +2326,96 @@ bool output_m_posix(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool output_num_m_posix(k_base *kb, stream *ios)
+{
+  event s;
+  real val;
+  char buffer[MAX_STRLEN];
+
+  if(!ios->e.vp)
+    {
+      if(ios->skip[io_other])
+        return TRUE;
+
+      val = ios->defaultreal;
+    }
+  else
+    {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_math_stated(kb, s))
+        {
+          val = value_of(kb, s);
+
+          if(ios->skip[io_other] && val == ios->defaultreal)
+            return TRUE;
+
+          ios->fails = 0;
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_math_stated(kb, s))
+            {
+              val = value_of(kb, s);
+
+              if(ios->skip[io_other] && val == ios->defaultreal)
+                return TRUE;
+
+              ios->fails = 0;
+            }
+          else
+            {
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
+                return FALSE;
+              else
+                {
+                  if(ios->skip[io_unknown])
+                    return TRUE;
+
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  val = ios->defaultreal;
+                }
+            }
+        }
+    }
+
+  sprintf(buffer, REAL_OUT_FMT"\n", val);
+
+  if(msend_message_posix(ios->chan, buffer, strlen(buffer)))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->chan_name);
+          exit(EXIT_FAILURE);
+        }
+
+      ios->errors++;
+
+      if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+        {
+          ios->open = FALSE;
+
+          fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+        }
+
+      return FALSE;
+    }
+  else
+    ios->errors = 0;
+
+  return TRUE;
+}
+
 bool output_packed_m_posix(k_base *kb, stream *ios)
 {
   event s;
@@ -1102,8 +2428,8 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   c = pack->packedchar[h];
 
@@ -1149,7 +2475,7 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
             }
           else
             {
-              if(kb->io_stream[input_stream] || !kb->far)
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
                 return FALSE;
               else
                 {
@@ -1183,7 +2509,7 @@ bool output_packed_m_posix(k_base *kb, stream *ios)
     {
       if(pack->gen)
         {
-          if(msend_message_posix(ios->chan, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+          if(msend_message_posix(ios->chan, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
             {
               if(errno != EAGAIN)
                 {
@@ -1255,7 +2581,7 @@ bool output_m_sys5(k_base *kb, stream *ios)
             }
           else
             {
-              if(kb->io_stream[input_stream] || !kb->far)
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
                 return FALSE;
               else
                 {
@@ -1304,6 +2630,96 @@ bool output_m_sys5(k_base *kb, stream *ios)
   return TRUE;
 }
 
+bool output_num_m_sys5(k_base *kb, stream *ios)
+{
+  event s;
+  real val;
+  char buffer[MAX_STRLEN];
+
+  if(!ios->e.vp)
+    {
+      if(ios->skip[io_other])
+        return TRUE;
+
+      val = ios->defaultreal;
+    }
+  else
+    {
+      s.t = kb->curr_time;
+      s.e = ios->ne;
+
+      if(is_math_stated(kb, s))
+        {
+          val = value_of(kb, s);
+
+          if(ios->skip[io_other] && val == ios->defaultreal)
+            return TRUE;
+
+          ios->fails = 0;
+        }
+      else
+        {
+          s.e = ios->e;
+
+          if(is_math_stated(kb, s))
+            {
+              val = value_of(kb, s);
+
+              if(ios->skip[io_other] && val == ios->defaultreal)
+                return TRUE;
+
+              ios->fails = 0;
+            }
+          else
+            {
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
+                return FALSE;
+              else
+                {
+                  if(ios->skip[io_unknown])
+                    return TRUE;
+
+                  ios->fails++;
+
+                  if(!kb->max_time && ios->fails > kb->bsd4)
+                    {
+                      ios->open = FALSE;
+                      return FALSE;
+                    }
+
+                  val = ios->defaultreal;
+                }
+            }
+        }
+    }
+
+  sprintf(buffer, REAL_OUT_FMT"\n", val);
+
+  if(msend_message_sys5(ios->chan5, buffer, strlen(buffer)))
+    {
+      if(errno != EAGAIN)
+        {
+          perror(ios->chan_name);
+          exit(EXIT_FAILURE);
+        }
+
+      ios->errors++;
+
+      if(!kb->sturdy && ios->errors > IO_ERR_LIMIT)
+        {
+          ios->open = FALSE;
+
+          fprintf(stderr, "%s: IPC error bound exceeded\n", ios->chan_name);
+        }
+
+      return FALSE;
+    }
+  else
+    ios->errors = 0;
+
+  return TRUE;
+}
+
 bool output_packed_m_sys5(k_base *kb, stream *ios)
 {
   event s;
@@ -1316,8 +2732,8 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
   else
     pack = &ios->packed_ios->pack;
 
-  h = ios->pack.packedbit / (8 * sizeof(char));
-  k = ios->pack.packedbit - h * (8 * sizeof(char));
+  h = ios->pack.packedbit >> 3;
+  k = ios->pack.packedbit & 7;
 
   c = pack->packedchar[h];
 
@@ -1363,7 +2779,7 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
             }
           else
             {
-              if(kb->io_stream[input_stream] || !kb->far)
+              if(kb->io_stream[input_stream] || (!kb->far && (!kb->strictly_causal || kb->focus.t <= kb->curr_time)))
                 return FALSE;
               else
                 {
@@ -1397,7 +2813,7 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
     {
       if(pack->gen)
         {
-          if(msend_message_sys5(ios->chan5, pack->packedchar, ceil(pack->packedtot / (8.0 * sizeof(char)))))
+          if(msend_message_sys5(ios->chan5, pack->packedchar, (pack->packedtot & 7)? (pack->packedtot >> 3) + 1 : pack->packedtot >> 3))
             {
               if(errno != EAGAIN)
                 {
@@ -1432,15 +2848,24 @@ bool output_packed_m_sys5(k_base *kb, stream *ios)
 
 void trace(k_base *kb, event s)
 {
-  char debug[2 * DEBUG_STRLEN + 16];
+  char valbuf[MAX_STRLEN], debug[2 * DEBUG_STRLEN + 16];
   arc e1, e2;
+  real val;
 
   if(valid(s))
     {
+      if(s.e.lc < 0)
+        return;
+
       kb->io_busy = TRUE;
 
       e1 = arc_neg(s.e);
       e2 = s.e;
+
+      *valbuf = '\0';
+      val = value_of(kb, s);
+      if(val != REAL_MAX)
+        sprintf(valbuf, " = "REAL_OUT_FMT, val);
 
       *debug = '\0';
       if(e1.vp->debug && e2.vp->debug)
@@ -1448,15 +2873,15 @@ void trace(k_base *kb, event s)
 
       if(kb->echo_stdout)
         {
-          printf(" > "TIME_FMT": (%s, %s) # %d @ "TIME_FMT"%s        \r",
-                 kb->curr_time, e1.vp->name, e2.vp->name, e2.lc, s.t, debug);
+          printf(" > "TIME_FMT": (%s, %s) # %d @ "TIME_FMT"%s%s        \r",
+                 kb->curr_time, e1.vp->name, e2.vp->name, e2.lc, s.t, valbuf, debug);
           fflush(stdout);
         }
 
       if(kb->logfp)
         {
-          if(fprintf(kb->logfp, "(%s, %s) # %d @ "TIME_FMT"%s\n",
-                 e1.vp->name, e2.vp->name, e2.lc, s.t, debug) < 0)
+          if(fprintf(kb->logfp, "(%s, %s) # %d @ "TIME_FMT"%s%s\n",
+                 e1.vp->name, e2.vp->name, e2.lc, s.t, valbuf, debug) < 0)
             {
               perror(NULL);
               exit(EXIT_FAILURE);
@@ -1482,7 +2907,7 @@ void trace(k_base *kb, event s)
       }
 }
 
-stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool file_io, bool sys5, char *prefix, char *path, io_type_3 defaultval, io_type_4 omissions,
+stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, io_type stype, bool sys5, char *prefix, char *path, char *netpath, io_type_3 defaultval, real defaultreal, io_type_4 omissions,
                     int packed, int packedbit, stream *packed_ios)
 {
   stream *ios;
@@ -1512,8 +2937,10 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
       ios->ne = e;
     }
 
-  if(file_io)
+  switch(stype)
     {
+      case io_file:
+
       if(*path)
         {
           strcpy(ios->file_name, path);
@@ -1527,9 +2954,12 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
 
       if(sclass == input_stream)
         {
-          if(!packed)
+          if(packed <= 0)
             {
-              ios->io_perform = &input_f;
+              if(!packed)
+                ios->io_perform = &input_f;
+              else
+                ios->io_perform = &input_num_f;
 
               ios->fp = open_input_file(ios->file_name);
             }
@@ -1541,7 +2971,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                 ios->fp = open_input_file(ios->file_name);
               else
                 {
-                  if(packed_ios->file_io)
+                  if(packed_ios->stype == io_file)
                     ios->fp = packed_ios->fp;
                   else
                     {
@@ -1553,9 +2983,12 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
         }
       else
         {
-          if(!packed)
+          if(packed <= 0)
             {
-              ios->io_perform = &output_f;
+              if(!packed)
+                ios->io_perform = &output_f;
+              else
+                ios->io_perform = &output_num_f;
 
               clean_file(ios->file_name);
               ios->fp = open_output_file(ios->file_name);
@@ -1571,7 +3004,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                 }
               else
                 {
-                  if(packed_ios->file_io)
+                  if(packed_ios->stype == io_file)
                     ios->fp = packed_ios->fp;
                   else
                     {
@@ -1587,9 +3020,98 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
           perror(ios->file_name);
           exit(EXIT_FAILURE);
         }
-    }
-  else
-    {
+    
+      break;
+
+      case io_socket:
+
+      if(*netpath)
+        {
+          strcpy(ios->socket_name, netpath);
+          strcat(ios->socket_name, ".");
+        }
+      else
+        *(ios->socket_name) = '\0';
+
+      strcat(ios->socket_name, name);
+
+      if(sclass == input_stream)
+        {
+          if(packed <= 0)
+            {
+              if(!packed)
+                ios->io_perform = &input_s;
+              else
+                ios->io_perform = &input_num_s;
+
+              printf("Opening remote channnel to %s for input\n", ios->socket_name);
+              ios->sock = open_input_socket(ios->socket_name);
+            }
+          else
+            {
+              ios->io_perform = &input_packed_s;
+
+              if(!packed_ios)
+                {
+                  printf("Opening remote channnel to %s for input\n", ios->socket_name);
+                  ios->sock = open_input_socket(ios->socket_name);
+                }
+              else
+                {
+                  if(packed_ios->stype == io_socket)
+                    ios->sock = packed_ios->sock;
+                  else
+                    {
+                      fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                      exit(EXIT_FAILURE);
+                    }
+                }
+            }
+        }
+      else
+        {
+          if(packed <= 0)
+            {
+              if(!packed)
+                ios->io_perform = &output_s;
+              else
+                ios->io_perform = &output_num_s;
+
+              printf("Opening remote channnel to %s for output\n", ios->socket_name);
+              ios->sock = open_output_socket(ios->socket_name);
+            }
+          else
+            {
+              ios->io_perform = &output_packed_s;
+
+              if(!packed_ios)
+                {
+                  printf("Opening remote channnel to %s for output\n", ios->socket_name);
+                  ios->sock = open_output_socket(ios->socket_name);
+                }
+              else
+                {
+                  if(packed_ios->stype == io_socket)
+                    ios->sock = packed_ios->sock;
+                  else
+                    {
+                      fprintf(stderr, "%s: Packed signal method mismatch\n", name);
+                      exit(EXIT_FAILURE);
+                    }
+                }
+            }
+        }
+
+      if(!is_socket_open(ios->sock))
+        {
+          perror(ios->socket_name);
+          exit(EXIT_FAILURE);
+        }
+
+      break;
+
+      case io_ipc:
+
       strcpy(ios->chan_name, prefix);
       strcat(ios->chan_name, name);
 
@@ -1597,9 +3119,12 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
         {
           if(sclass == input_stream)
             {
-              if(!packed)
+              if(packed <= 0)
                 {
-                  ios->io_perform = &input_m_posix;
+                  if(!packed)
+                    ios->io_perform = &input_m_posix;
+                  else
+                    ios->io_perform = &input_num_m_posix;
 
                   ios->chan = add_queue_posix(ios->chan_name, sclass);
                 }
@@ -1611,7 +3136,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                     ios->chan = add_queue_posix(ios->chan_name, sclass);
                   else
                     {
-                      if(!packed_ios->file_io)
+                      if(packed_ios->stype == io_ipc)
                         ios->chan = packed_ios->chan;
                       else
                         {
@@ -1623,9 +3148,12 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
             }
           else
             {
-              if(!packed)
+              if(packed <= 0)
                 {
-                  ios->io_perform = &output_m_posix;
+                  if(!packed)
+                    ios->io_perform = &output_m_posix;
+                  else
+                    ios->io_perform = &output_num_m_posix;
 
                   ios->chan = add_queue_posix(ios->chan_name, sclass);
                 }
@@ -1637,7 +3165,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                     ios->chan = add_queue_posix(ios->chan_name, sclass);
                   else
                     {
-                      if(!packed_ios->file_io)
+                      if(packed_ios->stype == io_ipc)
                         ios->chan = packed_ios->chan;
                       else
                         {
@@ -1658,9 +3186,12 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
         {
           if(sclass == input_stream)
             {
-              if(!packed)
+              if(packed <= 0)
                 {
-                  ios->io_perform = &input_m_sys5;
+                  if(!packed)
+                    ios->io_perform = &input_m_sys5;
+                  else
+                    ios->io_perform = &input_num_m_sys5;
 
                   ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
                 }
@@ -1672,7 +3203,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                     ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
                   else
                     {
-                      if(!packed_ios->file_io)
+                      if(packed_ios->stype == io_ipc)
                         ios->chan5 = packed_ios->chan5;
                       else
                         {
@@ -1684,9 +3215,12 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
             }
           else
             {
-              if(!packed)
+              if(packed <= 0)
                 {
-                  ios->io_perform = &output_m_sys5;
+                  if(!packed)
+                    ios->io_perform = &output_m_sys5;
+                  else
+                    ios->io_perform = &output_num_m_sys5;
 
                   ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
                 }
@@ -1698,7 +3232,7 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
                     ios->chan5 = add_queue_sys5(ios->chan_name, sclass);
                   else
                     {
-                      if(!packed_ios->file_io)
+                      if(packed_ios->stype == io_ipc)
                         ios->chan5 = packed_ios->chan5;
                       else
                         {
@@ -1715,15 +3249,20 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
               exit(EXIT_FAILURE);
             }
         }
+          
+      break;
+      
+      default:
+      break;
     }
 
-  ios->defaultval = defaultval;
-
   for(i = 0; i < IO_TYPES_3_NUMBER; i++)
-    ios->skip[i] = (omissions >= io_filter && i == defaultval) || (omissions == io_omit && i == io_unknown);
+    ios->skip[i] = (omissions >= io_filter && (i == defaultval || i == io_other)) || (omissions == io_omit && i == io_unknown);
 
-  ios->file_io = file_io;
+  ios->stype = stype;
   ios->sys5 = sys5;
+  ios->defaultval = defaultval;
+  ios->defaultreal = defaultreal;
   ios->pack.packed = packed;
 
   memset(ios->pack.packedchar, 0, sizeof(char) * IOS_BUFFER_SIZE);
@@ -1732,18 +3271,23 @@ stream *open_stream(char *name, stream_class sclass, arc e, d_time offset, bool 
   ios->pack.packedtot = 0;
   ios->pack.packedbit = packedbit;
   ios->packed_ios = packed_ios;
+  ios->next_ios = NULL;
+  ios->prev_ios = NULL;
   ios->fails = 0;
   ios->errors = 0;
   ios->open = TRUE;
+  ios->pos = 0;
 
   return ios;
 }
 
 void close_stream(stream *ios, char *alpha)
 {
-  if(ios->file_io)
+  switch(ios->stype)
     {
-      if(!ios->pack.packed)
+      case io_file:
+
+      if(ios->pack.packed <= 0)
         {
           if(ios->sclass == output_stream && put_file(ios->fp, &alpha[end_symbol]))
             {
@@ -1771,32 +3315,50 @@ void close_stream(stream *ios, char *alpha)
           }
         else
           ios->packed_ios->pack.packedtot--;
-    }
-  else
-    if(!ios->sys5)
-      {
-        if(!ios->pack.packed)
+
+      break;
+
+      case io_socket:
+
+      if(ios->pack.packed <= 0)
+        {
+          if(ios->sclass == output_stream && put_socket(ios->sock, &alpha[end_symbol]))
+            {
+              perror(ios->socket_name);
+              exit(EXIT_FAILURE);
+            }
+
+          if(close_socket(ios->sock))
+            {
+              perror(ios->socket_name);
+              exit(EXIT_FAILURE);
+            }
+        }
+      else
+        if(!ios->packed_ios)
           {
-            if(ios->sclass == output_stream)
-              send_message_posix(ios->chan, &alpha[end_symbol]);
+            ios->pack.packedcount = 0;
+            ios->pack.packedtot--;
 
-            if(commit_queue_posix(ios->chan))
+            if(close_socket(ios->sock))
               {
-                perror(ios->chan_name);
-                exit(EXIT_FAILURE);
-              }
-
-            if(remove_queue_posix(ios->chan_name))
-              {
-                perror(ios->chan_name);
+                perror(ios->socket_name);
                 exit(EXIT_FAILURE);
               }
           }
         else
-          if(!ios->packed_ios)
+          ios->packed_ios->pack.packedtot--;
+
+      break;
+
+      case io_ipc:
+
+      if(!ios->sys5)
+        {
+          if(ios->pack.packed <= 0)
             {
-              ios->pack.packedcount = 0;
-              ios->pack.packedtot--;
+              if(ios->sclass == output_stream)
+                send_message_posix(ios->chan, &alpha[end_symbol]);
 
               if(commit_queue_posix(ios->chan))
                 {
@@ -1811,26 +3373,50 @@ void close_stream(stream *ios, char *alpha)
                 }
             }
           else
-            ios->packed_ios->pack.packedtot--;
-      }
-    else
-      {
-        if(!ios->pack.packed && ios->sclass == output_stream)
-          send_message_sys5(ios->chan5, &alpha[end_symbol]);
-        else
-          if(!ios->packed_ios)
-            {
-              ios->pack.packedcount = 0;
-              ios->pack.packedtot--;
-            }
+            if(!ios->packed_ios)
+              {
+                ios->pack.packedcount = 0;
+                ios->pack.packedtot--;
+
+                if(commit_queue_posix(ios->chan))
+                  {
+                    perror(ios->chan_name);
+                    exit(EXIT_FAILURE);
+                  }
+
+                if(remove_queue_posix(ios->chan_name))
+                  {
+                    perror(ios->chan_name);
+                    exit(EXIT_FAILURE);
+                  }
+              }
+            else
+              ios->packed_ios->pack.packedtot--;
+        }
+      else
+        {
+          if(ios->pack.packed <= 0 && ios->sclass == output_stream)
+            send_message_sys5(ios->chan5, &alpha[end_symbol]);
           else
-            ios->packed_ios->pack.packedtot--;
-      }
+            if(!ios->packed_ios)
+              {
+                ios->pack.packedcount = 0;
+                ios->pack.packedtot--;
+              }
+            else
+              ios->packed_ios->pack.packedtot--;
+        }
+        
+      break;
+      
+      default:
+      break;
+    }
 
   if(ios->packed_ios && !ios->packed_ios->pack.packedtot)
     free(ios->packed_ios);
 
-  if(!ios->pack.packed || ios->packed_ios || !ios->pack.packedtot)
+  if(ios->pack.packed <= 0 || ios->packed_ios || !ios->pack.packedtot)
     free(ios);
 }
 
@@ -1884,18 +3470,24 @@ node *alloc_node(char *name)
 
   strcpy(vp->name, name);
   vp->nclass = null_op;
+  vp->ls = NULL;
   vp->debug = NULL;
+  vp->vp = NULL;
 
   return vp;
 }
 
-void init_node(node *vp, node_class nclass, d_time k, int bs)
+void init_node(node *vp, node_class nclass, real val, int bs)
 {
   link_code lc, max_lc;
   d_time t;
 
   vp->nclass = nclass;
-  vp->k = k;
+
+  if(val == REAL_MAX)
+    vp->k = 1;
+  else
+    vp->k = floor(val);
 
   for(lc = 0; lc < LINK_CODES_NUMBER; lc++)
     {
@@ -1903,7 +3495,13 @@ void init_node(node *vp, node_class nclass, d_time k, int bs)
       vp->pin[lc].e.lc = no_link;
     }
 
-  max_lc = (nclass == delay)? (LINK_CODES_NUMBER - 1) : LINK_CODES_NUMBER;
+  if(nclass == gate || nclass == joint || nclass == math_add || nclass == math_mul || nclass == math_pow)
+    max_lc = LINK_CODES_NUMBER;
+  else
+    if(nclass != literal)
+      max_lc = (LINK_CODES_NUMBER - 1);
+    else
+      max_lc = (LINK_CODES_NUMBER - 2);
 
   for(lc = 0; lc < max_lc; lc++)
     {
@@ -1919,9 +3517,39 @@ void init_node(node *vp, node_class nclass, d_time k, int bs)
           vp->pin[lc].history[t].stated = NULL_PHASE;
           vp->pin[lc].history[t].chosen = NULL_PHASE;
 
+          if(nclass == literal)
+            vp->pin[lc].history[t].value = val;
+          else
+            vp->pin[lc].history[t].value = REAL_MAX;
+
           vp->pin[lc].history[t].other = null_event;
           vp->pin[lc].history[t].next = null_event;
         }
+    }
+}
+
+void init_literal(sh_literal *lp, char *name, int bs)
+{
+  d_time t;
+
+  strcpy(lp->name, name);
+  
+  lp->history = malloc(sizeof(record) * bs);
+  if(!lp->history)
+    {
+      perror(NULL);
+      exit(EXIT_FAILURE);
+    }
+
+  for(t = 0; t < bs; t++)
+    {
+      lp->history[t].stated = NULL_PHASE;
+      lp->history[t].chosen = NULL_PHASE;
+
+      lp->history[t].value = REAL_MAX;
+
+      lp->history[t].other = null_event;
+      lp->history[t].next = null_event;
     }
 }
 
@@ -1936,6 +3564,11 @@ void free_node(node *vp)
     free(vp->debug);
 
   free(vp);
+}
+
+void free_literal(sh_literal *lp)
+{
+  free(lp->history);
 }
 
 node *name2node(k_base *kb, char *name, bool create)
@@ -2027,6 +3660,9 @@ void thread_network(node *network)
         {
         case gate:
         case joint:
+        case math_add:
+        case math_mul:
+        case math_pow:
           assert(lc <= 3);
           if(lc < 3)
             {
@@ -2037,6 +3673,14 @@ void thread_network(node *network)
         break;
 
         case delay:
+        case math_chs:
+        case math_inv:
+        case math_sin:
+        case math_eqv0:
+        case math_neq0:
+        case math_gteq0:
+        case math_lt0:
+        case math_delay:
           if(lc < 2)
             {
               fprintf(stderr, "%s: Undefined edge in node declarations\n",
@@ -2052,9 +3696,26 @@ void thread_network(node *network)
               }
         break;
 
+        case literal:
+          if(lc < 1)
+            {
+              fprintf(stderr, "%s: Undefined edge in node declarations\n",
+                      vp->name);
+              exit(EXIT_FAILURE);
+            }
+          else
+            if(lc > 1)
+              {
+                fprintf(stderr, "%s: Edge mismatch in node declarations\n",
+                        vp->name);
+                exit(EXIT_FAILURE);
+              }
+        break;
+
         default:
           fprintf(stderr, "%s: Reference to undefined node\n", vp->name);
           exit(EXIT_FAILURE);
+        break;
         }
 
 #if !defined NDEBUG
@@ -2072,19 +3733,21 @@ void thread_network(node *network)
     }
 }
 
-k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool sys5, bool sturdy,
-                  bool busywait, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *alpha)
+k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool strictly_causal, bool soundness_check, bool echo_stdout, io_type rtype, bool sys5, bool sturdy,
+                  bool busywait, int bufexp, d_time max_time, m_time step, char *prefix, char *path, char *netpath, char *alpha)
 {
   k_base *kb;
   FILE *fp;
-  char file_name[MAX_STRLEN], name[MAX_NAMEBUF], type[MAX_NAMEBUF],
+  char file_name[MAX_STRLEN], name[MAX_NAMEBUF], type[MAX_NAMEBUF], tail[MAX_NAMEBUF],
        up[MAX_NAMEBUF], left[MAX_NAMEBUF], right[MAX_NAMEBUF],
        name_v[MAX_NAMEBUF], name_w[MAX_NAMEBUF],
        debug[DEBUG_STRLEN + 1];
-  char c;
+  char str[3];
+  char c, d;
+  real val;
   d_time k, offset;
   node *vp, *wp;
-  node_class nclass;
+  node_class nclass, lclass;
   stream *ios;
   stream *packed_ios[MAX_IOS];
   stream_class sclass;
@@ -2092,10 +3755,12 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   int packed, packedbit;
   io_type_3 defaultval;
   io_type_4 omissions;
+  real defaultreal;
   arc e;
   int bufsiz;
-  link_code lc;
-  int i, n;
+  link_code lc, lcup, lcleft, lcright;
+  int i, j, n, num_ls, max_ls, t;
+  sh_literal *ls;
 
   kb = malloc(sizeof(k_base));
   if(!kb)
@@ -2127,13 +3792,18 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       exit(EXIT_FAILURE);
     }
 
-  for(nclass = 0; nclass < NODE_CLASSES_NUMBER; nclass++)
-    kb->perf.num_nodes[nclass] = 0;
+  kb->perf.nodes = 0;
+  kb->perf.edges = 0;
+
+  for(lclass = 0; lclass < NODE_LARGE_CLASSES; lclass++)
+    kb->perf.num_nodes[lclass] = 0;
 
   *left = *right = '\0';
-  while(fscanf(fp, " "NAME_FMT" : "NAME_FMT" ; "NAME_FMT" , "
-                   NAME_FMT" , "NAME_FMT" ",
-               name, type, up, left, right) >= 3)
+  lcup = lcleft = lcright = no_link;
+
+  while(fscanf(fp, " "NAME_FMT" : "FUN_FMT" ; "NAME_FMT" # %d , "
+                   NAME_FMT" # %d , "NAME_FMT" # %d \n",
+               name, type, up, &lcup, left, &lcleft, right, &lcright) >= 4)
     {
       if(strlen(name) >= MAX_NAMELEN)
         {
@@ -2142,8 +3812,16 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      k = 1;
-      sscanf(type, OP_FMT""ARG_FMT, &c, &k);
+      val = REAL_MAX;
+      *tail = '\0';
+      sscanf(type, OP_FMT""REAL_IN_FMT"%s", &c, &val, tail);
+      if(*tail != '\0')
+        val = REAL_MAX;
+
+      if(val == REAL_MAX)
+        k = 1;
+      else
+        k = floor(val);
 
       nclass = strchr(class_symbol, toupper(c)) - class_symbol;
       if(nclass < 0)
@@ -2153,7 +3831,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      if(nclass == delay && (k <= - kb->bsd4 || k >= kb->bsd4))
+      if((nclass == delay || nclass == math_delay) && (k <= - kb->bsd4 || k >= kb->bsd4))
         {
           fprintf(stderr, "%s, %s, "TIME_FMT": Delay out of range\n",
                   file_name, name, k);
@@ -2167,15 +3845,41 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           exit(EXIT_FAILURE);
         }
 
-      init_node(vp, nclass, k, bufsiz);
+      init_node(vp, nclass, val, bufsiz);
 
       vp->pin[parent].e.vp = name2node(kb, up, TRUE);
       vp->pin[left_son].e.vp = name2node(kb, left, TRUE);
       vp->pin[right_son].e.vp = name2node(kb, right, TRUE);
 
-      kb->perf.num_nodes[nclass]++;
+      vp->pin[parent].e.lc = lcup;
+
+      if(nclass != literal)
+        vp->pin[left_son].e.lc = lcleft;
+
+      if(nclass == gate || nclass == joint || nclass == math_add || nclass == math_mul || nclass == math_pow)
+        vp->pin[right_son].e.lc = lcright;
+
+      if(nclass < NODE_MATH_BASE)
+        lclass = nclass;
+      else
+        if(nclass < NODE_REL_BASE)
+          lclass = NODE_LARGE_MATH;
+        else
+          lclass = NODE_LARGE_REL;
+
+      kb->perf.nodes++;
+      kb->perf.num_nodes[lclass]++;
+
+      if(nclass == literal)
+        kb->perf.edges++;
+      else
+        if(nclass == gate || nclass == joint || nclass == math_add || nclass == math_mul || nclass == math_pow)
+          kb->perf.edges += 3;
+        else
+          kb->perf.edges += 2;
 
       *left = *right = '\0';
+      lcup = lcleft = lcright = no_link;
     }
 
   if(ferror(fp))
@@ -2184,8 +3888,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       exit(EXIT_FAILURE);
     }
 
-  kb->perf.nodes = kb->perf.num_nodes[gate] + kb->perf.num_nodes[joint] + kb->perf.num_nodes[delay];
-  kb->perf.edges = (3 * (kb->perf.num_nodes[gate] + kb->perf.num_nodes[joint]) + 2 * kb->perf.num_nodes[delay]) / 2;
+  kb->perf.edges /= 2;
 
   thread_network(kb->network);
 
@@ -2193,7 +3896,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->io_num[input_stream] = 0;
   kb->io_num[output_stream] = 0;
   kb->io_open = 0;
-
+  
   strcpy(kb->alpha, alpha);
 
   offset = NULL_TIME;
@@ -2201,16 +3904,20 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   for(i = 0; i < MAX_IOS; i++)
     packed_ios[i] = NULL;
 
+  ls = malloc(MAX_NUMERIC_LITERALS * sizeof(sh_literal));
+  max_ls = 0;
+  
   lc = no_link;
   stype = io_any;
   packed = 0;
   packedbit = 0;
   defaultval = io_unknown;
+  defaultreal = REAL_MAX;
   omissions = io_raw;
   k = 0;
 
-  while(fscanf(fp, " "OP_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) # %d / %u , %u , %u , %u, %u @ "TIME_FMT" ",
-               &c, name, name_v, name_w, &lc, &stype, &packed, &packedbit, &defaultval, &omissions, &k) >= 4)
+  while(fscanf(fp, " "FUN_FMT" "FUN_FMT" ( "NAME_FMT" , "NAME_FMT" ) # %d / %u , %d , %d , "REAL_IN_FMT" , %u @ "TIME_FMT" \n",
+               str, name, name_v, name_w, &lc, &stype, &packed, &packedbit, &defaultreal, &omissions, &k) >= 4)
     {
       if(strlen(name) >= MAX_NAMELEN)
         {
@@ -2281,32 +3988,87 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       if(offset != NULL_TIME)
         kb->offset = offset;
 
-      if(!quiet)
+      d = '\0';
+      sscanf(str, OP_FMT""OP_FMT, &c, &d);
+
+      switch(c)
         {
-          switch(c)
+          case '!':
+            sclass = input_stream;
+          break;
+
+          case '?':
+          case '.':
+            sclass = output_stream;
+          break;
+
+          case '_':
+            sclass = quiet_stream;
+          break;
+
+          default:
+            fprintf(stderr, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
+            exit(EXIT_FAILURE);
+          break;
+        }
+
+      if(d == '^')
+        {
+          num_ls = max_ls;
+          
+          for(i = 0; i < num_ls; i += 2)
+            if(!strcmp(ls[i].name, name) && arc_eq(ls[i].e, null_arc))
+              {
+                init_literal(&ls[max_ls], name, bufsiz);
+
+                ls[max_ls].ne = ls[i].ne;
+                ls[max_ls].e = arc_neg(e);
+
+                max_ls++;
+
+                init_literal(&ls[max_ls], name, bufsiz);
+
+                ls[max_ls].ne = e;
+                ls[max_ls].e = ls[i + 1].e;
+
+                max_ls++;
+              }
+
+          init_literal(&ls[max_ls], name, bufsiz);
+
+          ls[max_ls].ne = e;
+          ls[max_ls].e = null_arc;
+
+          max_ls++;
+
+          init_literal(&ls[max_ls], name, bufsiz);
+ 
+          ls[max_ls].ne = null_arc;
+          ls[max_ls].e = arc_neg(e);
+
+          max_ls++;
+
+          if(max_ls >= MAX_NUMERIC_LITERALS - 1)
             {
-              case '!':
-                sclass = input_stream;
-              break;
-
-              case '?':
-              case '.':
-                sclass = output_stream;
-              break;
-
-              default:
-                fprintf(stderr, "%s, "OP_FMT": Invalid stream class\n", file_name, c);
-                exit(EXIT_FAILURE);
+              fprintf(stderr, "%s: Too many numeric signals\n", file_name);
+              exit(EXIT_FAILURE);
             }
+        }
 
-          ios = open_stream(name, sclass, e, kb->offset, (file_io && stype == io_any) || stype == io_file, sys5, prefix, path, defaultval, omissions, packed, packedbit, packed_ios[packed]);
+      if(rtype != io_quiet && sclass != quiet_stream)
+        {
+          if(defaultreal >= 0 && defaultreal < io_other && defaultreal == floor(defaultreal))
+            defaultval = floor(defaultreal);
+
+          ios = open_stream(name, sclass, e, kb->offset, stype == io_any? rtype : stype, sys5, prefix, path, netpath, defaultval, defaultreal, omissions,
+                            packed, packedbit, packed > 0? packed_ios[packed] : NULL);
 
           kb->io_num[sclass]++;
           kb->io_open++;
 
           add_stream(&kb->io_stream[sclass], ios);
 
-          if(packed)
+          if(packed > 0)
             {
               if(!packed_ios[packed])
                 packed_ios[packed] = ios;
@@ -2322,6 +4084,8 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
       packed = 0;
       packedbit = 0;
       defaultval = io_unknown;
+      defaultreal = REAL_MAX;
+      omissions = io_raw;
       k = 0;
     }
 
@@ -2407,7 +4171,7 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
 
   kb->strictly_causal = strictly_causal;
   kb->soundness_check = soundness_check;
-  kb->quiet = quiet || !ios;
+  kb->quiet = (rtype == io_quiet) || !ios;
   kb->trace_focus = echo_stdout || logfile_name;
   kb->echo_stdout = echo_stdout;
   kb->sys5 = sys5;
@@ -2426,18 +4190,9 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
         }
     }
 
-  n = max(kb->io_num[input_stream], kb->io_num[output_stream]);
-  if(!n)
-    n = 1;
-
-  kb->max_slice = kb->perf.edges / (IO_INFERENCE_RATIO * n);
-  if(!kb->max_slice)
-    kb->max_slice = 1;
-
-  kb->slice = kb->max_slice;
-
   kb->curr_time = kb->offset;
   kb->max_time = kb->offset + max_time;
+  kb->anchor_time = kb->offset;
 
   kb->far = TRUE;
   kb->bound = FALSE;
@@ -2448,6 +4203,99 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
   kb->perf.count = 0;
   kb->perf.depth = 0;
 
+  if(max_ls)
+    {
+      kb->lits = malloc(max_ls * sizeof(sh_literal));
+
+      kb->max_lit = 0;
+      for(i = 0; i < max_ls; i++)
+        {
+          if(!arc_eq(ls[i].e, null_arc) && !arc_eq(ls[i].ne, null_arc))
+            {
+              kb->lits[kb->max_lit] = ls[i];
+              kb->max_lit++;
+            }
+          else
+            free_literal(&ls[i]);
+        }
+
+      if(kb->max_lit)
+        {
+          for(i = 0; i < kb->max_lit; i++)
+            {
+              e = kb->lits[i].ne;
+
+              for(j = 0; j < kb->max_lit; j++)
+                {
+                  if(arc_eq(e, kb->lits[(j + i + 1) % kb->max_lit].ne))
+                    {
+                      kb->lits[i].other = &kb->lits[(j + i + 1) % kb->max_lit];
+                      break;
+                    }
+                }
+            }
+        }
+      else
+        {
+          free(kb->lits);
+          kb->lits = NULL;
+        }
+    }
+  else
+    {
+      kb->lits = NULL;
+      kb->max_lit = 0;
+    }
+
+  free(ls);
+
+  n = max(kb->io_num[input_stream], kb->io_num[output_stream]);
+  if(!n)
+    n = 1;
+
+  kb->max_slice = kb->perf.edges / (IO_INFERENCE_RATIO * n);
+  if(!kb->max_slice)
+    kb->max_slice = 1;
+
+  kb->slice = kb->max_slice;
+
+  vp = kb->network;
+  while(vp)
+    {
+      if(vp->nclass == literal)
+        {
+          if(vp->pin[0].history[0].value != REAL_MAX)
+            {
+              wp = vp->pin[0].e.vp;
+              lc = vp->pin[0].e.lc;
+
+              for(t = 0; t < bufsiz; t++)
+                {
+                  vp->pin[0].history[t].stated = CONSTANT_PHASE;
+                  vp->pin[0].history[t].chosen = CONSTANT_PHASE;
+
+                  wp->pin[lc].history[t].stated = CONSTANT_PHASE;
+                  wp->pin[lc].history[t].chosen = CONSTANT_PHASE;
+
+                  wp->pin[lc].history[t].value = vp->pin[0].history[t].value;
+                }
+            }
+          else
+            {
+              e = arc_neg(vp->pin[0].e);
+
+              for(i = 0; i < kb->max_lit; i++)
+                if(arc_eq(kb->lits[i].ne, e))
+                  {
+                    vp->ls = &kb->lits[i];
+                    break;
+                  }
+            }
+        }
+
+      vp = vp->vp;
+    }
+
   return kb;
 }
 
@@ -2456,7 +4304,8 @@ void close_base(k_base *kb)
   node *vp, *wp;
   stream *ios, *next_ios;
   stream_class sclass;
-  bool file_io;
+  bool ipc_io;
+  int i;
 
   if(kb->logfp && fclose(kb->logfp))
     {
@@ -2466,7 +4315,7 @@ void close_base(k_base *kb)
 
   if(!kb->quiet)
     {
-      file_io = TRUE;
+      ipc_io = FALSE;
       for(sclass = 0; sclass < STREAM_CLASSES_NUMBER; sclass++)
         {
           ios = kb->io_stream[sclass];
@@ -2475,7 +4324,9 @@ void close_base(k_base *kb)
               {
                 next_ios = ios->next_ios;
 
-                file_io &= ios->file_io;
+                if(ios->stype == io_ipc)
+                  ipc_io = TRUE;
+
                 close_stream(ios, kb->alpha);
 
                 ios = next_ios;
@@ -2488,7 +4339,9 @@ void close_base(k_base *kb)
               {
                 next_ios = ios->next_ios;
 
-                file_io &= ios->file_io;
+                if(ios->stype == io_ipc)
+                  ipc_io = TRUE;
+  
                 close_stream(ios, kb->alpha);
 
                 ios = next_ios;
@@ -2496,7 +4349,7 @@ void close_base(k_base *kb)
             while(ios != kb->io_stream_2[sclass]);
         }
 
-      if(!file_io && kb->sys5)
+      if(ipc_io && kb->sys5)
         delete_queues_sys5();
     }
 
@@ -2506,6 +4359,14 @@ void close_base(k_base *kb)
       wp = vp->vp;
       free_node(vp);
       vp = wp;
+    }
+
+  if(kb->lits)
+    {
+      for(i = 0; i < kb->max_lit; i++)
+        free_literal(&kb->lits[i]);
+
+      free(kb->lits);
     }
 
   free(kb);
@@ -2518,6 +4379,7 @@ int init_state(k_base *kb, char *state_name)
   node *vp, *wp;
   event s;
   link_code lc;
+  real value;
   int n;
 
   strcpy(file_name, state_name);
@@ -2530,8 +4392,9 @@ int init_state(k_base *kb, char *state_name)
     }
 
   n = 0;
-  while(fscanf(fp, " ( "NAME_FMT" , "NAME_FMT" ) # %d @ "TIME_FMT" : %*[^\n]\n",
-               name_v, name_w, &lc, &s.t) >= 4)
+  value = REAL_MAX;
+  while(fscanf(fp, " ( "NAME_FMT" , "NAME_FMT" ) # %d @ "TIME_FMT" = "REAL_IN_FMT" \n",
+               name_v, name_w, &lc, &s.t, &value) >= 4)
     {
       vp = name2node(kb, name_v, FALSE);
       wp = name2node(kb, name_w, FALSE);
@@ -2558,7 +4421,14 @@ int init_state(k_base *kb, char *state_name)
           exit(EXIT_FAILURE);
         }
 
-      safe_state(kb, s);
+      if(value != REAL_MAX)
+        {
+          math_safe_state(kb, s, value);
+          math_safe_state(kb, ev_neg(s), value);
+          value = REAL_MAX;
+        }
+      else
+        safe_state(kb, s);
 
       n++;
     }
@@ -2588,23 +4458,40 @@ int init_state(k_base *kb, char *state_name)
 
 void trap()
 {
+  rst = FALSE;
   irq = TRUE;
+  frz = FALSE;
 }
 
-info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
-         bool strictly_causal, bool soundness_check, bool echo_stdout, bool file_io, bool quiet, bool hard, bool sys5, bool sturdy, bool busywait,
-         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *alpha)
+void trap1()
+{
+  rst = TRUE;
+  irq = TRUE;
+  frz = FALSE;
+}
+
+void trap2()
+{
+  rst = FALSE;
+  irq = FALSE;
+  frz = !frz;
+}
+
+void run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
+         bool strictly_causal, bool soundness_check, bool echo_stdout, io_type rtype, bool hard, bool sys5, bool sturdy, bool busywait,
+         int bufexp, d_time max_time, m_time step, m_time origin, char *prefix, char *path, char *netpath, char *alpha)
 {
   k_base *kb;
-  info perf;
   struct sched_param spar;
   int n;
 
   kb = open_base(base_name, logfile_name, xref_name,
-                 strictly_causal, soundness_check, echo_stdout, file_io, quiet, sys5, sturdy, busywait, bufexp, max_time, step, prefix, path, alpha);
+                 strictly_causal, soundness_check, echo_stdout, rtype, sys5, sturdy, busywait, bufexp, max_time, step, prefix, path, netpath, alpha);
 
-  printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays), %d inputs, %d outputs\n",
-         kb->perf.edges, kb->perf.nodes, kb->perf.num_nodes[gate], kb->perf.num_nodes[joint], kb->perf.num_nodes[delay], kb->io_num[input_stream], kb->io_num[output_stream]);
+  printf("Network ok -- %d edges, %d nodes (%d gates + %d joints + %d delays + %d literals + %d math ops + %d math rels), %d inputs, %d outputs\n",
+         kb->perf.edges, kb->perf.nodes, kb->perf.num_nodes[gate], kb->perf.num_nodes[joint], kb->perf.num_nodes[delay], kb->perf.num_nodes[literal],
+         kb->perf.num_nodes[NODE_LARGE_MATH], kb->perf.num_nodes[NODE_LARGE_REL],
+         kb->io_num[input_stream], kb->io_num[output_stream]);
 
   if(state_name)
     {
@@ -2626,8 +4513,6 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
         }
     }
 
-  signal(SIGINT, (void (*)())&trap);
-
   if(origin > 0)
     kb->time_base = origin;
   else
@@ -2636,37 +4521,46 @@ info run(char *base_name, char *state_name, char *logfile_name, char *xref_name,
   while(!loop(kb));
 
   kb->perf.ticks = get_time() - kb->time_base;
-
-  signal(SIGINT, SIG_DFL);
-
   kb->perf.horizon = kb->curr_time;
 
-  perf = kb->perf;
+  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.6f seconds, %.3f KLIPS, %lu depth (avg %.3f)\n",
+	irq? "Execution interrupted" : "End of execution",
+	kb->perf.count,
+	kb->perf.horizon && kb->perf.edges? 100.0 * kb->perf.count / (kb->perf.horizon * kb->perf.edges) : 0,
+	kb->perf.edges,
+	kb->perf.horizon,
+	kb->perf.ticks,
+	kb->perf.ticks? kb->perf.count / (1000 * kb->perf.ticks) : 0,
+	kb->perf.depth,
+	kb->perf.count? (double)kb->perf.depth / kb->perf.count : 0);
 
   close_base(kb);
-
-  return perf;
 }
 
 int main(int argc, char **argv)
 {
-  char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path;
+  char *base_name, *state_name, *logfile_name, *xref_name, *option, *ext, *prefix, *path, *netpath;
   char default_state_name[MAX_STRLEN], default_logfile_name[MAX_STRLEN], default_xref_name[MAX_STRLEN], alpha[SYMBOL_NUMBER + 1];
-  bool strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sys5, sturdy, busywait;
+  bool strictly_causal, soundness_check, echo_stdout, file_io, socket_io, quiet, hard, sys5, sturdy, busywait;
   int i, k, n;
-  info perf;
   d_time max_time;
   m_time step, default_step, origin;
   int bufexp;
+  io_type rtype;
+
+  signal(SIGINT, (void (*)())&trap);
+  signal(SIGUSR1, (void (*)())&trap1);
+  signal(SIGUSR2, (void (*)())&trap2);
 
   base_name = state_name = logfile_name = xref_name = NULL;
-  strictly_causal = soundness_check = echo_stdout = file_io = quiet = hard = sys5 = sturdy = busywait = FALSE;
+  strictly_causal = soundness_check = echo_stdout = file_io = socket_io = quiet = hard = sys5 = sturdy = busywait = FALSE;
   bufexp = DEFAULT_BUFEXP;
   max_time = 0;
   origin = 0;
   default_step = -1;
   prefix = MAGIC_PREFIX;
   path = "";
+  netpath = "";
   strcpy(alpha, IO_SYMBOLS);
 
   for(i = 1; i < argc; i++)
@@ -2677,7 +4571,7 @@ int main(int argc, char **argv)
           switch(*option)
             {
             case 'h':
-              fprintf(stderr, "Usage: %s [-cdfilqsSvVxy] [-a alphabet] [-e prefix] [-g origin] [-I state] [-L log] [-p path] [-r core] [-t step] [-X symbols] [-z horizon] [base]\n",
+              fprintf(stderr, "Usage: %s [-cdfFilqsSvVxy] [-a alphabet] [-e prefix] [-g origin] [-I state] [-j network] [-L log] [-p path] [-r core] [-t step] [-X symbols] [-z horizon] [base]\n",
                       argv[0]);
               exit(EXIT_SUCCESS);
             break;
@@ -2786,6 +4680,24 @@ int main(int argc, char **argv)
               ext = strstr(state_name, EVENT_LIST_EXT);
               if(ext && !strcmp(ext, EVENT_LIST_EXT))
                 *ext = '\0';
+            break;
+
+            case 'j':
+              if(*(++option))
+                {
+                  fprintf(stderr, "%s, %c: Invalid command line option"
+                                  " (%s -h for help)\n",
+                          argv[i], *option, argv[0]);
+                  exit(EXIT_FAILURE);
+                }
+
+              if(++i < argc)
+                netpath = argv[i]; 
+              else
+                {
+                  fprintf(stderr, "%s: Missing argument\n", argv[--i]);
+                  exit(EXIT_FAILURE);
+                }
             break;
 
             case 'L':
@@ -2975,6 +4887,10 @@ int main(int argc, char **argv)
                       file_io = TRUE;
                     break;
 
+                    case 'F':
+                      socket_io = TRUE;
+                    break;
+
                     case 'i':
                       if(!state_name)
                         state_name = default_state_name;
@@ -3062,24 +4978,35 @@ int main(int argc, char **argv)
   else
     step = default_step;
 
+  if(quiet)
+    rtype = io_quiet;
+  else
+    if(file_io)
+      rtype = io_file;
+    else
+      if(socket_io)
+        rtype = io_socket;
+      else
+        rtype = io_ipc;
+
   printf("\nTINX "VER" - Temporal Inference Network eXecutor\n"
-         "Design & coding by Andrea Giotti, 1998-1999, 2016-2020\n\n");
+         "Design & coding by Andrea Giotti, 1998-1999, 2016-2024\n\n");
 
   fflush(stdout);
 
-  perf = run(base_name, state_name, logfile_name, xref_name,
-      strictly_causal, soundness_check, echo_stdout, file_io, quiet, hard, sys5, sturdy, busywait, bufexp, max_time, step, origin, prefix, path, alpha);
+  do
+    {
+      rst = FALSE;
+      irq = FALSE;
 
-  printf("\n%s\n%lu logical inferences (%.3f %% of %d x "TIME_FMT") in %.6f seconds, %.3f KLIPS, %lu depth (avg %.3f)\n",
-	irq? "Execution interrupted" : "End of execution",
-	perf.count,
-	perf.horizon && perf.edges? 100.0 * perf.count / (perf.horizon * perf.edges) : 0,
-	perf.edges,
-	perf.horizon,
-	perf.ticks,
-	perf.ticks? perf.count / (1000 * perf.ticks) : 0,
-	perf.depth,
-	perf.count? (double)perf.depth / perf.count : 0);
+      run(base_name, state_name, logfile_name, xref_name,
+          strictly_causal, soundness_check, echo_stdout, rtype, hard, sys5, sturdy, busywait, bufexp, max_time, step, origin, prefix, path, netpath, alpha);
+    }
+  while(rst);
+
+  signal(SIGINT, SIG_DFL);
+  signal(SIGUSR1, SIG_DFL);
+  signal(SIGUSR2, SIG_DFL);
 
   return EXIT_SUCCESS;
 }

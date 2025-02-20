@@ -1,0 +1,34 @@
+
+ /*
+	Variable window filter of maximum width equal to 2 * maxsize + 1
+
+	The trues of the binary input signal "origin" are cut by windows which are centered around the
+	trues of a periodic signal and the size of which is dynamically defined by the lower bits of
+	the encoded input signal "window" so as to produce the binary output signal "filtered"
+ */
+
+ define tau = 30, bits = 3, maxsize = 2 ^ bits - 1;
+
+ input origin;
+ output periodic, filtered;
+
+ /* Periodic output signal "periodic" of period tau */
+
+ init periodic @ 0;
+
+ periodic --> ~ periodic @ (0, tau) & periodic @ tau;
+
+ /* Encoded window size is sampled at the beginning of each period and hold */
+
+ iter(k on bits)
+	{
+	input [packed] window(k);
+	aux size(k / 8, k % 8);
+
+	size(k / 8, k % 8) == since(periodic & window(k), ~ periodic);
+	}
+
+ /* The trues of the periodic signal are the centers of the windows */
+
+ filtered == origin & periodic ? [-$(size, maxsize), +$(size, maxsize)];
+

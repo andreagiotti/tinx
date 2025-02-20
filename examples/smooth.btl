@@ -1,0 +1,29 @@
+
+input up, down;
+output out;
+
+init ~ out @ -1;
+
+~ up & ~ down --> (out @ -1 == out);
+up & down --> (out @ -1 == ~ out);
+up \ down --> (up == out);
+
+define freq = 1, step = 0.01;
+
+aux hold, cycle, T, DT;
+output Sin;
+
+Sin = sin((2 * Kpi * freq) * T);
+
+init ~ hold @ -1;
+
+hold == since(out, cycle);
+cycle == T < 1 / freq;
+
+hold --> T @ 1 = T + DT;
+~ hold --> T @ 1 = 0;
+
+cycle --> DT = step / freq;
+~ cycle --> DT = (step - 1) / freq;
+
+

@@ -1,0 +1,79 @@
+
+define	cmd_clock = 1,
+	cmd_random(0) = 2, cmd_random(1) = 4, cmd_random(2) = 8, cmd_random(3) = 16,
+	cmd_button(0) = 32, cmd_button(1) = 64, cmd_button(2) = 128, cmd_button(3) = 256,
+	cmd_slider(0) = 512, cmd_slider(1) = 1024, cmd_slider(2) = 2048, cmd_slider(3) = 4096,
+        cmd_message = 8192,
+	cmd_light(0) = 16384, cmd_light(1) = 32768, cmd_light(2) = 65536, cmd_light(3) = 131072,
+	cmd_display(0) = 262144, cmd_display(1) = 524288, cmd_display(2) = 1048576, cmd_display(3) = 2097152,
+        cmd_sleep = 4194304,
+	cmd_quit = 8388608,
+	cmd_exec = 16777216;
+
+define cmdbits = 32;
+
+iter(k on cmdbits)
+	{
+	output [packed] command(k);
+	aux cmd_1(k), cmd_2(k);
+	}
+
+define strbits = 8 * 17;
+
+input Clock, Random(0);
+input [filter, false] button(0), button(1);
+input [filter, default = 0] Slider(0), Slider(1);
+output light(0), Display(0), Display(2), Sleep;
+output [filter, default = 0] Display(1);
+aux Quantum;
+
+iter(k on strbits)
+	{
+	output [packed] message(k);
+	aux msg_1(k), msg_2(k);
+	}
+
+code(cmd_1(#), cmd_clock + cmd_random(0) + cmd_button(0) + cmd_slider(0) + cmd_slider(1) + cmd_message + cmd_light(0) + cmd_display(0) + cmd_display(2) + cmd_sleep + cmd_exec);
+code(cmd_2(#), cmd_clock + cmd_random(0) + cmd_button(1) + cmd_message + cmd_light(0) + cmd_display(0) + cmd_display(1) + cmd_display(2) + cmd_sleep + cmd_exec);
+
+init Quantum @ 0 = 0;
+
+Clock = Clock @ -1 + Quantum;
+Sleep = Quantum / 10;
+
+define alpha = 0.1, beta = 0.2, gamma = 0.1;
+
+output X;
+aux DX, U, V, V0;
+
+init X @ 0 = 0, DX @ 0 = 0;
+
+DX @ 1 = (1 - beta) * DX - alpha * X + gamma * (U + V);
+X @ 1 = X + DX;
+
+define delta = 10;
+
+aux cycle, Start;
+
+init ~ cycle @ 0;
+
+cycle @ 1 == since(button(0), ~ button(1) & Clock < Start + delta);
+
+~ cycle --> forall(command(k) == cmd_1(k), k on cmdbits) & V = 0;
+cycle --> forall(command(k) == cmd_2(k), k on cmdbits) & V = V0 * (2 * Random(0) - 1);
+
+~ button(0) --> Start = Start @ -1 & U = 0 & V0 = V0 @ -1;
+button(0) --> Start = Clock & U = Slider(0) & V0 = Slider(1);
+
+code(msg_1(#), "Free evolution\x0");
+code(msg_2(#), "Forced evolution\x0");
+
+V = 0 --> forall(message(k) == msg_1(k), k on strbits);
+V ~= 0 --> forall(message(k) == msg_2(k), k on strbits);
+
+light(0) == cycle;
+
+Display(0) = X;
+Display(1) = V;
+Display(2) = Quantum;
+

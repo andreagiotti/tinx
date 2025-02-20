@@ -1,0 +1,54 @@
+
+/*
+   Example of dynamical nonlinear system tracking in BTL
+   Coefficients have not been computed but adjusted at hand and sight
+   We suggest to keep the "phase plan" window open in the "gtinxsh" shell
+*/
+
+define phi = 0.010, psi = 0.005;
+
+output Z0, Z1;
+
+/* Target nonlinear system Z */
+
+Z1 @ 1 - Z1 = - psi * Z1 ^ 2 / 2 - phi * sin(Z0);
+Z0 @ 1 - Z0 = Z1;
+
+init Z0 @ 0 = 1, Z1 @ 0 = 0;
+
+/* Linearized system X in feedback */
+
+output X0, X1;
+aux W0, W1;
+
+X1 @ 1 - X1 = - psi * X1 - phi * X0 + W1;
+X0 @ 1 - X0 = X1 + W0;
+
+init X0 @ 0 = 0, X1 @ 0 = 0;
+
+/* Y copies Z through Z0 */
+
+aux Y0, Y1;
+
+Y0 = Z0;
+Y0 @ 1 - Y0 = Y1;
+
+/* Feedback W */
+
+define lambda = 0.500, mu = 0.250;
+
+W1 = - mu * (X1 - Y1);
+W0 = - lambda * (X0 - Y0);
+
+/* Tracking error */
+
+define eps = 0.01;
+
+output ok;
+aux Delta;
+
+Delta ^ 2 = ((X0 - Z0) ^ 2 + (X1 - Z1) ^ 2) / (X0 ^ 2 + X1 ^ 2);
+
+ok == Delta < eps;
+
+

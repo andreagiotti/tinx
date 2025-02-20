@@ -1,8 +1,8 @@
 /*
-  Washing machine simulator by Andrea Giotti v1.2
+  washing machine simulator by Andrea Giotti v1.2
 */
 
-define FILL = 3, HEAT = 5, WASH = 45, DRAIN = 3, RINSE = 20, SPIN = 20;
+define fill = 3, heat = 5, wash = 45, drain = 3, rinse = 20, spin = 20;
 
 input start_button, halt_button, double_rinsing, triple_spinning;
 
@@ -10,7 +10,7 @@ output close_lock, filling, heating, washing, draining, rinsing, spinning, open_
 
 aux idle, filling_1, filling_2, heating_1, heating_2, draining_1, draining_2, draining_3, start_idle, start_filling_1, start_filling_2, start_heating_1, start_heating_2, start_washing, start_rinsing, start_draining_1, start_draining_2, start_draining_3, start_spinning, up_rinsing, up_spinning, repeat_rinsing, repeat_spinning, rinsing_cycle, spinning_cycle;
 
-init ~ idle @ -(DRAIN + 2), ~ spinning @ -(DRAIN + 2), ~ draining_3 @ -(DRAIN + 2), halt_button @ -(DRAIN + 1), ~ halt_button @ [-DRAIN, 0), ~ start_button @ [-DRAIN, 0), ~ repeat_rinsing @ -DRAIN, ~ repeat_spinning @ -DRAIN, ~ double_rinsing @ [-DRAIN, 0), ~ triple_spinning @ [-DRAIN, 0);
+init ~ idle @ -(drain + 2), ~ spinning @ -(drain + 2), ~ draining_3 @ -(drain + 2), halt_button @ -(drain + 1), ~ halt_button @ [-drain, 0), ~ start_button @ [-drain, 0), ~ repeat_rinsing @ -drain, ~ repeat_spinning @ -drain, ~ double_rinsing @ [-drain, 0), ~ triple_spinning @ [-drain, 0);
 
 filling_1 == since(start_filling_1, ~ (start_heating_1 | start_draining_3));
 heating_1 == since(start_heating_1, ~ (start_washing | start_draining_3));
@@ -25,20 +25,20 @@ draining_3 == since(start_draining_3, ~ start_idle);
 idle == since(start_idle, ~ start_filling_1);
 
 start_filling_1 == idle @ -1 & ~ halt_button & start_button;
-start_heating_1 == filling_1 @ [-FILL, 0) & ~ halt_button;
-start_washing == heating_1 @ [-HEAT, 0) & ~ halt_button;
-start_draining_1 == washing @ [-WASH, 0) & ~ halt_button;
-start_filling_2 == draining_1 @ [-DRAIN, 0) & ~ halt_button;
-start_heating_2 == filling_2 @ [-FILL, 0) & ~ halt_button;
-start_rinsing == heating_2 @ [-HEAT, 0) & ~ halt_button;
-start_draining_2 == (~ repeat_rinsing | (repeat_rinsing & rinsing_cycle @ -RINSE)) & rinsing_cycle & ~ halt_button;
-rinsing_cycle == rinsing @ [-RINSE, 0);
-start_spinning == draining_2 @ [-DRAIN, 0) & ~ halt_button;
+start_heating_1 == filling_1 @ [-fill, 0) & ~ halt_button;
+start_washing == heating_1 @ [-heat, 0) & ~ halt_button;
+start_draining_1 == washing @ [-wash, 0) & ~ halt_button;
+start_filling_2 == draining_1 @ [-drain, 0) & ~ halt_button;
+start_heating_2 == filling_2 @ [-fill, 0) & ~ halt_button;
+start_rinsing == heating_2 @ [-heat, 0) & ~ halt_button;
+start_draining_2 == (~ repeat_rinsing | (repeat_rinsing & rinsing_cycle @ -rinse)) & rinsing_cycle & ~ halt_button;
+rinsing_cycle == rinsing @ [-rinse, 0);
+start_spinning == draining_2 @ [-drain, 0) & ~ halt_button;
 start_draining_3 == ~ (idle | spinning | draining_3) @ -1 & halt_button;
 start_idle == beep_ok | beep_abort;
-beep_ok == (~ repeat_spinning | (repeat_spinning & spinning_cycle @ -2 * SPIN & spinning_cycle @ -SPIN)) & spinning_cycle;
-beep_abort == draining_3 @ [-DRAIN, 0) | (spinning @ -1 & halt_button & ~ beep_ok);
-spinning_cycle == spinning @ [-SPIN, 0);
+beep_ok == (~ repeat_spinning | (repeat_spinning & spinning_cycle @ -2 * spin & spinning_cycle @ -spin)) & spinning_cycle;
+beep_abort == draining_3 @ [-drain, 0) | (spinning @ -1 & halt_button & ~ beep_ok);
+spinning_cycle == spinning @ [-spin, 0);
 
 up_rinsing == ~ double_rinsing @ -1 & double_rinsing;
 up_spinning == ~ triple_spinning @ -1 & triple_spinning;
