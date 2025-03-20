@@ -1,0 +1,86 @@
+
+define	cmd_clock = 1,
+	cmd_random(0) = 2, cmd_random(1) = 4, cmd_random(2) = 8, cmd_random(3) = 16,
+	cmd_button(0) = 32, cmd_button(1) = 64, cmd_button(2) = 128, cmd_button(3) = 256,
+	cmd_slider(0) = 512, cmd_slider(1) = 1024, cmd_slider(2) = 2048, cmd_slider(3) = 4096,
+        cmd_message = 8192,
+	cmd_light(0) = 16384, cmd_light(1) = 32768, cmd_light(2) = 65536, cmd_light(3) = 131072,
+	cmd_display(0) = 262144, cmd_display(1) = 524288, cmd_display(2) = 1048576, cmd_display(3) = 2097152,
+        cmd_sleep = 4194304,
+	cmd_quit = 8388608,
+	cmd_exec = 16777216;
+
+define cmdbits = 32;
+
+iter(k on cmdbits)
+	output [packed] command(k);
+
+code(command(#), cmd_clock + cmd_button(0) + cmd_slider(0) + cmd_slider(1) + cmd_light(0) + cmd_light(1) + cmd_light(2) + cmd_exec);
+
+define num_phases = 10;
+define fill_time = 0.3, heat_time = 0.5, wash_time = 4.5, drain_time = 0.3, rinse_time = 2, spin_time = 2;
+
+define run_len(_) = [fill_time, heat_time, wash_time, drain_time, fill_time, heat_time, rinse_time, drain_time, spin_time, drain_time];
+define run_len_var(_) = [0, 0, 0, 0, 0, 0, 1, 0, 2, 0];
+
+input Clock, button(0), Slider(0), Slider(1);
+output light(0), light(1), light(2);
+
+iter(k on num_phases)
+	{
+	aux start(k), stop(k), run(k), end(k), Prev_clock(k), Run_len(k);
+
+	run(k) @ 1 == since(start(k), ~ end(k) & ~ stop(k));
+
+	when(run_len_var(k) is 0)
+		~ end(k) == Clock < Prev_clock(k) + run_len(k);
+	else
+		~ end(k) == Clock < Prev_clock(k) + Run_len(k);
+
+	~ run(k) --> Prev_clock(k) = Clock;
+	run(k) --> Prev_clock(k) = Prev_clock(k) @ -1;
+	}
+
+aux idle, startup, cleanup_ok, cleanup_abort;
+
+~ idle == startup | exists(run(k), k on num_phases) | cleanup_ok | cleanup_abort;
+light(0) == ~ idle;
+
+startup @ 1 == button(0) & idle;
+start(0) == startup;
+
+iter(k on num_phases - 2)
+	{
+	start(k + 1) == end(k) & ~ stop(k);
+	stop(k) == button(0) & run(k);
+	}
+
+Run_len(6) = run_len(6) * (1 + run_len_var(6) * Slider(0));
+
+cleanup_ok @ 1 == end(8);
+cleanup_abort @ 1 == (~ end(8) & stop(8)) | end(9);
+
+stop(8) == button(0) & run(8);
+Run_len(8) = run_len(8) * (1 + run_len_var(8) * Slider(1));
+
+start(9) == exists(stop(k), k on num_phases - 2);
+~ stop(9);
+
+output close_lock, filling, heating, washing, draining, rinsing, spinning, open_lock;
+init ~ light(1) @ 0, ~ light(2) @ 0;
+
+close_lock == startup;
+filling == run(0) | run(4);
+heating == run(1) | run(5);
+washing == run(2);
+draining == run(3) | run(7) | run(9);
+rinsing == run(6);
+spinning == run(8);
+open_lock == cleanup_ok | cleanup_abort;
+
+light(1) == since(cleanup_ok, ~ startup);
+light(2) == since(cleanup_abort, ~ startup);
+
+init idle @ 0;
+
+
