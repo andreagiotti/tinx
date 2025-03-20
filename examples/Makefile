@@ -2,7 +2,7 @@
 
 FLAGS = -w -W -u -k -K -O
 
-all:			semaphore.tin crossroad.tin advanced_crossroad.tin tinybenchmark.tin benchmark.tin benchmark_8.tin benchmark_16.tin enterprise.tin excl.tin mutex_4.tin resource.tin multiplexer.tin cs.tin wm.tin outchar.tin blanket.tin parbench.tin parbench2.tin automa.tin adder.tin window.tin varwin.tin hanoi.tin hanoi_game.tin safetrans_1.tin safetrans_2.tin loopmark.tin minmark.tin solitaire.tin freq.tin nim.tin dynamic.tin pendulum.tin sir.tin rlc.tin matrix.tin smooth.tin extservdemo.tin extrlc.tin
+all:			semaphore.tin crossroad.tin advanced_crossroad.tin tinybenchmark.tin benchmark.tin benchmark_8.tin benchmark_16.tin enterprise.tin excl.tin mutex_4.tin resource.tin multiplexer.tin cs.tin wm.tin outchar.tin blanket.tin parbench.tin parbench2.tin automa.tin adder.tin window.tin varwin.tin hanoi.tin hanoi_game.tin safetrans_1.tin safetrans_2.tin loopmark.tin minmark.tin solitaire.tin freq.tin nim.tin dynamic.tin pendulum.tin sir.tin rlc.tin matrix.tin smooth.tin extservdemo.tin extrlc.tin extwm.tin
 
 semaphore.tin:		semaphore.btl
 			ting $(FLAGS) -o semaphore.tin semaphore.btl
@@ -120,6 +120,9 @@ extservdemo.tin:	extservdemo.btl
 
 extrlc.tin:		extrlc.btl
 			ting $(FLAGS) -o extrlc.tin extrlc.btl
+
+extwm.tin:		extwm.btl
+			ting $(FLAGS) -o extwm.tin extwm.btl
 
 clean:
 			rm -f *.tin *.evl *~

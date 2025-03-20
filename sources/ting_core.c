@@ -1,6 +1,6 @@
 /*
   TING - Temporal Inference Network Generator
-  Design & coding by Andrea Giotti, 2017-2024
+  Design & coding by Andrea Giotti, 2017-2025
 */
 
 #define NDEBUG
@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "10.3.0"
+#define VER "10.3.1"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 const char *signal_class[IO_CLASSES_NUMBER] = { "internal", "auxiliary", "input", "output" };
@@ -1397,6 +1397,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
       case op_ioqual2:
       case op_ioqual3:
       case op_ioqual4:
+      case op_ioqual3b:
         if(spec->left)
           {
             stv_2 = preval(cb, spec->left, level, param, realval);
@@ -2390,7 +2391,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
                   exit_failure();
                 }
 
-              result = 1 / stv.a;
+              result = 1.0 / stv.a;
 
               delete_specification(stv.btl);
 
@@ -5169,7 +5170,7 @@ subtreeval subset_only(c_base *cb, btl_specification *spec, int level, d_time pa
   return stv;
 }
 
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ext_dir, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3 defaultval, io_type_4 omissions,
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ext_dir, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3b defaultval, io_type_4 omissions,
                 d_time t, real realval)
 {
   subtreeval stv, stv_2;
@@ -5287,6 +5288,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
 
             sp->defaultval = defaultval;
             sp->omissions = omissions;
+            sp->defaultreal = realval;
           }
       break;
 
@@ -5304,11 +5306,15 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
 
       case op_ioqual3:
         stv.ztra = &spec->value;
-        stv.realval = spec->realval;
       break;
 
       case op_ioqual4:
         stv.wtra = &spec->value;
+      break;
+
+      case op_ioqual3b:
+        stv.ztra = &spec->value;
+        stv.realval = spec->realval;
       break;
 
       case op_join:
@@ -5396,6 +5402,17 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
               }
 
             stv.wtra = stv_2.wtra;
+          }
+
+        if(stv_2.realval != REAL_MAX)
+          {
+            if(stv.realval != REAL_MAX)
+              {
+                printmsg(cb->fancymsg, 4, "Error, repeated or conflicting default values: %s\n", spec->debug);
+                exit_failure();
+              }
+
+            stv.realval = stv_2.realval;
           }
       break;
 
@@ -6305,7 +6322,7 @@ link_code occurrence(smallnode **fromto, smallnode *to)
 bool assign_signal(c_base *cb, io_signal *sp, smallnode *vp, smallnode **bpp, litval val)
 {
   smallnode **lvpp, **rvpp;
-  io_type_3 def;
+  io_type_3b def;
   bool neg, rv;
 
   assert(vp);
@@ -7370,6 +7387,7 @@ int save_signals(c_base *cb, FILE *fp)
 {
   io_signal *rp, *rp1, *sp, *sp1;
   int rv, h, i;
+  real defval;
 
   sp = cb->sigtab;
   rp = NULL;
@@ -7423,27 +7441,29 @@ int save_signals(c_base *cb, FILE *fp)
 
   while(sp)
     {
+      if(sp->defaultval != NULL_TIME)
+        defval = sp->defaultval;
+      else
+        defval = sp->defaultreal;
+
       if(sp->from && sp->from != SPECIAL && sp->to && sp->to != SPECIAL)
         {
           switch(sp->sclass)
             {
               case input_class:
                 rv = fprintf(fp, "!%s %s (%s, %s) # %d / %d, %d, %d, "REAL_OUT_FMT", %d\n", sp->shared? "^" : "",
-                             sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit,
-                             sp->defaultval != NULL_TIME? sp->defaultval : sp->defaultreal, sp->omissions);
+                             sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, defval, sp->omissions);
               break;
 
               case output_class:
                 rv = fprintf(fp, "?%s %s (%s, %s) # %d / %d, %d, %d, "REAL_OUT_FMT", %d\n", sp->shared? "^" : "",
-                             sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit,
-                             sp->defaultval != NULL_TIME? sp->defaultval : sp->defaultreal, sp->omissions);
+                             sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, defval, sp->omissions);
               break;
 
               case aux_class:
                 if(cb->outaux || sp->shared)
                   rv = fprintf(fp, "%s%s %s (%s, %s) # %d / %d, %d, %d, "REAL_OUT_FMT", %d\n", cb->outaux? "." : "_", sp->shared? "^" : "",
-                               sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit,
-                               sp->defaultval != NULL_TIME? sp->defaultval : sp->defaultreal, sp->omissions);
+                               sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, defval, sp->omissions);
                 else
                   rv = 0;
               break;
@@ -7451,8 +7471,7 @@ int save_signals(c_base *cb, FILE *fp)
               case internal_class:
                 if(cb->outint || sp->shared)
                   rv = fprintf(fp, "%s %s (%s, %s) # %d / %d, %d, %d, "REAL_OUT_FMT", %d\n", sp->shared? "_^" : ".",
-                               sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit,
-                               sp->defaultval != NULL_TIME? sp->defaultval : sp->defaultreal, sp->omissions);
+                               sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, defval, sp->omissions);
                 else
                   rv = 0;
               break;
@@ -7468,8 +7487,7 @@ int save_signals(c_base *cb, FILE *fp)
             {
               if(sp->val == asserted || (cb->constout_sugg && sp->val == negated) || (cb->constout_user && sp->val == undefined))
                 {
-                  rv = fprintf(fp, "? %s (*, *) # 0 / %d, %d, %d, "REAL_OUT_FMT", %d\n", sp->root, sp->stype, sp->packed, sp->packedbit,
-                                                                                         sp->defaultval != NULL_TIME? sp->defaultval : sp->defaultreal, sp->omissions);
+                  rv = fprintf(fp, "? %s (*, *) # 0 / %d, %d, %d, "REAL_OUT_FMT", %d\n", sp->root, sp->stype, sp->packed, sp->packedbit, defval, sp->omissions);
 
                   printmsg(cb->fancymsg, 1, "%s: Warning, constant output signal generated as %s by default\n", sp->name, sp->defaultval == io_false? "false" : "true");
                 }
@@ -8568,7 +8586,7 @@ int main(int argc, char *argv[])
     strcpy(xref_name, base_name);
 
   printmsg(fancymsg, 0, "\nTING "VER" - Temporal Inference Network Generator\n"
-           "Design & coding by Andrea Giotti, 2017-2024\n\n");
+           "Design & coding by Andrea Giotti, 2017-2025\n\n");
 
   cperf = compile(source_name, base_name, state_name, xref_name, path, seplit_fe, seplit_su, merge, constout, constout_sugg, constout_user, outaux, outint, postopt, fancymsg);
 

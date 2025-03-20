@@ -43,6 +43,7 @@ typedef enum op_type
   op_ioqual2,
   op_ioqual3,
   op_ioqual4,
+  op_ioqual3b,
   op_define,
   op_defarray,
   op_equal,
@@ -207,6 +208,8 @@ typedef enum litval
   undefined
 } litval;
 
+typedef d_time io_type_3b;
+
 typedef struct io_signal
 {
   char name[MAX_NAMELEN];
@@ -219,7 +222,7 @@ typedef struct io_signal
   io_type stype;
   int packed;
   int packedbit;
-  io_type_3 defaultval;
+  io_type_3b defaultval;
   io_type_4 omissions;
   real defaultreal;
   litval val;
@@ -370,7 +373,7 @@ subtreeval sum(c_base *cb, btl_specification *spec, int level, d_time param, rea
 subtreeval prod(c_base *cb, btl_specification *spec, int level, d_time param, real realval);
 btl_specification *combine(c_base *cb, btl_specification *ap[], btl_specification *spec, int h, int k, int level, d_time param, real realval);
 subtreeval exec_comb(c_base *cb, btl_specification *spec, int level, d_time param, real realval);
-subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ext_dir, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3 defaultval, io_type_4 omissions,
+subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ext_dir, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3b defaultval, io_type_4 omissions,
                 d_time t, real realval);
 void purge_smallnode(c_base *cb, smallnode *vp, smallnode **bpp, smallnode **dpp, litval val, bool flip);
 void close_smallbranches(c_base *cb, smallnode *xp, smallnode *yp, smallnode **xbpp, smallnode **ybpp, smallnode *vp);

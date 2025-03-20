@@ -2,7 +2,7 @@
 /*
   GTINXSH - Temporal Inference Network eXecutor Suite
   Design & coding by Andrea Giotti, 1998-1999
-  Revised 2016-2024
+  Revised 2016-2025
 */
 
 #define NDEBUG
@@ -13,7 +13,7 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "12.2.7"
+#define PACK_VER "12.2.8"
 #define VER "6.3.4"
 
 const char *color_name_light[NUM_COLORS] = { "green4", "yellow4", "orange4", "red4", "purple4" };

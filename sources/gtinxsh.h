@@ -58,7 +58,7 @@
 #define PLAN_TITLE "Phase plan analyzer"
 
 #define HEADING "Temporal Inference Network eXecutor Suite "PACK_VER", graphical shell "VER"\n" \
-                "Design &amp; coding by Andrea Giotti, 1998-1999, 2016-2024\n"
+                "Design &amp; coding by Andrea Giotti, 1998-1999, 2016-2025\n"
 
 #define BANNER HEADING "\n" \
         "TINX is a real time inference engine for system specification in an executable temporal logic. It is able to acquire, process and generate any binary, <i>n</i>-ary or real signal through POSIX\n" \
@@ -75,7 +75,7 @@
                      "\tPackage version "PACK_VER"\n" \
                      "\tGraphical shell "VER"\n\n" \
                      "\tDesign &amp; coding by Andrea Giotti\n" \
-                     "\t1998-1999, 2016-2024\n\n" \
+                     "\t1998-1999, 2016-2025\n\n" \
                      "\tThis software is licensed under the\n" \
                      "\tGNU Public License\n"
 

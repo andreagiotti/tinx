@@ -378,7 +378,7 @@ iodecl
     | TOKEN_UNKNOWN { $$ = create_ground(op_ioqual3, "unknown", io_unknown, REAL_MAX); }
     | TOKEN_FALSE { $$ = create_ground(op_ioqual3, "false", io_false, REAL_MAX); }
     | TOKEN_TRUE { $$ = create_ground(op_ioqual3, "true", io_true, REAL_MAX); }
-    | TOKEN_DEFAULT TOKEN_EQUAL expression[E] { $$ = create_operation(op_ioqual3, $E, NULL, "default = %s"); }
+    | TOKEN_DEFAULT TOKEN_EQUAL expression[E] { $$ = create_operation(op_ioqual3b, $E, NULL, "default = %s"); }
     | TOKEN_RAW { $$ = create_ground(op_ioqual4, "raw", io_raw, REAL_MAX); }
     | TOKEN_FILTER { $$ = create_ground(op_ioqual4, "filter", io_filter, REAL_MAX); }
     | TOKEN_OMIT { $$ = create_ground(op_ioqual4, "omit", io_omit, REAL_MAX); }

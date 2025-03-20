@@ -2703,7 +2703,7 @@ yyreduce:
 
   case 79: /* iodecl: TOKEN_DEFAULT TOKEN_EQUAL expression  */
 #line 381 "ting.y"
-                                              { (yyval.other) = create_operation(op_ioqual3, (yyvsp[0].other), NULL, "default = %s"); }
+                                              { (yyval.other) = create_operation(op_ioqual3b, (yyvsp[0].other), NULL, "default = %s"); }
 #line 2708 "ting_parser.c"
     break;
 

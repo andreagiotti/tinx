@@ -1,5 +1,6 @@
 # tinx
-Temporal Inference Network eXecutor Suite 12.2.7, graphical shell 6.3.4
+Temporal Inference Network eXecutor Suite 12.2.8, graphical shell 6.3.4
+
 Design & coding by Andrea Giotti, 1998-1999, 2016-2024
 
 TINX is a real time inference engine for system specification in an executable temporal logic. It is able to acquire, process and generate any binary, n-ary or real signal through POSIX
