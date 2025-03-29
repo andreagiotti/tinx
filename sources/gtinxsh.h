@@ -22,7 +22,8 @@
 #define LARGEENGINE_FILENAME "tinx_zt"
 #define HELP_FILENAME "/usr/share/doc/tinx/reference.pdf"
 
-#define CONFIG_HEADER "TINX0005"
+#define CONFIG_HEADER "TINX"
+#define CONFIG_VERSION "0006"
 
 #define MAX_STRLEN_IF 512
 #define MAX_STRLEN_IF_C "511"
@@ -40,10 +41,9 @@
 #define SKIP_FMT "%[^ ?!._]%*[^\n]"
 #define NUM_COLORS 5
 
-#define DISPLAY_LO_CHAR '0'
-#define DISPLAY_HI_CHAR '1'
-#define DISPLAY_UNKNOWN_CHAR '?'
-#define DISPLAY_EMPTY_CHAR ' '
+#define DISPLAY_LO_CODE -1
+#define DISPLAY_HI_CODE 1
+#define DISPLAY_UNKNOWN_CODE 0
 
 #define DEFAULT_DISPLAY_ROWS 15
 #define MAX_DISPLAY_ROWS 255
@@ -54,6 +54,7 @@
 #define CONFIG_TITLE "Configuration"
 #define PROB_TITLE "Probabilities"
 #define FILTER_TITLE "External signals"
+#define PLANSETUP_TITLE "Phase plan setup"
 #define SPECTRUM_TITLE "Spectrum analyzer"
 #define PLAN_TITLE "Phase plan analyzer"
 
@@ -92,10 +93,12 @@
 #define SPECTRUM_WINDOW_HEIGHT 300
 #define PLAN_WINDOW_WIDTH 400
 #define PLAN_WINDOW_HEIGHT 400
-#define PROB_WINDOW_WIDTH 128
-#define PROB_WINDOW_HEIGHT 64
-#define FILTER_WINDOW_WIDTH 128
-#define FILTER_WINDOW_HEIGHT 64
+#define PROB_WINDOW_WIDTH 256
+#define PROB_WINDOW_HEIGHT 128
+#define FILTER_WINDOW_WIDTH 256
+#define FILTER_WINDOW_HEIGHT 128
+#define PLANSETUP_WINDOW_WIDTH 256
+#define PLANSETUP_WINDOW_HEIGHT 256
 #define POPUP_WINDOW_WIDTH 400
 #define POPUP_WINDOW_HEIGHT 200
 
@@ -191,7 +194,22 @@ typedef struct config
     bool gexcl[MAX_FILES];
     int fn;
     int gn;
+    /* V6 */
+    char fname[MAX_FILES][MAX_STRLEN];
+    char gname[MAX_FILES][MAX_STRLEN];
+    bool pplan[MAX_FILES][MAX_FILES];
   } config;
+
+typedef struct cfgcache
+  {
+    char fname[MAX_FILES][MAX_STRLEN];
+    char gname[MAX_FILES][MAX_STRLEN];
+    double inprob[MAX_FILES];
+    bool fexcl[MAX_FILES];
+    bool gexcl[MAX_FILES];
+    bool pplan[MAX_FILES][MAX_FILES];
+    int indir[MAX_FILES];
+  } cfgcache;
 
 #if defined BUGGED_PTHREADS
 	#define lock_pipe(SB) pthread_mutex_lock(&(SB)->mutex_pipe)
@@ -252,6 +270,8 @@ typedef struct s_base
     bool changed;
     bool configured;
     bool changeprob;
+    bool changefilter;
+    bool changepp;
     bool donotquit;
     bool donotscroll;
     config cfg;
@@ -283,6 +303,7 @@ typedef struct s_base
     GtkWindow *config_window;
     GtkWindow *prob_window;
     GtkWindow *filter_window;
+    GtkWindow *pplan_window;
     GtkWindow *spectrum_window;
     GtkWindow *plan_window;
     GtkDrawingArea *drawingarea;
@@ -297,6 +318,8 @@ typedef struct s_base
     GtkButton *edit_button;
     GtkButton *help_button;
     GtkButton *clear_button;
+    GtkButton *filclear_button;
+    GtkButton *ppclear_button;
     GtkMenuItem *gen_menu;
     GtkMenuItem *run_menu;
     GtkMenuItem *freeze_menu;
@@ -311,6 +334,7 @@ typedef struct s_base
     GtkWidget *inprob_widget[MAX_FILES];
     GtkWidget *infilter_widget[MAX_FILES];
     GtkWidget *outfilter_widget[MAX_FILES];
+    GtkWidget *pplan_widget[MAX_FILES][MAX_FILES];
   } s_base;
 
 /* Protos */

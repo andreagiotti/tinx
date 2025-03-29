@@ -1,5 +1,5 @@
 # tinx
-Temporal Inference Network eXecutor Suite 12.2.8, graphical shell 6.3.4
+Temporal Inference Network eXecutor Suite 13.0.1, graphical shell 7.0.1
 
 Design & coding by Andrea Giotti, 1998-1999, 2016-2025
 

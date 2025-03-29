@@ -13,8 +13,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "12.2.8"
-#define VER "6.3.4"
+#define PACK_VER "13.0.1"
+#define VER "7.0.1"
 
 const char *color_name_light[NUM_COLORS] = { "green4", "yellow4", "orange4", "red4", "purple4" };
 const char *color_name_dark[NUM_COLORS] = { "green1", "yellow1", "orange1", "red1", "purple1" };
@@ -106,13 +106,33 @@ void calc_dft(int num, real *source, real *dest, real re[MAX_DFT][MAX_DFT], real
     }
 }
 
+void calc_dft_byte(int num, char *source, real *dest, real re[MAX_DFT][MAX_DFT], real im[MAX_DFT][MAX_DFT])
+{
+  real reacc, imacc;
+  int h, k;
+
+  for(h = 0; h < num; h++)
+    {
+      reacc = 0;
+      imacc = 0;
+      
+      for(k = 0; k < num; k++)
+        {
+          reacc += re[h][k] * source[k];
+          imacc += im[h][k] * source[k];
+        }
+
+      dest[h] = sqrt(reacc * reacc + imacc * imacc);
+    }
+}
+
 gboolean plan_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
 {
   cairo_t *dr;
   cairo_surface_t *surface;
   int width, height;
-  double offset, hue;
-  int i, col, fn1, gn1;
+  double offset, hue1, hue2;
+  int i, j, h, k, col;
   real val_x, val_y, maxval_x, maxval_y;
   real x[MAX_PLAN], y[MAX_PLAN];
   d_time t;
@@ -125,121 +145,75 @@ gboolean plan_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
   surface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, width, height);
   dr = cairo_create(surface);
 
-  if(sb->fn || sb->gn)
-    {
-      fn1 = sb->fn;
-      gn1 = sb->gn;
-
-      offset = min(FONT_SIZE * (double)height / (fn1 + gn1), MAX_FONT_PIXELS);
-    }
+  if(sb->gn)
+    offset = min(FONT_SIZE * (double)height / sb->gn, MAX_FONT_PIXELS);
   else
-    {
-      fn1 = 0;
-      gn1 = 0;
-      offset = 0;
-    }
-
-  fn1 = 2 * floor(fn1 / 2);
-  gn1 = 2 * floor(gn1 / 2);
+    offset = 0;
 
   cairo_set_source_rgb(dr, 0, 0, 0);
   cairo_rectangle(dr, 0, 0, width, height);
   cairo_fill(dr);
 
-  for(i = 0; i < fn1; i += 2)
-    {
-       maxval_x = 0;
-       maxval_y = 0;
-       for(col = 0; col < sb->cp_horizon_size - 1; col++)
-         {
-           x[col] = sb->f[i].realmem[(t + col) % sb->cp_horizon_size];
-           y[col] = sb->f[i + 1].realmem[(t + col) % sb->cp_horizon_size];
+  h = 0;
+  for(i = 0; i < sb->cfg.gn; i++)
+    if(!sb->cfg.gexcl[i])
+      {
+        k = 0;
+        for(j = 0; j < sb->cfg.gn; j++)
+          if(!sb->cfg.gexcl[j])
+            {
+              if(sb->cfg.pplan[i][j])
+                {
+                  maxval_x = 0;
+                  maxval_y = 0;
+                  for(col = 0; col < sb->cp_horizon_size - 1; col++)
+                    {
+                      x[col] = sb->g[h].realbuf? sb->g[h].realmem[(t + col) % sb->cp_horizon_size] : sb->g[h].memory[(t + col) % sb->cp_horizon_size];
+                      y[col] = sb->g[k].realbuf? sb->g[k].realmem[(t + col) % sb->cp_horizon_size] : sb->g[k].memory[(t + col) % sb->cp_horizon_size];
 
-           if(maxval_x < fabs(x[col]))
-             maxval_x = fabs(x[col]);
+                      if(maxval_x < fabs(x[col]))
+                        maxval_x = fabs(x[col]);
 
-           if(maxval_y < fabs(y[col]))
-             maxval_y = fabs(y[col]);
-         }
+                      if(maxval_y < fabs(y[col]))
+                        maxval_y = fabs(y[col]);
+                    }
 
-       if(fn1 > 2)
-         hue = (double)i / (fn1 - 2);
-       else
-         hue = 0;
+                  hue1 = (double)h / (sb->gn - 1);
+                  hue2 = (double)k / (sb->gn - 1);
 
-       cairo_set_source_rgb(dr, 1, 0, hue);
+                  if(sb->g[h].aux || sb->g[k].aux)
+                    cairo_set_source_rgb(dr, hue1, 1 - hue2, 1);
+                  else
+                    cairo_set_source_rgb(dr, hue1, 1 - hue2, 0);
 
-       cairo_new_path(dr);
+                  cairo_new_path(dr);
 
-       for(col = 0; col < sb->cp_horizon_size - 1; col++)
-         {
-           if(maxval_x)
-             val_x = x[col] / (2 * maxval_x);
-           else
-             val_x = 0;
+                  for(col = 0; col < sb->cp_horizon_size - 1; col++)
+                    {
+                      if(maxval_x)
+                        val_x = x[col] / (2 * maxval_x);
+                      else
+                        val_x = 0;
 
-           if(maxval_y)
-             val_y = y[col] / (2 * maxval_y);
-           else
-             val_y = 0;
+                      if(maxval_y)
+                        val_y = y[col] / (2 * maxval_y);
+                      else
+                        val_y = 0;
 
-           if(col + t <= sb->cp_horizon_size)
-             cairo_move_to(dr, offset + (0.5 + val_x) * (width - 2 * offset), offset + (0.5 - val_y) * (height - 2 * offset));
-           else
-             cairo_line_to(dr, offset + (0.5 + val_x) * (width - 2 * offset), offset + (0.5 - val_y) * (height - 2 * offset));
-         }
+                      if(col + t <= sb->cp_horizon_size)
+                        cairo_move_to(dr, offset + (0.5 + val_x) * (width - 2 * offset), offset + (0.5 - val_y) * (height - 2 * offset));
+                      else
+                        cairo_line_to(dr, offset + (0.5 + val_x) * (width - 2 * offset), offset + (0.5 - val_y) * (height - 2 * offset));
+                    }
 
-      cairo_stroke(dr);
-    }
-
-  for(i = 0; i < gn1; i += 2)
-    {
-       maxval_x = 0;
-       maxval_y = 0;
-       for(col = 0; col < sb->cp_horizon_size - 1; col++)
-         {
-           x[col] = sb->g[i].realmem[(t + col) % sb->cp_horizon_size];
-           y[col] = sb->g[i + 1].realmem[(t + col) % sb->cp_horizon_size];
-
-           if(maxval_x < fabs(x[col]))
-             maxval_x = fabs(x[col]);
-
-           if(maxval_y < fabs(y[col]))
-             maxval_y = fabs(y[col]);
-         }
-
-       if(gn1 > 2)
-         hue = (double)i / (gn1 - 2);
-       else
-         hue = 0;
-
-       if(sb->g[i].aux)
-         cairo_set_source_rgb(dr, hue, 0.75, 0.75);
-       else
-         cairo_set_source_rgb(dr, hue, 1, 0);
-
-       cairo_new_path(dr);
-
-       for(col = 0; col < sb->cp_horizon_size - 1; col++)
-         {
-           if(maxval_x)
-             val_x = x[col] / (2 * maxval_x);
-           else
-             val_x = 0;
-
-           if(maxval_y)
-             val_y = y[col] / (2 * maxval_y);
-           else
-             val_y = 0;
-
-           if(col + t <= sb->cp_horizon_size)
-             cairo_move_to(dr, offset + (0.5 + val_x) * (width - 2 * offset), offset + (0.5 - val_y) * (height - 2 * offset));
-           else
-             cairo_line_to(dr, offset + (0.5 + val_x) * (width - 2 * offset), offset + (0.5 - val_y) * (height - 2 * offset));
-         }
-
-      cairo_stroke(dr);
-    }
+                  cairo_stroke(dr);
+                }
+              
+              k++;
+            }
+          
+        h++;
+      }    
 
   cairo_destroy(dr);
 
@@ -312,14 +286,20 @@ gboolean spectrum_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
   row = 0;
   for(i = 0; i < fn1; i++)
     {
-      calc_dft(sb->cp_horizon_size - 1, sb->f[fpos + i].realmem, spectrum, sb->re, sb->im);
-
+      if(sb->f[fpos + i].realbuf)
+        calc_dft(sb->cp_horizon_size - 1, sb->f[fpos + i].realmem, spectrum, sb->re, sb->im);
+      else
+        calc_dft_byte(sb->cp_horizon_size - 1, sb->f[fpos + i].memory, spectrum, sb->re, sb->im);
+      
       maxval = 0;
       for(col = 0; col < sb->cp_horizon_size - 1; col++)
         if(maxval < fabs(spectrum[col]))
           maxval = fabs(spectrum[col]);
 
-      cairo_set_source_rgb(dr, 1, 0, 0);
+      if(!sb->f[fpos + i].packed)
+        cairo_set_source_rgb(dr, 1, 0, 0);
+      else
+        cairo_set_source_rgb(dr, 1, 0.5, 0);
 
       cairo_new_path(dr);
 
@@ -343,7 +323,10 @@ gboolean spectrum_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
 
   for(i = 0; i < gn1; i++)
     {
-      calc_dft(sb->cp_horizon_size - 1, sb->g[gpos + i].realmem, spectrum, sb->re, sb->im);
+      if(sb->g[gpos + i].realbuf)
+        calc_dft(sb->cp_horizon_size - 1, sb->g[gpos + i].realmem, spectrum, sb->re, sb->im);
+      else
+        calc_dft_byte(sb->cp_horizon_size - 1, sb->g[gpos + i].memory, spectrum, sb->re, sb->im);
 
       maxval = 0;
       for(col = 0; col < sb->cp_horizon_size - 1; col++)
@@ -353,7 +336,10 @@ gboolean spectrum_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
       if(sb->g[gpos + i].aux)
         cairo_set_source_rgb(dr, 0, 0.75, 0.75);
       else
-        cairo_set_source_rgb(dr, 0, 1, 0);
+        if(!sb->g[gpos + i].packed)
+          cairo_set_source_rgb(dr, 0, 1, 0);
+        else
+          cairo_set_source_rgb(dr, 1, 1, 0);
 
       cairo_new_path(dr);
 
@@ -398,20 +384,20 @@ void plot(cairo_t *cr, s_base *sb, int x, int y, double offset_x, double offset_
     {
       switch(truth)
        {
-         case DISPLAY_HI_CHAR:
+         case DISPLAY_HI_CODE:
            cairo_rectangle(cr, offset_x + (x + BORDER_TRUE) * rectw, offset_y + (y + BORDER_TRUE) * recth, (1 - 2 * BORDER_TRUE) * rectw, (1 - 2 * BORDER_TRUE) * recth);
          break;
 
-         case DISPLAY_LO_CHAR:
+         case DISPLAY_LO_CODE:
            cairo_rectangle(cr, offset_x + (x + BORDER_FALSE) * rectw, offset_y + (y + BORDER_FALSE) * recth, (1 - 2 * BORDER_FALSE) * rectw, (1 - 2 * BORDER_FALSE) * recth);
          break;
 
-         case DISPLAY_UNKNOWN_CHAR:
+         case DISPLAY_UNKNOWN_CODE:
            if(sb->cfg.draw_undef)
              cairo_rectangle(cr, offset_x + (x + 0.5) * rectw - 0.5, offset_y + (y + 0.5) * recth - 0.5, 1, 1);
          break;
-
-         case DISPLAY_EMPTY_CHAR:
+         
+         default:
          break;
        }
 
@@ -475,6 +461,7 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
   double offset, offset_x1, offset_x2, recth, fonth, fontw;
   d_time t;
   char c;
+  bool empty;
 
   t = sb->t;        /* mt cache */
   fpos = sb->pos;
@@ -566,15 +553,16 @@ gboolean draw_callback(GtkWidget *widget, cairo_t *cr, s_base *sb)
       cairo_show_text(dr, sb->cp_full_names? sb->g[gpos + i].name_full : sb->g[gpos + i].name);
 
       c = sb->g[gpos + i].memory[(t + (sb->cp_horizon_size - 2)) % sb->cp_horizon_size];
+      empty = !sb->g[gpos + i].realbuf && !sb->g[gpos + i].packed && c == DISPLAY_UNKNOWN_CODE;
 
-      if(sb->g[gpos + i].sync != INT_MAX || (!sb->g[gpos + i].packed && c == DISPLAY_UNKNOWN_CHAR))
+      if(sb->g[gpos + i].sync != INT_MAX || empty)
         {
           cairo_set_source_rgb(dr, 1, 1, 0);
 
           cairo_arc(dr, (offset_x1 + offset_x2) / 2, offset + (row + 0.5) * recth, BALL_RATIO * fonth / 2, 0, 2 * G_PI);
           cairo_fill(dr);
 
-          if(!sb->g[gpos + i].packed && c == DISPLAY_UNKNOWN_CHAR)
+          if(empty)
             {
               cairo_set_source_rgb(dr, 0, 0, 0);
 
@@ -757,7 +745,7 @@ void tintloop(s_base *sb)
 
             for(i = 0; i < sb->gn; i++)
               {
-                sb->g[i].memory[(sb->t + (sb->cp_horizon_size - 1)) % sb->cp_horizon_size] = DISPLAY_EMPTY_CHAR;
+                sb->g[i].memory[(sb->t + (sb->cp_horizon_size - 1)) % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CODE;
                 sync_mark[i][(sb->t + (sb->cp_horizon_size - 1)) % sb->cp_horizon_size] = sb->t;
               }
           }
@@ -824,15 +812,9 @@ void tintloop(s_base *sb)
                             if(!sb->f[i].packed)
                               {
                                 if(outbuffer[0] == sb->cfg.alpha[false_symbol])
-                                  {
-                                    sb->f[i].memory[tau_f[i] % sb->cp_horizon_size] = DISPLAY_LO_CHAR;
-                                    sb->f[i].realmem[tau_f[i] % sb->cp_horizon_size] = -1;
-                                  }
+                                  sb->f[i].memory[tau_f[i] % sb->cp_horizon_size] = DISPLAY_LO_CODE;
                                 else
-                                  {
-                                    sb->f[i].memory[tau_f[i] % sb->cp_horizon_size] = DISPLAY_HI_CHAR;
-                                    sb->f[i].realmem[tau_f[i] % sb->cp_horizon_size] = 1;
-                                  }
+                                  sb->f[i].memory[tau_f[i] % sb->cp_horizon_size] = DISPLAY_HI_CODE;
                               }
                             else
                               sb->f[i].memory[tau_f[i] % sb->cp_horizon_size] = outbuffer[0];
@@ -937,23 +919,19 @@ void tintloop(s_base *sb)
                                 switch(strchr(sb->cfg.alpha, inbuffer[i][0]) - sb->cfg.alpha)
                                   {
                                     case unknown_symbol:
-                                      sb->g[i].memory[tau_g[i] % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CHAR;
-                                      sb->g[i].realmem[tau_g[i] % sb->cp_horizon_size] = 0;
+                                      sb->g[i].memory[tau_g[i] % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CODE;
                                     break;
 
                                     case false_symbol:
-                                      sb->g[i].memory[tau_g[i] % sb->cp_horizon_size] = DISPLAY_LO_CHAR;
-                                      sb->g[i].realmem[tau_g[i] % sb->cp_horizon_size] = -1;
+                                      sb->g[i].memory[tau_g[i] % sb->cp_horizon_size] = DISPLAY_LO_CODE;
                                     break;
 
                                     case true_symbol:
-                                      sb->g[i].memory[tau_g[i] % sb->cp_horizon_size] = DISPLAY_HI_CHAR;
-                                      sb->g[i].realmem[tau_g[i] % sb->cp_horizon_size] = 1;
+                                      sb->g[i].memory[tau_g[i] % sb->cp_horizon_size] = DISPLAY_HI_CODE;
                                     break;
 
                                     case end_symbol:
-                                      sb->g[i].memory[tau_g[i] % sb->cp_horizon_size] = DISPLAY_EMPTY_CHAR;
-                                      sb->g[i].realmem[tau_g[i] % sb->cp_horizon_size] = 0;
+                                      sb->g[i].memory[tau_g[i] % sb->cp_horizon_size] = DISPLAY_UNKNOWN_CODE;
                                       sb->g[i].excl = TRUE;
                                     break;
 
@@ -1269,13 +1247,100 @@ void clean_io(s_base *sb)
     delete_queues_sys5();
 }
 
+void begin_cfgcache(config *cfgp, cfgcache *cfgccp)
+{
+  int mark, i;
+
+  for(mark = 0; mark < cfgp->fn; mark++)
+    {
+      cfgccp->inprob[mark] = cfgp->inprob[mark];
+      cfgccp->fexcl[mark] = cfgp->fexcl[mark];
+    }
+
+  for(mark = 0; mark < cfgp->gn; mark++)
+    {
+      cfgccp->gexcl[mark] = cfgp->gexcl[mark];
+
+      for(i = 0; i < cfgp->gn; i++)
+        cfgccp->pplan[mark][i] = cfgp->pplan[mark][i];
+    }
+}
+
+void end_cfgcache(config *cfgp, cfgcache *cfgccp, int cfn, int cgn)
+{
+  int mark, i;
+
+  if(cfn >= 0)
+    {
+      cfgp->fn = cfn;
+      for(mark = 0; mark < cfn; mark++)
+        strcpy(cfgp->fname[mark], cfgccp->fname[mark]);
+    }
+
+  if(cgn >= 0)
+    {
+      cfgp->gn = cgn;
+      for(mark = 0; mark < cgn; mark++)
+        {
+          if(cfgccp->indir[mark] >= 0)
+            for(i = 0; i < mark; i++)
+              if(cfgccp->indir[i] >= 0)
+                {
+                  cfgp->pplan[mark][i] = cfgccp->pplan[cfgccp->indir[mark]][cfgccp->indir[i]];
+                  cfgp->pplan[i][mark] = cfgccp->pplan[cfgccp->indir[i]][cfgccp->indir[mark]];
+                }
+
+          strcpy(cfgp->gname[mark], cfgccp->gname[mark]);
+        }
+    }
+}
+
+void remap_cfgcache(config *cfgp, cfgcache *cfgccp, int cfn, int cgn, char *name)
+{
+  int mark;
+
+  if(cfn >= 0)
+    {
+      cfgp->inprob[cfn] = 1;
+      cfgp->fexcl[cfn] = FALSE;
+
+      for(mark = 0; mark < cfgp->fn; mark++)
+        if(!strcmp(cfgp->fname[mark], name))
+          {
+            cfgp->inprob[cfn] = cfgccp->inprob[mark];
+            cfgp->fexcl[cfn] = cfgccp->fexcl[mark];            
+            break;
+          }
+
+      strcpy(cfgccp->fname[cfn], name);
+    }
+
+  if(cgn >= 0)
+    {
+      cfgp->gexcl[cgn] = FALSE;
+      cfgccp->indir[cgn] = -1;
+
+      for(mark = 0; mark < cfgp->gn; mark++)
+        {
+          if(!strcmp(cfgp->gname[mark], name))
+            {
+              cfgp->gexcl[cgn] = cfgccp->gexcl[mark];
+              cfgccp->indir[cgn] = mark;
+              break;
+            }
+        }
+
+      strcpy(cfgccp->gname[cgn], name);
+    }
+}
+
 void runstop(s_base *sb)
 {
   FILE *bp;
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
   char cmd[MAX_STRLEN_IF], arg[MAX_STRLEN_IF];
   pthread_attr_t attributes;
-  int i, k, len, count, tot_rows, page_rows;
+  int fn, gn, cfn, cgn, i, k, len, count, tot_rows, page_rows;
   io_type stype;
   int packed, numqueues;
   bool known[MAX_FILES];
@@ -1283,6 +1348,7 @@ void runstop(s_base *sb)
   char c, d, ic, oc, str[3];
   pid_t pid;
   m_time halt;
+  cfgcache cfgcc;
 
   switch(sb->rs)
     {
@@ -1334,13 +1400,14 @@ void runstop(s_base *sb)
                 return;
               }
 
-            sb->fn = 0;
-            sb->gn = 0;
+            fn = 0;
+            gn = 0;
+
+            cfn = 0;
+            cgn = 0;
+
             sb->pos = 0;
             sb->maxlen = 0;
-
-            sb->cfg.fn = 0;
-            sb->cfg.gn = 0;
 
             stype = io_any;
             packed = 0;
@@ -1350,6 +1417,8 @@ void runstop(s_base *sb)
               known[i] = FALSE;
 
             numqueues = 0;
+
+            begin_cfgcache(&sb->cfg, &cfgcc);
 
             while(fscanf(bp, " "SKIP_FMT" ", name) && !feof(bp));
 
@@ -1375,9 +1444,9 @@ void runstop(s_base *sb)
                     switch(c)
                       {
                         case '!':
-                          if(!sb->cp_batch_in && !sb->cfg.fexcl[sb->cfg.fn++])
+                          if(!sb->cp_batch_in)
                             {
-                              if(sb->fn >= MAX_FILES)
+                              if(cfn >= MAX_FILES)
                                 {
                                   print_error(sb, TRUE, "%s: Too many input signals", file_name);
                                   sb->rs = stopped;
@@ -1386,54 +1455,61 @@ void runstop(s_base *sb)
                                   return;
                                 }
 
-                              strcpy(sb->f[sb->fn].name, name);
-
-                              sb->f[sb->fn].file_io = (sb->cp_file_io && stype == io_any) || stype == io_file;
-
-                              if(sb->f[sb->fn].file_io)
+                              remap_cfgcache(&sb->cfg, &cfgcc, cfn, -1, name);
+                              
+                              if(!sb->cfg.fexcl[cfn])
                                 {
-                                  if(*sb->cfg.path)
+                                  strcpy(sb->f[fn].name, name);
+
+                                  sb->f[fn].file_io = (sb->cp_file_io && stype == io_any) || stype == io_file;
+
+                                  if(sb->f[fn].file_io)
                                     {
-                                      strcpy(sb->f[sb->fn].name_full, sb->cfg.path);
-                                      strcat(sb->f[sb->fn].name_full, "/");
+                                      if(*sb->cfg.path)
+                                        {
+                                          strcpy(sb->f[fn].name_full, sb->cfg.path);
+                                          strcat(sb->f[fn].name_full, "/");
+                                        }
+                                      else
+                                        *sb->f[fn].name_full = '\0';
+
+                                      strcat(sb->f[fn].name_full, name);
+                                      strcat(sb->f[fn].name_full, STREAM_EXT);
                                     }
                                   else
-                                    *sb->f[sb->fn].name_full = '\0';
+                                    {
+                                      strcpy(sb->f[fn].name_full, sb->cfg.prefix);
+                                      strcat(sb->f[fn].name_full, name);
+                                      numqueues++;
+                                    }
 
-                                  strcat(sb->f[sb->fn].name_full, name);
-                                  strcat(sb->f[sb->fn].name_full, STREAM_EXT);
+                                   if(packed < 0)
+                                     {
+                                       sb->f[fn].packed = 0;
+                                       sb->f[fn].realbuf = TRUE;
+                                     }
+                                   else
+                                     {
+                                       sb->f[fn].packed = packed;
+                                       sb->f[fn].realbuf = FALSE;
+                                     }
+
+                                  len = strlen(sb->cfg.full_names? sb->f[fn].name_full : name);
+                                  if(sb->maxlen < len)
+                                    sb->maxlen = len;
+
+                                  fn++;
                                 }
-                              else
-                                {
-                                  strcpy(sb->f[sb->fn].name_full, sb->cfg.prefix);
-                                  strcat(sb->f[sb->fn].name_full, name);
-                                  numqueues++;
-                                }
-
-                               if(packed < 0)
-                                 {
-                                   sb->f[sb->fn].packed = 0;
-                                   sb->f[sb->fn].realbuf = TRUE;
-                                 }
-                               else
-                                 {
-                                   sb->f[sb->fn].packed = packed;
-                                   sb->f[sb->fn].realbuf = FALSE;
-                                 }
-
-                              len = strlen(sb->cfg.full_names? sb->f[sb->fn].name_full : sb->f[sb->fn].name);
-                              if(sb->maxlen < len)
-                                sb->maxlen = len;
-
-                              sb->fn++;
+                                
+                              cfn++;
                             }
                         break;
 
                         case '?':
                         case '.':
-                          if(!sb->cp_batch_out && !sb->cfg.gexcl[sb->cfg.gn++])
+                          if(!sb->cp_batch_out)
                             {
-                              if(sb->gn >= MAX_FILES)
+                              if(cgn >= MAX_FILES)
                                 {
                                   print_error(sb, TRUE, "%s: Too many output signals", file_name);
                                   sb->rs = stopped;
@@ -1442,50 +1518,57 @@ void runstop(s_base *sb)
                                   return;
                                 }
 
-                              strcpy(sb->g[sb->gn].name, name);
+                              remap_cfgcache(&sb->cfg, &cfgcc, -1, cgn, name);
 
-                              sb->g[sb->gn].file_io = (sb->cp_file_io && stype == io_any) || stype == io_file;
-
-                              if(sb->g[sb->gn].file_io)
+                              if(!sb->cfg.gexcl[cgn])
                                 {
-                                  if(*sb->cfg.path)
+                                  strcpy(sb->g[gn].name, name);
+
+                                  sb->g[gn].file_io = (sb->cp_file_io && stype == io_any) || stype == io_file;
+
+                                  if(sb->g[gn].file_io)
                                     {
-                                      strcpy(sb->g[sb->gn].name_full, sb->cfg.path);
-                                      strcat(sb->g[sb->gn].name_full, "/");
+                                      if(*sb->cfg.path)
+                                        {
+                                          strcpy(sb->g[gn].name_full, sb->cfg.path);
+                                          strcat(sb->g[gn].name_full, "/");
+                                        }
+                                      else
+                                        *sb->g[gn].name_full = '\0';
+
+                                      strcat(sb->g[gn].name_full, name);
+                                      strcat(sb->g[gn].name_full, STREAM_EXT);
                                     }
                                   else
-                                    *sb->g[sb->gn].name_full = '\0';
+                                    {
+                                      strcpy(sb->g[gn].name_full, sb->cfg.prefix);
+                                      strcat(sb->g[gn].name_full, name);
+                                      numqueues++;
+                                    }
 
-                                  strcat(sb->g[sb->gn].name_full, name);
-                                  strcat(sb->g[sb->gn].name_full, STREAM_EXT);
+                                   if(packed < 0)
+                                     {
+                                       sb->g[gn].packed = 0;
+                                       sb->g[gn].realbuf = TRUE;
+                                     }
+                                   else
+                                     {
+                                       sb->g[gn].packed = packed;
+                                       sb->g[gn].realbuf = FALSE;
+                                     }
+
+                                  sb->g[gn].omit = (omissions != io_raw);
+                                  sb->g[gn].aux = (c == '.');
+                                  sb->g[gn].excl = FALSE;
+
+                                  len = strlen(sb->cfg.full_names? sb->g[gn].name_full : name);
+                                  if(sb->maxlen < len)
+                                    sb->maxlen = len;
+
+                                  gn++;
                                 }
-                              else
-                                {
-                                  strcpy(sb->g[sb->gn].name_full, sb->cfg.prefix);
-                                  strcat(sb->g[sb->gn].name_full, name);
-                                  numqueues++;
-                                }
-
-                               if(packed < 0)
-                                 {
-                                   sb->g[sb->gn].packed = 0;
-                                   sb->g[sb->gn].realbuf = TRUE;
-                                 }
-                               else
-                                 {
-                                   sb->g[sb->gn].packed = packed;
-                                   sb->g[sb->gn].realbuf = FALSE;
-                                 }
-
-                              sb->g[sb->gn].omit = (omissions != io_raw);
-                              sb->g[sb->gn].aux = (c == '.');
-                              sb->g[sb->gn].excl = FALSE;
-
-                              len = strlen(sb->cfg.full_names? sb->g[sb->gn].name_full : sb->g[sb->gn].name);
-                              if(sb->maxlen < len)
-                                sb->maxlen = len;
-
-                              sb->gn++;
+                                
+                              cgn++;
                             }
                         break;
 
@@ -1542,6 +1625,11 @@ void runstop(s_base *sb)
                 g_idle_add((gboolean (*)(gpointer))update_gui, sb);
                 return;
               }
+
+            sb->fn = fn;
+            sb->gn = gn;
+
+            end_cfgcache(&sb->cfg, &cfgcc, cfn, cgn);
 
             clean_io(sb);
 
@@ -1740,7 +1828,7 @@ void runstop(s_base *sb)
               for(i = 0; i < sb->fn; i++)
                 for(k = 0; k < sb->cp_horizon_size; k++)
                   {
-                    sb->f[i].memory[k] = DISPLAY_EMPTY_CHAR;
+                    sb->f[i].memory[k] = DISPLAY_UNKNOWN_CODE;
                     sb->f[i].realmem[k] = 0;
                   }
 
@@ -1749,7 +1837,7 @@ void runstop(s_base *sb)
                 for(i = 0; i < sb->gn; i++)
                   for(k = 0; k < sb->cp_horizon_size; k++)
                     {
-                      sb->g[i].memory[k] = DISPLAY_EMPTY_CHAR;
+                      sb->g[i].memory[k] = DISPLAY_UNKNOWN_CODE;
                       sb->g[i].realmem[k] = 0;
                     }
                     
@@ -2388,7 +2476,7 @@ void save_button_clicked(GtkWidget *widget, s_base *sb)
   fp = fopen(CONFIG_FILENAME, "w");
   if(fp)
     {
-      if(fwrite(CONFIG_HEADER, sizeof(char), 8, fp) != 8 || fwrite(&sb->cfg, sizeof(sb->cfg), 1, fp) != 1)
+      if(fwrite(CONFIG_HEADER""CONFIG_VERSION, sizeof(char), 8, fp) != 8 || fwrite(&sb->cfg, sizeof(sb->cfg), 1, fp) != 1)
         print_error(sb, TRUE, CONFIG_FILENAME);
       else
         print_message(sb, FALSE, "Default configuration saved");
@@ -3654,16 +3742,19 @@ void include_path_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *e
   gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
-int check_header(FILE *fp)
+int load_config(FILE *fp, config *cp)
 {
   char buffer[MAX_STRLEN];
 
-  if(fread(buffer, sizeof(char), 8, fp) != 8)
+  if(fread(buffer, sizeof(char), 8, fp) != 8 || memcmp(CONFIG_HEADER, buffer, 4) || memcmp(CONFIG_VERSION, buffer + 4, 4) < 0)
     return 1;
 
-  buffer[8] = '\0';
-  
-  return strcmp(CONFIG_HEADER, buffer);
+  fread(cp, sizeof(*cp), 1, fp);
+
+  if(ferror(fp))
+    return 1;
+  else
+    return 0;
 }
 
 void cfg_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_base *sb)
@@ -3681,70 +3772,68 @@ void cfg_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, s_b
       fp = fopen(fname, "r");
       if(fp)
         {
-          if(check_header(fp))
-            {
-              if(ferror(fp))
-                print_error(sb, TRUE, fname);
-              else
-                print_error(sb, TRUE, "%s: Wrong file format", fname);
-            }
+          if(load_config(fp, &cfg))
+            print_error(sb, TRUE, "%s: Wrong file format", fname);
           else
-            if(fread(&cfg, sizeof(cfg), 1, fp) != 1)
-              print_error(sb, TRUE, fname);
-            else
-              {
-                sb->donotquit = TRUE;
+            {
+              sb->donotquit = TRUE;
 
-                if(sb->config_window)
-                  {
-                    gtk_widget_destroy(GTK_WIDGET(sb->config_window));
-                    sb->config_window = NULL;
-                  }
+              if(sb->config_window)
+                {
+                  gtk_widget_destroy(GTK_WIDGET(sb->config_window));
+                  sb->config_window = NULL;
+                }
 
-                if(sb->prob_window)
-                  {
-                    gtk_widget_destroy(GTK_WIDGET(sb->prob_window));
-                    sb->prob_window = NULL;
-                  }
+              if(sb->prob_window)
+                {
+                  gtk_widget_destroy(GTK_WIDGET(sb->prob_window));
+                  sb->prob_window = NULL;
+                }
 
-                if(sb->filter_window)
-                  {
-                    gtk_widget_destroy(GTK_WIDGET(sb->filter_window));
-                    sb->filter_window = NULL;
-                  }
+              if(sb->filter_window)
+                {
+                  gtk_widget_destroy(GTK_WIDGET(sb->filter_window));
+                  sb->filter_window = NULL;
+                }
 
-                if(sb->spectrum_window)
-                  {
-                    gtk_widget_destroy(GTK_WIDGET(sb->spectrum_window));
-                    sb->spectrum_window = NULL;
-                  }
+              if(sb->pplan_window)
+                {
+                  gtk_widget_destroy(GTK_WIDGET(sb->pplan_window));
+                  sb->pplan_window = NULL;
+                }
 
-                if(sb->plan_window)
-                  {
-                    gtk_widget_destroy(GTK_WIDGET(sb->plan_window));
-                    sb->plan_window = NULL;
-                  }
+              if(sb->spectrum_window)
+                {
+                  gtk_widget_destroy(GTK_WIDGET(sb->spectrum_window));
+                  sb->spectrum_window = NULL;
+                }
 
-                sb->waitio = FALSE;
-                request_runstate(sb, stopped);
+              if(sb->plan_window)
+                {
+                  gtk_widget_destroy(GTK_WIDGET(sb->plan_window));
+                  sb->plan_window = NULL;
+                }
 
-                gtk_widget_destroy(GTK_WIDGET(sb->window));
+              sb->waitio = FALSE;
+              request_runstate(sb, stopped);
 
-                sb->cfg = cfg;
+              gtk_widget_destroy(GTK_WIDGET(sb->window));
 
-                main_window(sb);
+              sb->cfg = cfg;
 
-                print_message(sb, FALSE, "Configuration loaded from %s", fname);
+              main_window(sb);
 
-                if(!sb->changed)
-                  {
-                    sb->changed = TRUE;
+              print_message(sb, FALSE, "Configuration loaded from %s", fname);
 
-                    gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
-                    if(sb->save_button)
-                      gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
-                  }
-              }
+              if(!sb->changed)
+                {
+                  sb->changed = TRUE;
+
+                  gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+                  if(sb->save_button)
+                    gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+                }
+            }
 
           fclose(fp);
         }
@@ -3786,7 +3875,7 @@ void saveas_dialog(GtkEntry *widget, GtkEntryIconPosition pos, GdkEvent *event, 
 
           if(fp)
             {
-              if(fwrite(CONFIG_HEADER, sizeof(char), 8, fp) != 8 || fwrite(&sb->cfg, sizeof(sb->cfg), 1, fp) != 1)
+              if(fwrite(CONFIG_HEADER""CONFIG_VERSION, sizeof(char), 8, fp) != 8 || fwrite(&sb->cfg, sizeof(sb->cfg), 1, fp) != 1)
                 print_error(sb, TRUE, fname);
               else
                 print_message(sb, FALSE, "Configuration saved to %s", fname);
@@ -4265,11 +4354,11 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
 {
   FILE *bp;
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
-  char fnames[MAX_FILES][MAX_STRLEN];
   int fn, i, n, packed;
   io_type stype;
   bool known[MAX_FILES];
   char c, d, str[3];
+  cfgcache cfgcc;
   GtkWidget *window;
   GtkWidget *tabdyn;
   GtkWidget *lbl, *ent;
@@ -4304,6 +4393,8 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
   for(i = 0; i < MAX_FILES; i++)
     known[i] = FALSE;
 
+  begin_cfgcache(&sb->cfg, &cfgcc);
+
   while(fscanf(bp, " "SKIP_FMT" ", name));
 
   if(ferror(bp))
@@ -4333,7 +4424,7 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
                     return;
                   }
 
-                strcpy(fnames[fn], name);
+                remap_cfgcache(&sb->cfg, &cfgcc, fn, -1, name);
 
                 fn++;
               break;
@@ -4346,7 +4437,6 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
               default:
                 print_error(sb, TRUE, "%s, "OP_FMT": Invalid stream class", file_name, c);
                 pthread_mutex_unlock(&sb->mutex_button);
-
                 return;
               break;
             }
@@ -4384,8 +4474,8 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
       return;
     }
 
-  sb->cfg.fn = fn;
-
+  end_cfgcache(&sb->cfg, &cfgcc, fn, -1);
+            
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
   gtk_window_set_default_size(GTK_WINDOW(window), PROB_WINDOW_WIDTH, PROB_WINDOW_HEIGHT);
@@ -4407,10 +4497,8 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
       sb->changeprob = FALSE;
       for(i = 0; i < fn; i++)
         {
-          strcpy(name, " ");
-          strcat(name, fnames[i]);
-          strcat(name, " ");
-
+          sprintf(name, " %s ", sb->cfg.fname[i]);
+          
           lbl = gtk_label_new(name);
           gtk_misc_set_alignment(GTK_MISC(lbl), 1, 0.5);
           gtk_table_attach_defaults(GTK_TABLE(tabdyn), lbl, 2 * (i % n), 2 * (i % n) + 1, i / n, i / n + 1);
@@ -4463,7 +4551,15 @@ void infilter_box(GtkWidget *widget, s_base *sb)
     if(widget == sb->infilter_widget[i])
       {
         if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-          sb->cfg.fexcl[i] = TRUE;
+          {
+            sb->cfg.fexcl[i] = TRUE;
+
+            if(!sb->changefilter)
+              {
+                sb->changefilter = TRUE;
+                gtk_widget_set_sensitive(GTK_WIDGET(sb->filclear_button), TRUE);
+              }
+          }
         else
           sb->cfg.fexcl[i] = FALSE;
 
@@ -4488,7 +4584,15 @@ void outfilter_box(GtkWidget *widget, s_base *sb)
     if(widget == sb->outfilter_widget[i])
       {
         if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
-          sb->cfg.gexcl[i] = TRUE;
+          {
+            sb->cfg.gexcl[i] = TRUE;
+
+            if(!sb->changefilter)
+              {
+                sb->changefilter = TRUE;
+                gtk_widget_set_sensitive(GTK_WIDGET(sb->filclear_button), TRUE);
+              }
+          }
         else
           sb->cfg.gexcl[i] = FALSE;
 
@@ -4508,22 +4612,60 @@ void outfilter_box(GtkWidget *widget, s_base *sb)
 void end_filter(GtkWidget *widget, s_base *sb)
 {
   sb->filter_window = NULL;
+  sb->filclear_button = NULL;
+}
+
+void filter_clear(GtkWidget *widget, s_base *sb)
+{
+  int i;
+
+  pthread_mutex_lock(&sb->mutex_button);
+
+  if(sb->changefilter)
+    {
+      for(i = 0; i < MAX_FILES; i++)
+        {
+          sb->cfg.fexcl[i] = FALSE;
+          sb->cfg.gexcl[i] = FALSE;
+        }
+
+      for(i = 0; i < sb->cfg.fn; i++)
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(sb->infilter_widget[i]), FALSE);
+
+      for(i = 0; i < sb->cfg.gn; i++)
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(sb->outfilter_widget[i]), FALSE);
+
+      sb->changefilter = FALSE;
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->filclear_button), FALSE);
+
+      if(!sb->changed)
+        {
+          sb->changed = TRUE;
+
+          gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+          if(sb->save_button)
+            gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+        }
+    }
+
+  pthread_mutex_unlock(&sb->mutex_button);
 }
 
 void filter_button_clicked(GtkWidget *widget, s_base *sb)
 {
   FILE *bp;
   char file_name[MAX_STRLEN], name[MAX_STRLEN];
-  char fnames[MAX_FILES][MAX_STRLEN], gnames[MAX_FILES][MAX_STRLEN];
   int fn, gn, i, n, packed;
   io_type stype;
   bool known[MAX_FILES];
   char c, d, str[3];
+  cfgcache cfgcc;
   GtkWidget *window;
   GtkWidget *fr1, *fr2;
   GtkWidget *tabdyn, *tabdyn2;
   GtkWidget *cb, *lbl, *lbl2;
-  GtkWidget *extbox, *inbox, *outbox;
+  GtkWidget *btn;
+  GtkWidget *extbox, *inbox, *outbox, *bbox;
 
   pthread_mutex_lock(&sb->mutex_button);
 
@@ -4554,6 +4696,8 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
   for(i = 0; i < MAX_FILES; i++)
     known[i] = FALSE;
 
+  begin_cfgcache(&sb->cfg, &cfgcc);
+
   while(fscanf(bp, " "SKIP_FMT" ", name));
 
   if(ferror(bp))
@@ -4583,7 +4727,7 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
                     return;
                   }
 
-                strcpy(fnames[fn], name);
+                remap_cfgcache(&sb->cfg, &cfgcc, fn, -1, name);
 
                 fn++;
               break;
@@ -4597,7 +4741,7 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
                     return;
                   }
 
-                strcpy(gnames[gn], name);
+                remap_cfgcache(&sb->cfg, &cfgcc, -1, gn, name);
 
                 gn++;
               break;
@@ -4608,7 +4752,6 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
               default:
                 print_error(sb, TRUE, "%s, "OP_FMT": Invalid stream class", file_name, c);
                 pthread_mutex_unlock(&sb->mutex_button);
-
                 return;
               break;
             }
@@ -4646,8 +4789,7 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
       return;
     }
 
-  sb->cfg.fn = fn;
-  sb->cfg.gn = gn;
+  end_cfgcache(&sb->cfg, &cfgcc, fn, gn);
 
   window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
   gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
@@ -4677,6 +4819,8 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
 
   extbox = gtk_vbox_new(FALSE, 0);
 
+  sb->changefilter = FALSE;
+
   if(fn > 0)
     {
       n = ceil(sqrt(fn / 2.0));
@@ -4685,12 +4829,15 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
 
       for(i = 0; i < fn; i++)
         {
-          cb = gtk_check_button_new_with_label(fnames[i]);
+          cb = gtk_check_button_new_with_label(sb->cfg.fname[i]);
           gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb), sb->cfg.fexcl[i]);
           gtk_table_attach_defaults(GTK_TABLE(tabdyn), cb, i % n, i % n + 1, i / n, i / n + 1);
           g_signal_connect(G_OBJECT(cb), "clicked", G_CALLBACK(infilter_box), (gpointer)sb);
 
           sb->infilter_widget[i] = cb;
+
+          if(sb->cfg.fexcl[i])
+            sb->changefilter = TRUE;
         }
 
       gtk_box_pack_start(GTK_BOX(inbox), tabdyn, TRUE, TRUE, 0);
@@ -4709,12 +4856,15 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
 
       for(i = 0; i < gn; i++)
         {
-          cb = gtk_check_button_new_with_label(gnames[i]);
+          cb = gtk_check_button_new_with_label(sb->cfg.gname[i]);
           gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb), sb->cfg.gexcl[i]);
           gtk_table_attach_defaults(GTK_TABLE(tabdyn2), cb, i % n, i % n + 1, i / n, i / n + 1);
           g_signal_connect(G_OBJECT(cb), "clicked", G_CALLBACK(outfilter_box), (gpointer)sb);
 
           sb->outfilter_widget[i] = cb;
+
+          if(sb->cfg.gexcl[i])
+            sb->changefilter = TRUE;
         }
 
       gtk_box_pack_start(GTK_BOX(outbox), tabdyn2, TRUE, TRUE, 0);
@@ -4726,7 +4876,314 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
     }
 
   gtk_box_pack_start(GTK_BOX(extbox), fr1, TRUE, TRUE, 0);
-  gtk_box_pack_end(GTK_BOX(extbox), fr2, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(extbox), fr2, TRUE, TRUE, 0);
+
+  bbox = gtk_hbox_new(FALSE, 15);
+
+  btn = gtk_button_new_with_label("Clear");
+  gtk_widget_set_size_request(btn, 70, 30);
+  gtk_box_pack_start(GTK_BOX(bbox), btn, FALSE, FALSE, 0);
+  gtk_box_pack_end(GTK_BOX(extbox), bbox, FALSE, FALSE, 0);
+  g_signal_connect(G_OBJECT(btn), "clicked", G_CALLBACK(filter_clear), (gpointer)sb);
+
+  sb->filclear_button = GTK_BUTTON(btn);
+
+  if(sb->changefilter)
+    gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
+  else
+    gtk_widget_set_sensitive(GTK_WIDGET(btn), FALSE);
+
+  gtk_container_add(GTK_CONTAINER(window), extbox);
+
+  gtk_widget_show_all(window);
+
+  pthread_mutex_unlock(&sb->mutex_button);
+}
+
+void pplan_box(GtkWidget *widget, s_base *sb)
+{
+  int i, j;
+
+  for(i = 0; i < sb->cfg.gn; i++)
+    for(j = 0; j < sb->cfg.gn; j++)
+      if(widget == sb->pplan_widget[i][j])
+        {
+          if(gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget)))
+            {
+              sb->cfg.pplan[i][j] = TRUE;
+
+              if(!sb->changepp)
+                {
+                  sb->changepp = TRUE;
+                  gtk_widget_set_sensitive(GTK_WIDGET(sb->ppclear_button), TRUE);
+                }
+            }
+          else
+            sb->cfg.pplan[i][j] = FALSE;
+
+          if(!sb->changed)
+            {
+              sb->changed = TRUE;
+
+              gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+              if(sb->save_button)
+                gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+            }
+
+          i = sb->cfg.gn;
+          break;
+        }
+}
+
+void end_pplan(GtkWidget *widget, s_base *sb)
+{
+  sb->pplan_window = NULL;
+  sb->ppclear_button = NULL;
+}
+
+void pplan_clear(GtkWidget *widget, s_base *sb)
+{
+  int i, j;
+
+  pthread_mutex_lock(&sb->mutex_button);
+
+  if(sb->changepp)
+    {
+      for(i = 0; i < MAX_FILES; i++)
+        for(j = 0; j < MAX_FILES; j++)
+          sb->cfg.pplan[i][j] = FALSE;
+
+      for(i = 0; i < sb->cfg.gn; i++)
+        for(j = 0; j < sb->cfg.gn; j++)
+          if(i != j)
+            gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(sb->pplan_widget[i][j]), FALSE);
+
+      sb->changepp = FALSE;
+      gtk_widget_set_sensitive(GTK_WIDGET(sb->ppclear_button), FALSE);
+
+      if(!sb->changed)
+        {
+          sb->changed = TRUE;
+
+          gtk_widget_set_sensitive(GTK_WIDGET(sb->save_menu), TRUE);
+          if(sb->save_button)
+            gtk_widget_set_sensitive(GTK_WIDGET(sb->save_button), TRUE);
+        }
+    }
+
+  pthread_mutex_unlock(&sb->mutex_button);
+}
+
+void pplan_button_clicked(GtkWidget *widget, s_base *sb)
+{
+  FILE *bp;
+  char file_name[MAX_STRLEN], name[MAX_STRLEN];
+  int gn, i, j, n, packed;
+  io_type stype;
+  bool known[MAX_FILES];
+  char c, d, str[3], buffer[MAX_STRLEN];
+  cfgcache cfgcc;
+  GtkWidget *window;
+  GtkWidget *fr;
+  GtkWidget *tabdyn;
+  GtkWidget *cb, *lbl;
+  GtkWidget *btn;
+  GtkWidget *extbox, *outbox, *bbox;
+
+  pthread_mutex_lock(&sb->mutex_button);
+
+  if(sb->pplan_window)
+    {
+      gtk_window_present(sb->pplan_window);
+      pthread_mutex_unlock(&sb->mutex_button);
+      return;
+    }
+
+  strcpy(file_name, sb->cfg.base_name);
+  strcat(file_name, NETWORK_EXT);
+
+  bp = fopen(file_name, "r");
+  if(!bp)
+    {
+      print_error(sb, TRUE, file_name);
+      pthread_mutex_unlock(&sb->mutex_button);
+      return;
+    }
+
+  gn = 0;
+
+  stype = io_any;
+  packed = 0;
+
+  for(i = 0; i < MAX_FILES; i++)
+    known[i] = FALSE;
+
+  begin_cfgcache(&sb->cfg, &cfgcc);
+
+  while(fscanf(bp, " "SKIP_FMT" ", name));
+
+  if(ferror(bp))
+    {
+      print_error(sb, TRUE, file_name);
+      pthread_mutex_unlock(&sb->mutex_button);
+      return;
+    }
+
+  while(fscanf(bp, " "FUN_FMT" "FUN_FMT" ( %*[^"SEPARATORS"] , %*[^"SEPARATORS"] ) # %*d / %u , %d , %*d , %*g, %*u @ %*ld ", str, name, &stype, &packed) >= 2)
+    {
+      d = '\0';
+      sscanf(str, OP_FMT""OP_FMT, &c, &d);
+
+      if(stype != io_socket && (packed <= 0 || !known[packed]))
+        {
+          if(packed > 0)
+            known[packed] = TRUE;
+
+          switch(c)
+            {
+              case '!':
+              break;
+
+              case '?':
+              case '.':
+                if(gn >= MAX_FILES)
+                  {
+                    print_error(sb, TRUE, "%s: Too many output signals", file_name);
+                    pthread_mutex_unlock(&sb->mutex_button);
+                    return;
+                  }
+
+                remap_cfgcache(&sb->cfg, &cfgcc, -1, gn, name);
+
+                gn++;
+              break;
+
+              case '_':
+              break;
+
+              default:
+                print_error(sb, TRUE, "%s, "OP_FMT": Invalid stream class", file_name, c);
+                pthread_mutex_unlock(&sb->mutex_button);
+                return;
+              break;
+            }
+        }
+
+      stype = io_any;
+      packed = 0;
+    }
+
+  if(ferror(bp))
+    {
+      print_error(sb, TRUE, file_name);
+      pthread_mutex_unlock(&sb->mutex_button);
+      return;
+    }
+
+  if(!feof(bp))
+    {
+      print_error(sb, TRUE, "%s: Parser error", file_name);
+      pthread_mutex_unlock(&sb->mutex_button);
+      return;
+    }
+
+  if(fclose(bp))
+    {
+      print_error(sb, TRUE, file_name);
+      pthread_mutex_unlock(&sb->mutex_button);
+      return;
+    }
+
+  if(gn * gn > MAX_EXT_SIGNALS)
+    {
+      print_error(sb, TRUE, "Too many output signals to edit");
+      pthread_mutex_unlock(&sb->mutex_button);
+      return;
+    }
+
+  end_cfgcache(&sb->cfg, &cfgcc, -1, gn);
+
+  window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
+  gtk_window_set_default_size(GTK_WINDOW(window), PLANSETUP_WINDOW_WIDTH, PLANSETUP_WINDOW_HEIGHT);
+  gtk_container_set_border_width(GTK_CONTAINER(window), 10);
+  gtk_window_set_title(GTK_WINDOW(window), PLANSETUP_TITLE);
+  gtk_window_set_icon_name(GTK_WINDOW(window), "tinx");
+  g_signal_connect(G_OBJECT(window), "destroy", G_CALLBACK(end_pplan), (gpointer)sb);
+
+  sb->pplan_window = GTK_WINDOW(window);
+
+  fr = gtk_frame_new("Pairs");
+  gtk_label_set_markup(GTK_LABEL(gtk_frame_get_label_widget(GTK_FRAME(fr))), "<b>Pairs</b>");
+
+  outbox = gtk_vbox_new(FALSE, 15);
+  gtk_container_add(GTK_CONTAINER(fr), outbox);
+  gtk_container_set_border_width(GTK_CONTAINER(fr), 5);
+  gtk_container_set_border_width(GTK_CONTAINER(outbox), 5);
+
+  extbox = gtk_vbox_new(FALSE, 0);
+
+  sb->changepp = FALSE;
+
+  if(gn > 0)
+    {
+      tabdyn = gtk_table_new(gn + 1, gn + 1, FALSE);
+
+      for(j = 0; j < gn; j++)
+        {
+          sprintf(buffer, " %s ", sb->cfg.gname[j]);
+          lbl = gtk_label_new(buffer);
+          gtk_table_attach_defaults(GTK_TABLE(tabdyn), lbl, j + 1, j + 2, 0, 1);
+        }
+
+      n = 0;
+      for(i = 0; i < gn; i++)
+        {
+          lbl = gtk_label_new(sb->cfg.gname[i]);
+          gtk_table_attach_defaults(GTK_TABLE(tabdyn), lbl, 0, 1, i + 1, i + 2);
+
+          for(j = 0; j < gn; j++)
+            if(i != j)
+              {
+                sprintf(buffer, "%03d", n);
+                cb = gtk_check_button_new_with_label(buffer);
+                gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb), sb->cfg.pplan[i][j]);
+                gtk_table_attach_defaults(GTK_TABLE(tabdyn), cb, j + 1, j + 2, i + 1, i + 2);
+                g_signal_connect(G_OBJECT(cb), "clicked", G_CALLBACK(pplan_box), (gpointer)sb);
+
+                sb->pplan_widget[i][j] = cb;
+
+                if(sb->cfg.pplan[i][j])
+                  sb->changepp = TRUE;
+                  
+                n++;
+              }
+        }
+
+      gtk_box_pack_start(GTK_BOX(outbox), tabdyn, TRUE, TRUE, 0);
+    }
+  else
+    {
+      lbl = gtk_label_new("Current project has no outputs");
+      gtk_box_pack_start(GTK_BOX(outbox), lbl, TRUE, TRUE, 0);
+    }
+
+  gtk_box_pack_start(GTK_BOX(extbox), fr, TRUE, TRUE, 0);
+
+  bbox = gtk_hbox_new(FALSE, 15);
+
+  btn = gtk_button_new_with_label("Clear");
+  gtk_widget_set_size_request(btn, 70, 30);
+  gtk_box_pack_start(GTK_BOX(bbox), btn, FALSE, FALSE, 0);
+  gtk_box_pack_end(GTK_BOX(extbox), bbox, FALSE, FALSE, 0);
+  g_signal_connect(G_OBJECT(btn), "clicked", G_CALLBACK(pplan_clear), (gpointer)sb);
+
+  sb->ppclear_button = GTK_BUTTON(btn);
+
+  if(sb->changepp)
+    gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
+  else
+    gtk_widget_set_sensitive(GTK_WIDGET(btn), FALSE);
 
   gtk_container_add(GTK_CONTAINER(window), extbox);
 
@@ -5430,9 +5887,8 @@ void main_window(s_base *sb)
   GtkWidget *frgfx, *hboxgfx, *frtxt, *vboxtxt, *fr1, *vbox1, *fr2, *vbox2, *fr3, *vbox3, *fr4, *vbox4, *fr6, *vbox6;
   GtkWidget *vbox5, *hbox3, *hbox5, *hbox6, *lbl0, *lblt, *lblg, *icng;
   GtkWidget *menubar, *menu_items, *menu_items_2, *menu_items_3, *project_menu, *setup_menu, *windows_menu, *open_menu, *gen_menu, *run_menu, *freeze_menu, *config_menu,
-            *prob_menu, *filter_menu, *spectrum_menu, *plan_menu, *opencfg_menu, *save_menu, *saveas_menu, *erase_menu, *help_menu, *about_menu, *quit_menu, *sep1, *sep2;
+            *prob_menu, *filter_menu, *ppsetup_menu, *spectrum_menu, *plan_menu, *opencfg_menu, *save_menu, *saveas_menu, *erase_menu, *help_menu, *about_menu, *quit_menu, *sep1, *sep2;
   GtkTextBuffer *textbuffer;
-  GtkTextIter iter;
   GtkAdjustment *adj;
   GdkRGBA color;
 
@@ -5449,12 +5905,14 @@ void main_window(s_base *sb)
   sb->config_window = NULL;
   sb->prob_window = NULL;
   sb->filter_window = NULL;
+  sb->pplan_window = NULL;
   sb->spectrum_window = NULL;
   sb->plan_window = NULL;
 
   sb->save_button = NULL;
   sb->erase_button = NULL;
   sb->clear_button = NULL;
+  sb->filclear_button = NULL;
   sb->edit_button = NULL;
   sb->help_button = NULL;
 
@@ -5514,6 +5972,7 @@ void main_window(s_base *sb)
   config_menu = gtk_menu_item_new_with_label("Configure...");
   prob_menu = gtk_menu_item_new_with_label("Probabilities...");
   filter_menu = gtk_menu_item_new_with_label("External signals...");
+  ppsetup_menu = gtk_menu_item_new_with_label("Phase plan setup...");
 
   sep2 = gtk_separator_menu_item_new();
 
@@ -5553,6 +6012,7 @@ void main_window(s_base *sb)
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items_2), config_menu);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items_2), prob_menu);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items_2), filter_menu);
+  gtk_menu_shell_append(GTK_MENU_SHELL(menu_items_2), ppsetup_menu);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items_2), sep2);
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items_2), opencfg_menu);  
   gtk_menu_shell_append(GTK_MENU_SHELL(menu_items_2), save_menu);
@@ -5573,6 +6033,7 @@ void main_window(s_base *sb)
   g_signal_connect(config_menu, "activate", G_CALLBACK(configure), (gpointer)sb);
   g_signal_connect(prob_menu, "activate", G_CALLBACK(prob_button_clicked), (gpointer)sb);
   g_signal_connect(filter_menu, "activate", G_CALLBACK(filter_button_clicked), (gpointer)sb);
+  g_signal_connect(ppsetup_menu, "activate", G_CALLBACK(pplan_button_clicked), (gpointer)sb);
   g_signal_connect(opencfg_menu, "activate", G_CALLBACK(cfg_dialog_if), (gpointer)sb);
   g_signal_connect(save_menu, "activate", G_CALLBACK(save_button_clicked), (gpointer)sb);
   g_signal_connect(saveas_menu, "activate", G_CALLBACK(saveas_dialog_if), (gpointer)sb);
@@ -5921,7 +6382,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
 {
   s_base *sb;
   FILE *fp;
-  int i;
+  int i, j;
 #if defined BUGGED_PTHREADS
   pthread_attr_t attributes;
 #endif
@@ -5932,7 +6393,7 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   fp = fopen(CONFIG_FILENAME, "r");
   if(fp)
     {
-      if(check_header(fp) || fread(&sb->cfg, sizeof(sb->cfg), 1, fp) != 1)
+      if(load_config(fp, &sb->cfg))
         sb->configured = FALSE;
       else
         sb->configured = TRUE;
@@ -6030,12 +6491,15 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
           sb->cfg.inprob[i] = 1;
           sb->cfg.fexcl[i] = FALSE;
           sb->cfg.gexcl[i] = FALSE;
+          *sb->cfg.fname[i] = '\0';
+          *sb->cfg.gname[i] = '\0';
+
+          for(j = 0; j < MAX_FILES; j++)
+            sb->cfg.pplan[i][j] = FALSE;
         }
 
       sb->cfg.fn = 0;
       sb->cfg.gn = 0;
-
-      sb->configured = FALSE;
     }
 
   sb->cp_step = step;
@@ -6073,6 +6537,8 @@ int execute(char *source_name, char *base_name, char *state_name, char *logfile_
   sb->regenerate = FALSE;
   sb->changed = FALSE;
   sb->changeprob = FALSE;
+  sb->changefilter = FALSE;
+  sb->changepp = FALSE;
   sb->donotquit = FALSE;
   sb->donotscroll = FALSE;
 
