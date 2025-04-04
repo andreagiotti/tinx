@@ -38,7 +38,7 @@
 #define MIN_BSBT 2
 #define MAX_BSBT 30
 
-#define SKIP_FMT "%[^ ?!._]%*[^\n]"
+#define SKIP_FMT "%"MAX_NAMEBUF_C"[^ ?!._]%*[^\n]"
 #define NUM_COLORS 5
 
 #define DISPLAY_LO_CODE -1

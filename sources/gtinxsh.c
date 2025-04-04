@@ -13,8 +13,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "13.0.1"
-#define VER "7.0.1"
+#define PACK_VER "13.0.2"
+#define VER "7.0.2"
 
 const char *color_name_light[NUM_COLORS] = { "green4", "yellow4", "orange4", "red4", "purple4" };
 const char *color_name_dark[NUM_COLORS] = { "green1", "yellow1", "orange1", "red1", "purple1" };
@@ -1420,7 +1420,7 @@ void runstop(s_base *sb)
 
             begin_cfgcache(&sb->cfg, &cfgcc);
 
-            while(fscanf(bp, " "SKIP_FMT" ", name) && !feof(bp));
+            while(fscanf(bp, " "SKIP_FMT" ", name) >= 1);
 
             if(ferror(bp))
               {
@@ -4395,7 +4395,7 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
 
   begin_cfgcache(&sb->cfg, &cfgcc);
 
-  while(fscanf(bp, " "SKIP_FMT" ", name));
+  while(fscanf(bp, " "SKIP_FMT" ", name) >= 1);
 
   if(ferror(bp))
     {
@@ -4488,13 +4488,14 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
 
   extbox = gtk_vbox_new(FALSE, 15);
 
+  sb->changeprob = FALSE;
+
   if(fn > 0)
     {
       n = ceil(sqrt(fn / 2.0));
 
       tabdyn = gtk_table_new(2 * n, n, FALSE);
 
-      sb->changeprob = FALSE;
       for(i = 0; i < fn; i++)
         {
           sprintf(name, " %s ", sb->cfg.fname[i]);
@@ -4514,27 +4515,27 @@ void prob_button_clicked(GtkWidget *widget, s_base *sb)
         }
 
       gtk_box_pack_start(GTK_BOX(extbox), tabdyn, TRUE, TRUE, 0);
-
-      bbox = gtk_hbox_new(FALSE, 15);
-
-      btn = gtk_button_new_with_label("Clear");
-      gtk_widget_set_size_request(btn, 70, 30);
-      gtk_box_pack_start(GTK_BOX(bbox), btn, FALSE, FALSE, 0);
-      gtk_box_pack_end(GTK_BOX(extbox), bbox, FALSE, FALSE, 0);
-      g_signal_connect(G_OBJECT(btn), "clicked", G_CALLBACK(inprob_clear), (gpointer)sb);
-
-      sb->clear_button = GTK_BUTTON(btn);
-
-      if(sb->changeprob)
-        gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
-      else
-        gtk_widget_set_sensitive(GTK_WIDGET(btn), FALSE);
     }
   else
     {
       lbl = gtk_label_new("Current project has no inputs");
       gtk_box_pack_start(GTK_BOX(extbox), lbl, TRUE, TRUE, 0);
     }
+
+  bbox = gtk_hbox_new(FALSE, 15);
+
+  btn = gtk_button_new_with_label("Clear");
+  gtk_widget_set_size_request(btn, 70, 30);
+  gtk_box_pack_start(GTK_BOX(bbox), btn, FALSE, FALSE, 0);
+  gtk_box_pack_end(GTK_BOX(extbox), bbox, FALSE, FALSE, 0);
+  g_signal_connect(G_OBJECT(btn), "clicked", G_CALLBACK(inprob_clear), (gpointer)sb);
+
+  sb->clear_button = GTK_BUTTON(btn);
+
+  if(sb->changeprob)
+    gtk_widget_set_sensitive(GTK_WIDGET(btn), TRUE);
+  else
+    gtk_widget_set_sensitive(GTK_WIDGET(btn), FALSE);
 
   gtk_container_add(GTK_CONTAINER(window), extbox);
 
@@ -4698,7 +4699,7 @@ void filter_button_clicked(GtkWidget *widget, s_base *sb)
 
   begin_cfgcache(&sb->cfg, &cfgcc);
 
-  while(fscanf(bp, " "SKIP_FMT" ", name));
+  while(fscanf(bp, " "SKIP_FMT" ", name) >= 1);
 
   if(ferror(bp))
     {
@@ -5020,7 +5021,7 @@ void pplan_button_clicked(GtkWidget *widget, s_base *sb)
 
   begin_cfgcache(&sb->cfg, &cfgcc);
 
-  while(fscanf(bp, " "SKIP_FMT" ", name));
+  while(fscanf(bp, " "SKIP_FMT" ", name) >= 1);
 
   if(ferror(bp))
     {
@@ -5203,12 +5204,12 @@ void configure(GtkWidget *widget, s_base *sb)
 {
   GtkWidget *window;
   GtkWidget *btn5, *btn6, *btn7, *btn8;
-  GtkWidget *tabf, *tabk, *tabh, *tabg, *tabs, *tabw, *tabz;
+  GtkWidget *tabf, *tabk, *tabh, *tabg, *tabs, *tabw, *tabz, *tabi;
   GtkWidget *cb8, *cb9, *cb10, *cb11, *cb12, *cb13, *cb14, *cb15, *cb16, *cb17, *cb18, *cb19, *cb20, *cb21, *cb22, *cb23, *cb24;
   GtkWidget *lbl2, *ent2, *lbl3, *ent3, *lbl4, *ent4, *lbl7, *ent7, *lbl10, *ent10, *lbl11, *ent11, *lbl12, *ent12, *lbl13, *ent13, *lbl14, *ent14, *lbl15, *ent15, *lbl16, *ent16, *lbl17, *ent17,
             *lbl18, *ent18, *lbl19, *ent19, *lbl20, *ent20, *lbl21, *ent21, *lbl22, *ent22, *lbl23, *ent23, *lbl24, *ent24, *lbl25, *ent25, *lbl26, *ent26, *lbl27, *ent27, *lbl28, *ent28, *lbl29, *ent29;
-  GtkWidget *fr1, *fr2, *fr3, *fr4, *fr5;
-  GtkWidget *vbox1, *vbox2, *vbox3, *vbox6, *vbox7, *vbox8, *vbox9, *hbox1, *hbox2, *hbox4, *extbox, *winbox;
+  GtkWidget *fr1, *fr2, *fr3, *fr4, *fr5, *fr6;
+  GtkWidget *vbox1, *vbox2, *vbox3, *vbox6, *vbox7, *vbox8, *vbox9, *vbox10, *hbox1, *hbox2, *hbox4, *extbox, *winbox;
   char buf[2];
 
   pthread_mutex_lock(&sb->mutex_button);
@@ -5618,7 +5619,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_container_set_border_width(GTK_CONTAINER(fr3), 5);
   gtk_container_set_border_width(GTK_CONTAINER(vbox3), 5);
 
-  tabh = gtk_table_new(2, 4, FALSE);
+  tabh = gtk_table_new(1, 4, FALSE);
 
   cb16 = gtk_check_button_new_with_label("Optimize joints in intervals");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb16), sb->cfg.seplit_fe);
@@ -5627,37 +5628,49 @@ void configure(GtkWidget *widget, s_base *sb)
 
   cb17 = gtk_check_button_new_with_label("Optimize joints in recursions");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb17), sb->cfg.seplit_su);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb17, 1, 2, 0, 1);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb17, 0, 1, 1, 2);
   g_signal_connect(G_OBJECT(cb17), "clicked", G_CALLBACK(seplit_su_box), (gpointer)sb);
 
   cb13 = gtk_check_button_new_with_label("Optimize delays");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb13), sb->cfg.merge);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb13, 0, 1, 1, 2);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb13, 0, 1, 2, 3);
   g_signal_connect(G_OBJECT(cb13), "clicked", G_CALLBACK(merge_box), (gpointer)sb);
 
   cb21 = gtk_check_button_new_with_label("Post optimization");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb21), sb->cfg.postopt);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb21, 1, 2, 1, 2);
+  gtk_table_attach_defaults(GTK_TABLE(tabh), cb21, 0, 1, 3, 4);
   g_signal_connect(G_OBJECT(cb21), "clicked", G_CALLBACK(postopt_box), (gpointer)sb);
-
-  cb19 = gtk_check_button_new_with_label("Generate constant signals");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb19), sb->cfg.constout);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb19, 0, 1, 2, 3);
-  g_signal_connect(G_OBJECT(cb19), "clicked", G_CALLBACK(constout_box), (gpointer)sb);
-
-  cb23 = gtk_check_button_new_with_label("Generate suggested defaults");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb23), sb->cfg.constout_sugg);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb23, 1, 2, 2, 3);
-  g_signal_connect(G_OBJECT(cb23), "clicked", G_CALLBACK(constout_sugg_box), (gpointer)sb);
-
-  cb8 = gtk_check_button_new_with_label("Generate user defaults");
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb8), sb->cfg.constout_user);
-  gtk_table_attach_defaults(GTK_TABLE(tabh), cb8, 0, 1, 3, 4);
-  g_signal_connect(G_OBJECT(cb8), "clicked", G_CALLBACK(constout_user_box), (gpointer)sb);
 
   gtk_container_add(GTK_CONTAINER(vbox3), tabh);
   gtk_container_add(GTK_CONTAINER(fr3), vbox3);
   gtk_box_pack_start(GTK_BOX(hbox1), fr3, TRUE, TRUE, 0);
+
+  fr6 = gtk_frame_new("Defaults");
+  gtk_label_set_markup(GTK_LABEL(gtk_frame_get_label_widget(GTK_FRAME(fr6))), "<b>Defaults</b>");
+  vbox10 = gtk_vbox_new(FALSE, 0);
+  gtk_container_set_border_width(GTK_CONTAINER(fr6), 5);
+  gtk_container_set_border_width(GTK_CONTAINER(vbox10), 5);
+
+  tabi = gtk_table_new(1, 3, FALSE);
+
+  cb19 = gtk_check_button_new_with_label("Generate constant signals");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb19), sb->cfg.constout);
+  gtk_table_attach_defaults(GTK_TABLE(tabi), cb19, 0, 1, 0, 1);
+  g_signal_connect(G_OBJECT(cb19), "clicked", G_CALLBACK(constout_box), (gpointer)sb);
+
+  cb23 = gtk_check_button_new_with_label("Generate suggested defaults");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb23), sb->cfg.constout_sugg);
+  gtk_table_attach_defaults(GTK_TABLE(tabi), cb23, 0, 1, 1, 2);
+  g_signal_connect(G_OBJECT(cb23), "clicked", G_CALLBACK(constout_sugg_box), (gpointer)sb);
+
+  cb8 = gtk_check_button_new_with_label("Generate user defaults");
+  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb8), sb->cfg.constout_user);
+  gtk_table_attach_defaults(GTK_TABLE(tabi), cb8, 0, 1, 2, 3);
+  g_signal_connect(G_OBJECT(cb8), "clicked", G_CALLBACK(constout_user_box), (gpointer)sb);
+
+  gtk_container_add(GTK_CONTAINER(vbox10), tabi);
+  gtk_container_add(GTK_CONTAINER(fr6), vbox10);
+  gtk_box_pack_start(GTK_BOX(hbox1), fr6, TRUE, TRUE, 0);
 
   fr5 = gtk_frame_new("Miscellaneous");
   gtk_label_set_markup(GTK_LABEL(gtk_frame_get_label_widget(GTK_FRAME(fr5))), "<b>Miscellaneous</b>");
@@ -5665,7 +5678,7 @@ void configure(GtkWidget *widget, s_base *sb)
   gtk_container_set_border_width(GTK_CONTAINER(fr5), 5);
   gtk_container_set_border_width(GTK_CONTAINER(vbox9), 5);
 
-  tabz = gtk_table_new(1, 4, FALSE);
+  tabz = gtk_table_new(1, 3, FALSE);
 
   cb22 = gtk_check_button_new_with_label("High throughput");
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(cb22), sb->cfg.hp_io);
