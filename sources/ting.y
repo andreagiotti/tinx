@@ -119,8 +119,10 @@ typedef struct tracker
 %token TOKEN_LTEQ
 %token TOKEN_GTEQ
 %token TOKEN_PLUS
+%token TOKEN_PPLUS
 %token TOKEN_MINUS
 %token TOKEN_MUL
+%token TOKEN_MMUL
 %token TOKEN_DIV
 %token TOKEN_MOD
 %token TOKEN_POW
@@ -603,15 +605,20 @@ mathexpression
     ;
 
 mathexprmul
-    : mathexprmul[L] TOKEN_MUL mathexprpow[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
-    | mathexprmul[L] TOKEN_DIV mathexprpow[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
-    | mathexprmul[L] TOKEN_MOD mathexprpow[R] { $$ = create_operation(op_mod, $L, $R, "(%s %% %s)"); }
-    | mathexprmul[L] TOKEN_MUL exprpow[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
-    | mathexprmul[L] TOKEN_DIV exprpow[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
-    | mathexprmul[L] TOKEN_MOD exprpow[R] { $$ = create_operation(op_mod, $L, $R, "(%s %% %s)"); }
-    | exprmul[L] TOKEN_MUL mathexprpow[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
-    | exprmul[L] TOKEN_DIV mathexprpow[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
-    | exprmul[L] TOKEN_MOD mathexprpow[R] { $$ = create_operation(op_mod, $L, $R, "(%s %% %s)"); }
+    : mathexprmul[L] TOKEN_MUL mathexprchs[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
+    | mathexprmul[L] TOKEN_DIV mathexprchs[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
+    | mathexprmul[L] TOKEN_MOD mathexprchs[R] { $$ = create_operation(op_mod, $L, $R, "(%s %% %s)"); }
+    | mathexprmul[L] TOKEN_MUL exprchs[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
+    | mathexprmul[L] TOKEN_DIV exprchs[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
+    | mathexprmul[L] TOKEN_MOD exprchs[R] { $$ = create_operation(op_mod, $L, $R, "(%s %% %s)"); }
+    | exprmul[L] TOKEN_MUL mathexprchs[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
+    | exprmul[L] TOKEN_DIV mathexprchs[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
+    | exprmul[L] TOKEN_MOD mathexprchs[R] { $$ = create_operation(op_mod, $L, $R, "(%s %% %s)"); }
+    | mathexprchs[E] { $$ = $E; }
+    ;
+
+mathexprchs
+    : TOKEN_MINUS mathexprpow[E] { $$ = create_operation(op_chs, $E, NULL, "- (%s)"); }
     | mathexprpow[E] { $$ = $E; }
     ;
 
@@ -637,16 +644,13 @@ mathexprroot
     | TOKEN_ATAN TOKEN_LPAREN mathexpression[L] TOKEN_RPAREN { $$ = create_operation(op_atan, $L, NULL, "atan(%s)"); }
     | TOKEN_SUM TOKEN_LPAREN mathexpression[L] TOKEN_COMMA varrange[R] TOKEN_RPAREN  { $$ = create_operation(op_sum, $L, $R, "sum(%s, %s)"); }
     | TOKEN_PROD TOKEN_LPAREN mathexpression[L] TOKEN_COMMA varrange[R] TOKEN_RPAREN  { $$ = create_operation(op_prod, $L, $R, "prod(%s, %s)"); }
-    | mathexprchs[E] { $$ = $E; }
-    ;
-
-mathexprchs
-    : TOKEN_MINUS mathexprdelay[E] { $$ = create_operation(op_chs, $E, NULL, "- (%s)"); }
     | mathexprdelay[E] { $$ = $E; }
     ;
 
 mathexprdelay
-    : mathexprgnd[L] TOKEN_AT exprroot[R] { $$ = create_operation(op_math_delay, $L, $R, "(%s @ %s)"); }
+    : mathexprdelay[L] TOKEN_AT exprchs[R] { $$ = create_operation(op_math_delay, $L, $R, "(%s @ %s)"); }
+    | mathexprdelay[L] TOKEN_PPLUS interval[R] { $$ = create_operation(op_pplus, $L, $R, "(%s ++ %s)"); }
+    | mathexprdelay[L] TOKEN_MMUL interval[R] { $$ = create_operation(op_mmul, $L, $R, "(%s ** %s)"); }
     | mathexprgnd[E] { $$ = $E; }
     ;
 
@@ -662,9 +666,14 @@ expression
     ;
 
 exprmul
-    : exprmul[L] TOKEN_MUL exprpow[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
-    | exprmul[L] TOKEN_DIV exprpow[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
-    | exprmul[L] TOKEN_MOD exprpow[R] { $$ = create_operation(op_mod, $L, $R, "(%s %% %s)"); }
+    : exprmul[L] TOKEN_MUL exprchs[R] { $$ = create_operation(op_mul, $L, $R, "(%s * %s)"); }
+    | exprmul[L] TOKEN_DIV exprchs[R] { $$ = create_operation(op_div, $L, $R, "(%s / %s)"); }
+    | exprmul[L] TOKEN_MOD exprchs[R] { $$ = create_operation(op_mod, $L, $R, "(%s %% %s)"); }
+    | exprchs[E] { $$ = $E; }
+    ;
+
+exprchs
+    : TOKEN_MINUS exprpow[E] { $$ = create_operation(op_chs, $E, NULL, "- (%s)"); }
     | exprpow[E] { $$ = $E; }
     ;
 
@@ -684,11 +693,6 @@ exprroot
     | TOKEN_ATAN TOKEN_LPAREN expression[L] TOKEN_RPAREN { $$ = create_operation(op_atan, $L, NULL, "atan(%s)"); }
     | TOKEN_SUM TOKEN_LPAREN expression[L] TOKEN_COMMA varrange[R] TOKEN_RPAREN  { $$ = create_operation(op_sum, $L, $R, "sum(%s, %s)"); }
     | TOKEN_PROD TOKEN_LPAREN expression[L] TOKEN_COMMA varrange[R] TOKEN_RPAREN  { $$ = create_operation(op_prod, $L, $R, "prod(%s, %s)"); }
-    | exprchs[E] { $$ = $E; }
-    ;
-
-exprchs
-    : TOKEN_MINUS exprgnd[E] { $$ = create_operation(op_chs, $E, NULL, "- (%s)"); }
     | exprgnd[E] { $$ = $E; }
     ;
 

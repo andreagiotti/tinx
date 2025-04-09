@@ -9,7 +9,7 @@
 #include "ting_parser.h"
 #include "ting_lexer.h"
 
-#define VER "10.3.1"
+#define VER "11.0.0"
 
 const char class_symbol[NODE_CLASSES_NUMBER] = CLASS_SYMBOLS;
 const char *signal_class[IO_CLASSES_NUMBER] = { "internal", "auxiliary", "input", "output" };
@@ -807,7 +807,32 @@ void add_ic(c_base *cb, char *name, bool neg, d_time t, real realval)
 
 void gensym(c_base *cb, char *symbol, char *type, litval val, bool incr)
 {
-  sprintf(symbol, "%c%s%d", val == negated? '-' : (val == asserted? '+' : '_'), type, cb->num_vargen);
+  char c;
+
+  switch(val)
+    {
+      case negated:
+        c = '-';
+      break;
+
+      case asserted:
+        c = '+';
+      break;
+
+      case undefined:
+        c = '_';
+      break;
+
+      case continuos:
+        c = '*';
+      break;
+
+      default:
+        c = '_';
+      break;
+    }
+
+  sprintf(symbol, "%c%s%d", c, type, cb->num_vargen);
   assert(strlen(symbol) <= MAX_NAMELEN);
 
   if(incr)
@@ -1089,6 +1114,21 @@ int get_depth(btl_specification *spec)
         }
 
   return dlevel;
+}
+
+btl_specification *create_equal(btl_specification *p, btl_specification *q)
+{
+  if(q)
+    {
+      if(p)
+        p = create_operation(op_plus, p, create_operation(op_chs, q, NULL, "(- %s)"), "(%s + %s)");
+      else
+        p = q;
+    }
+
+  p = create_operation(op_math_eqv0, p, NULL, "(%s = 0)");
+
+  return p;
 }
 
 subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, real realval)
@@ -2327,6 +2367,37 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
             }
       break;
 
+      case op_math_eqv0:
+        stv = preval(cb, spec->left, level, param, realval);
+
+        if(!stv.wtra)
+          {
+            if(stv.btl)
+              stv.btl = create_operation(op_math_eqv0, stv.btl, NULL, "(%s = 0)");
+          }
+        else
+          if(stv.a == NULL_TIME)
+            {
+              result = (stv.realval == 0);
+
+              delete_specification(stv.btl);
+
+              stv.btl = create_ground(op_real, "", NULL_TIME, result);
+              stv.a = NULL_TIME;
+              stv.realval = result;
+            }
+          else
+            {
+              val = (stv.a == 0);
+
+              delete_specification(stv.btl);
+
+              stv.btl = create_ground(op_number, "", val, REAL_MAX);
+              stv.a = val;
+              stv.b = val;
+            }
+      break;
+
       case op_chs:
         stv = preval(cb, spec->left, level, param, realval);
 
@@ -2608,22 +2679,12 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
         if(!stv.wtra || !stv_2.wtra)
           {
             if((!stv.wtra || (stv.a && (stv.a != NULL_TIME || stv.realval))) && (!stv_2.wtra || (stv_2.a && (stv_2.a != NULL_TIME || stv_2.realval))))
-              {
-                stv_2 = preval(cb, create_operation(op_chs, spec->right, NULL, "(- %s)"), level, param, realval);
-
-                if(stv.btl)
-                  {
-                    if(stv_2.btl)
-                      stv.btl = create_operation(op_plus, stv.btl, stv_2.btl, "(%s + %s)");
-                  }
-                else
-                  stv.btl = stv_2.btl;
-              }
+              stv.btl = preval(cb, create_equal(stv.btl, stv_2.btl), level, param, realval).btl;
             else
               if(stv.wtra && (!stv.a || (stv.a == NULL_TIME && !stv.realval)))
-                stv.btl = stv_2.btl;
-
-            stv.btl = create_operation(op_math_eqv0, stv.btl, NULL, "(%s = 0)");
+                stv.btl = create_equal(NULL, stv_2.btl);
+              else
+                stv.btl = create_equal(stv.btl, NULL);
 
             if(stv.btldef)
               {
@@ -3015,6 +3076,12 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
 
         stv_2 = preval(cb, spec->right, level, param, realval);
 
+        if((stv.a == NULL_TIME && stv.realval != REAL_MAX) || (stv_2.a == NULL_TIME && stv_2.realval != REAL_MAX))
+          {
+            printmsg(cb->fancymsg, 4, "Error, integer type required: %s\n", spec->debug);
+            exit_failure();
+          }
+
         stv.b = stv_2.a;
 
         stv.d = (spec->left->ot == op_range) + (spec->right->ot == op_range);
@@ -3029,6 +3096,12 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
           stv = preval(cb, spec->left, level, param, realval);
 
         stv_2 = preval(cb, spec->right, level, param, realval);
+
+        if((stv.a == NULL_TIME && stv.realval != REAL_MAX) || (stv_2.a == NULL_TIME && stv_2.realval != REAL_MAX))
+          {
+            printmsg(cb->fancymsg, 4, "Error, integer type required: %s\n", spec->debug);
+            exit_failure();
+          }
 
         stv.a++;
         stv.b = stv_2.a;
@@ -3046,6 +3119,12 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
 
         stv_2 = preval(cb, spec->right, level, param, realval);
 
+        if((stv.a == NULL_TIME && stv.realval != REAL_MAX) || (stv_2.a == NULL_TIME && stv_2.realval != REAL_MAX))
+          {
+            printmsg(cb->fancymsg, 4, "Error, integer type required: %s\n", spec->debug);
+            exit_failure();
+          }
+
         stv.b = stv_2.a - 1;
 
         stv.d = (spec->left->ot == op_range) + (spec->right->ot == op_range);
@@ -3060,6 +3139,12 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
           stv = preval(cb, spec->left, level, param, realval);
 
         stv_2 = preval(cb, spec->right, level, param, realval);
+
+        if((stv.a == NULL_TIME && stv.realval != REAL_MAX) || (stv_2.a == NULL_TIME && stv_2.realval != REAL_MAX))
+          {
+            printmsg(cb->fancymsg, 4, "Error, integer type required: %s\n", spec->debug);
+            exit_failure();
+          }
 
         stv.a++;
         stv.b = stv_2.a - 1;
@@ -3085,6 +3170,24 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
         delete_specification(stv_2.btl);
 
         stv = at_happen(cb, stv.btl, stv.btldef, stv_2.a, stv_2.b, level, param, realval, TRUE);
+      break;
+
+      case op_pplus:
+        stv = preval(cb, spec->left, level, param, realval);
+        stv_2 = preval(cb, spec->right, level, param, realval);
+
+        delete_specification(stv_2.btl);
+
+        stv = pplus_mmul(cb, stv.btl, stv.btldef, stv_2.a, stv_2.b, level, param, realval, FALSE);
+      break;
+
+      case op_mmul:
+        stv = preval(cb, spec->left, level, param, realval);
+        stv_2 = preval(cb, spec->right, level, param, realval);
+
+        delete_specification(stv_2.btl);
+
+        stv = pplus_mmul(cb, stv.btl, stv.btldef, stv_2.a, stv_2.b, level, param, realval, TRUE);
       break;
 
       case op_only:
@@ -4057,7 +4160,7 @@ subtreeval preval(c_base *cb, btl_specification *spec, int level, d_time param, 
       break;
 
       default:
-        printmsg(cb->fancymsg, 5, "Internal error, unmanaged operator in phase 1\n");
+        printmsg(cb->fancymsg, 5, "Internal error, unmanaged operator in phase 1 (%d)\n", spec->ot);
         assert(FALSE);
       break;
     }
@@ -4671,7 +4774,7 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
 
   if(cb->seplit_fe)
     {
-      tail = b - a;
+      tail = b - a + 1;
       r = NULL;
 
       gensym(cb, symbol, dual? "HP" : "AT", asserted, FALSE);
@@ -4689,12 +4792,11 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
           p = btl_history[0];
           p1 = btl_history1[0];
 
-          n = 1;
-          h = 0;
+          n = 2;
+          h = 1;
 
           while(tail >= n)
             {
-              h++;
               if(h >= BTL_HISTORY_LEN)
                 {
                   printmsg(cb->fancymsg, 4, "Error, interval too large: %s\n", btl->debug);
@@ -4710,11 +4812,11 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
                 {
                   q = create_operation(dual? op_or : op_and, copy_specification(p),
                                                              create_operation(op_delay, copy_specification(p),
-                                                                                        create_ground(op_number, "", sign? n : - n, REAL_MAX), "(%s @ %s)"), dual? "(%s | %s)" : "(%s & %s)");
+                                                                                        create_ground(op_number, "", sign? n / 2 : - n / 2, REAL_MAX), "(%s @ %s)"), dual? "(%s | %s)" : "(%s & %s)");
 
                   q1 = create_operation(dual? op_or : op_and, copy_specification(p1),
                                                               create_operation(op_delay, copy_specification(p1),
-                                                                                         create_ground(op_number, "", sign? n : - n, REAL_MAX), "(%s @ %s)"), dual? "(%s | %s)" : "(%s & %s)");
+                                                                                         create_ground(op_number, "", sign? n / 2 : - n / 2, REAL_MAX), "(%s @ %s)"), dual? "(%s | %s)" : "(%s & %s)");
 
                   gensym(cb, symbol, dual? "HP" : "AT", asserted, FALSE);
                   gensym(cb, symbol1, dual? "HP" : "AT", negated, FALSE);
@@ -4729,21 +4831,23 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
                   newbtl = create_operation(op_and, newbtl, create_operation(op_and, CREATE_IMPLY(p, q), CREATE_IMPLY(q1, p1), "(%s & %s)"), "%s ; %s");
                 }
 
-              tail -= n;
               n *= 2;
+              h++;
             }
 
-          q = create_operation(op_delay, create_ground(op_name, symbol_h[h], NULL_TIME, REAL_MAX), create_ground(op_number, "", sign? a : b, REAL_MAX), "(%s @ %s)");
+          q = create_operation(op_delay, create_ground(op_name, symbol_h[h - 1], NULL_TIME, REAL_MAX), create_ground(op_number, "", sign? a : b, REAL_MAX), "(%s @ %s)");
 
           if(r)
             r = create_operation(dual? op_or : op_and, q, r, dual? "(%s | %s)" : "(%s & %s)");
           else
             r = q;
 
+          tail -= n / 2;
+
           if(sign)
-            a = b - tail;
+            a = b - tail + 1;
           else
-            b = a + tail;
+            b = a + tail - 1;
         }
       while(tail > 0);
 
@@ -4751,7 +4855,7 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
     }
   else
     {
-      tail = b - a;
+      tail = b - a + 1;
       r = NULL;
 
       gensym(cb, symbol, dual? "HP" : "AT", asserted, TRUE);
@@ -4764,12 +4868,11 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
         {
           p = btl_history[0];
 
-          n = 1;
-          h = 0;
+          n = 2;
+          h = 1;
 
           while(tail >= n)
             {
-              h++;
               if(h >= BTL_HISTORY_LEN)
                 {
                   printmsg(cb->fancymsg, 4, "Error, interval too large: %s\n", btl->debug);
@@ -4782,7 +4885,7 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
                 {
                   q = create_operation(dual? op_or : op_and, copy_specification(p),
                                                              create_operation(op_delay, copy_specification(p),
-                                                                                        create_ground(op_number, "", sign? n : - n, REAL_MAX), "(%s @ %s)"), dual? "(%s | %s)" : "(%s & %s)");
+                                                                                        create_ground(op_number, "", sign? n / 2 : - n / 2, REAL_MAX), "(%s @ %s)"), dual? "(%s | %s)" : "(%s & %s)");
 
                   gensym(cb, symbol, dual? "HP" : "AT", asserted, TRUE);
 
@@ -4792,8 +4895,8 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
                   newbtl = create_operation(op_and, newbtl, CREATE_EQV(p, q), "%s ; %s");
                 }
 
-              tail -= n;
               n *= 2;
+              h++;
             }
 
           q = create_operation(op_delay, copy_specification(p), create_ground(op_number, "", sign? a : b, REAL_MAX), "(%s @ %s)");
@@ -4803,15 +4906,106 @@ subtreeval at_happen(c_base *cb, btl_specification *btl, btl_specification *btld
           else
             r = q;
 
+          tail -= n / 2;
+
           if(sign)
-            a = b - tail;
+            a = b - tail + 1;
           else
-            b = a + tail;
+            b = a + tail - 1;
         }
       while(tail > 0);
 
       stv.btl = r;
     }
+
+  if(btldef)
+    stv.btldef = create_operation(op_and, newbtl, btldef, "%s ; %s");
+  else
+    stv.btldef = newbtl;
+
+  return stv;
+}
+
+subtreeval pplus_mmul(c_base *cb, btl_specification *btl, btl_specification *btldef, d_time a, d_time b, int level, d_time param, real realval, bool dual)
+{
+  subtreeval stv;
+  char symbol[MAX_NAMELEN];
+  btl_specification *newbtl, *p, *q, *r, *btl_history[BTL_HISTORY_LEN];
+  d_time h, n, tail;
+  bool sign;
+
+  if(a > b)
+    {
+      printmsg(cb->fancymsg, 4, TIME_FMT", "TIME_FMT": Error, empty interval after <%s>: %s\n", a, b, dual? "**" : "++", btl->debug);
+      exit_failure();
+    }
+
+  for(h = 0; h < BTL_HISTORY_LEN; h++)
+    btl_history[h] = NULL;
+
+  sign = abs(a) < abs(b);
+
+  tail = b - a + 1;
+  r = NULL;
+
+  gensym(cb, symbol, dual? "TS" : "TP", continuos, TRUE);
+
+  btl_history[0] = create_ground(op_variable, symbol, NULL_TIME, REAL_MAX);
+
+  newbtl = CREATE_REQV(btl_history[0], btl);
+
+  do
+    {
+      p = btl_history[0];
+
+      n = 2;
+      h = 1;
+
+      while(tail >= n)
+        {
+          if(h >= BTL_HISTORY_LEN)
+            {
+              printmsg(cb->fancymsg, 4, "Error, interval too large: %s\n", btl->debug);
+              exit_failure();
+            }
+
+          if(btl_history[h])
+            p = btl_history[h];
+          else
+            {
+              q = create_operation(dual? op_mul : op_plus, copy_specification(p),
+                                                             create_operation(op_math_delay, copy_specification(p),
+                                                                                        create_ground(op_number, "", sign? n / 2 : - n / 2, REAL_MAX), "(%s @ %s)"), dual? "(%s * %s)" : "(%s + %s)");
+
+              gensym(cb, symbol, dual? "TS" : "TP", continuos, TRUE);
+
+              p = create_ground(op_variable, symbol, NULL_TIME, REAL_MAX);
+              btl_history[h] = p;
+
+              newbtl = create_operation(op_and, newbtl, CREATE_REQV(p, q), "%s ; %s");
+            }
+
+          n *= 2;
+          h++;
+        }
+
+      q = create_operation(op_math_delay, copy_specification(p), create_ground(op_number, "", sign? a : b, REAL_MAX), "(%s @ %s)");
+
+      if(r)
+        r = create_operation(dual? op_mul : op_plus, q, r, dual? "(%s * %s)" : "(%s + %s)");
+      else
+        r = q;
+
+      tail -= n / 2;
+
+      if(sign)
+        a = b - tail + 1;
+      else
+        b = a + tail - 1;
+    }
+  while(tail > 0);
+
+  stv.btl = r;
 
   if(btldef)
     stv.btldef = create_operation(op_and, newbtl, btldef, "%s ; %s");
@@ -5176,7 +5370,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
   subtreeval stv, stv_2;
   smallnode *wp;
   io_signal *sp;
-  d_time idx;
+  d_time idx, k;
 
   stv.btl = NULL;
   stv.btltwo = NULL;
@@ -5470,13 +5664,25 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
 
       case op_delay:
       case op_math_delay:
-        if(cb->merge && vp && (vp->nclass == delay || vp->nclass == math_delay))
+        if(cb->merge && vp && ((spec->ot == op_delay && vp->nclass == delay) || (spec->ot == op_math_delay && vp->nclass == math_delay)))
           {
             stv_2 = eval(cb, spec->left, vp, left_son, neg, sclass, stype, packed, defaultval, omissions, t, realval);
             if(stv_2.b == NULL_TIME)
               stv_2.b = 0;
 
-            stv.b = stv_2.b + eval(cb, spec->right, NULL, right_son, neg, sclass, stype, packed, defaultval, omissions, t, realval).a;
+            k = eval(cb, spec->right, NULL, right_son, neg, sclass, stype, packed, defaultval, omissions, t, realval).a;
+            if(k == NULL_TIME)
+              {
+                printmsg(cb->fancymsg, 4, "Error, integer type required: %s\n", spec->debug);
+                exit_failure();
+              }
+
+            stv.b = stv_2.b + k;
+
+            stv.vp = stv_2.vp;
+            stv.vp->up = vp;
+
+            stv.vp->up_dir = ext_dir;
           }
         else
           {
@@ -5491,13 +5697,20 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
             if(stv_2.b == NULL_TIME)
               stv_2.b = 0;
 
+            k = eval(cb, spec->right, NULL, right_son, neg, sclass, stype, packed, defaultval, omissions, t, realval).a;
+            if(k == NULL_TIME)
+              {
+                printmsg(cb->fancymsg, 4, "Error, integer type required: %s\n", spec->debug);
+                exit_failure();
+              }
+
             wp->up = vp;
             wp->left = stv_2.vp;
 
             wp->up_dir = ext_dir;
             wp->left_dir = parent;
 
-            wp->k = - (stv_2.b + eval(cb, spec->right, NULL, right_son, neg, sclass, stype, packed, defaultval, omissions, t, realval).a);
+            wp->k = - (stv_2.b + k);
 
             if(cb->merge && !wp->k)
               {
@@ -5574,6 +5787,20 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
 
       case op_variable:
         sp = name2signal(cb, spec->symbol, FALSE);
+        if(!sp && spec->symbol[0] == '*')
+          {
+            sp = name2signal(cb, spec->symbol, TRUE);
+            if(!sp)
+              {
+                printerr(cb->fancymsg, NULL);
+                exit_failure();
+              }
+
+            sp->packed = -1;
+            sp->packedbit = 0;
+            sp->shared = TRUE;
+          }
+
         if(sp)
           {
             wp = create_smallnode(cb, literal);
@@ -5594,6 +5821,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
               {
                 sp = name2signal(cb, spec->symbol, TRUE);
 
+                sp->sclass = hidden_class;
                 sp->packed = -1;
                 sp->packedbit = 0;
                 sp->shared = TRUE;
@@ -5630,25 +5858,23 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
             printmsg(cb->fancymsg, 4, "Error, duplicate declaration of signal: %s\n", spec->debug);
             exit_failure();
           }
-        else
-          {
-            cb->part_signals[internal_class]--;
-            cb->part_signals[sclass]++;
 
-            sp->sclass = sclass;
-            sp->stype = stype;
+        cb->part_signals[internal_class]--;
+        cb->part_signals[sclass]++;
 
-            strcpy(sp->root, sp->name);
+        sp->sclass = sclass;
+        sp->stype = stype;
 
-            sp->packed = -1;
-            sp->packedbit = 0;
+        strcpy(sp->root, sp->name);
 
-            sp->defaultval = defaultval;
-            sp->omissions = omissions;
-            sp->defaultreal = realval;
+        sp->packed = -1;
+        sp->packedbit = 0;
 
-            sp->shared = TRUE;
-          }
+        sp->defaultval = defaultval;
+        sp->omissions = omissions;
+        sp->defaultreal = realval;
+
+        sp->shared = TRUE;
       break;
 
       case op_ivariable:
@@ -5969,7 +6195,7 @@ subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ex
       break;
 
       default:
-        printmsg(cb->fancymsg, 5, "Internal error, unmanaged operator in phase 2\n");
+        printmsg(cb->fancymsg, 5, "Internal error, unmanaged operator in phase 2 (%d)\n", spec->ot);
         assert(FALSE);
       break;
     }
@@ -7470,7 +7696,15 @@ int save_signals(c_base *cb, FILE *fp)
 
               case internal_class:
                 if(cb->outint || sp->shared)
-                  rv = fprintf(fp, "%s %s (%s, %s) # %d / %d, %d, %d, "REAL_OUT_FMT", %d\n", sp->shared? "_^" : ".",
+                  rv = fprintf(fp, "%s%s %s (%s, %s) # %d / %d, %d, %d, "REAL_OUT_FMT", %d\n", cb->outint? "." : "_", sp->shared? "^" : "",
+                               sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, defval, sp->omissions);
+                else
+                  rv = 0;
+              break;
+
+              case hidden_class:
+                if(sp->shared)
+                  rv = fprintf(fp, "_^ %s (%s, %s) # %d / %d, %d, %d, "REAL_OUT_FMT", %d\n",
                                sp->root, sp->from->name, sp->to->name, occurrence(sp->fromto, sp->to), sp->stype, sp->packed, sp->packedbit, defval, sp->omissions);
                 else
                   rv = 0;

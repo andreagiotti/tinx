@@ -348,7 +348,7 @@ struct stream
   stream *skip_ios;
 };
 
-#define MAX_NUMERIC_LITERALS 65536
+#define MAX_NUMERIC_LITERALS 262144
 
 typedef struct sh_literal
 {

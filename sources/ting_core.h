@@ -57,8 +57,10 @@ typedef enum op_type
   op_lteq,
   op_gt,
   op_plus,
+  op_pplus,
   op_minus,
   op_mul,
+  op_mmul,
   op_div,
   op_mod,
   op_pow,
@@ -194,6 +196,7 @@ typedef struct subtreeval
 
 typedef enum io_class
 {
+  hidden_class = -1,
   internal_class,
   aux_class,
   input_class,
@@ -205,7 +208,9 @@ typedef enum litval
 {
   negated,
   asserted,
-  undefined
+  undefined,
+  continuos,
+  LITVALS_NUMBER
 } litval;
 
 typedef d_time io_type_3b;
@@ -339,6 +344,7 @@ typedef struct compinfo
                                                  create_operation(op_and, create_operation(op_not, copy_specification(Q), NULL, "(~ %s)"), copy_specification(P), "(%s & %s)"), "(%s | %s)")
 #define CREATE_IMPLY(P, Q) create_operation(op_or, create_operation(op_not, P, NULL, "(~ %s)"), Q, "(%s | %s)")
 #define CREATE_EQV(P, Q) create_operation(op_and, CREATE_IMPLY(P, Q), CREATE_IMPLY(copy_specification(Q), copy_specification(P)), "(%s & %s)")
+#define CREATE_REQV(P, Q) create_equal(P, Q)
 
 btl_specification *alloc_syntnode(void);
 btl_specification *create_ground(op_type ot, char *symbol, d_time value, real realval);
@@ -371,6 +377,7 @@ subtreeval com_at_happen(c_base *cb, btl_specification *btl, btl_specification *
 subtreeval only(c_base *cb, btl_specification *btl, btl_specification *btldef, d_time a, d_time b, int level, d_time param, real realval);
 subtreeval sum(c_base *cb, btl_specification *spec, int level, d_time param, real realval);
 subtreeval prod(c_base *cb, btl_specification *spec, int level, d_time param, real realval);
+subtreeval pplus_mmul(c_base *cb, btl_specification *btl, btl_specification *btldef, d_time a, d_time b, int level, d_time param, real realval, bool dual);
 btl_specification *combine(c_base *cb, btl_specification *ap[], btl_specification *spec, int h, int k, int level, d_time param, real realval);
 subtreeval exec_comb(c_base *cb, btl_specification *spec, int level, d_time param, real realval);
 subtreeval eval(c_base *cb, btl_specification *spec, smallnode *vp, link_code ext_dir, bool neg, io_class sclass, io_type stype, io_type_2 packed, io_type_3b defaultval, io_type_4 omissions,

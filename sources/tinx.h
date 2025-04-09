@@ -341,7 +341,7 @@ struct stream
   bool (* io_perform)(k_base *kb, stream *ios);
 };
 
-#define MAX_NUMERIC_LITERALS 65536
+#define MAX_NUMERIC_LITERALS 262144
 
 typedef struct sh_literal
 {

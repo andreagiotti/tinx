@@ -54,8 +54,10 @@ GT          ">"
 LTEQ        "<="
 GTEQ        ">="
 PLUS        "+"
+PPLUS       "++"
 MINUS       "-"
 MUL         "*"
+MMUL        "**"
 DIV         "/"
 MOD         "%"
 POW         "^"
@@ -119,8 +121,8 @@ RICHNAME    "`"[^)(`]+"`"
 REALRICH    "``"[^)(`]+"``"
 STRING      "\""[^\"]+"\""
 ITERATOR    "#"+
-NUMBER      [-+]?[0-9]+
-REAL        [-+]?[0-9]*\.[0-9]+
+NUMBER      [0-9]+
+REAL        [0-9]*\.[0-9]+
 BLANKS      [ \r\n\t]*
 
 %%
@@ -155,8 +157,10 @@ BLANKS      [ \r\n\t]*
 {LTEQ}          { return TOKEN_LTEQ; }
 {GTEQ}          { return TOKEN_GTEQ; }
 {PLUS}          { return TOKEN_PLUS; }
+{PPLUS}         { return TOKEN_PPLUS; }
 {MINUS}         { return TOKEN_MINUS; }
 {MUL}           { return TOKEN_MUL; }
+{MMUL}          { return TOKEN_MMUL; }
 {DIV}           { return TOKEN_DIV; }
 {MOD}           { return TOKEN_MOD; }
 {POW}           { return TOKEN_POW; }

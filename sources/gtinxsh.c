@@ -13,8 +13,8 @@
 
 #include "gtinxsh.h"
 
-#define PACK_VER "13.0.2"
-#define VER "7.0.2"
+#define PACK_VER "13.0.3"
+#define VER "7.0.3"
 
 const char *color_name_light[NUM_COLORS] = { "green4", "yellow4", "orange4", "red4", "purple4" };
 const char *color_name_dark[NUM_COLORS] = { "green1", "yellow1", "orange1", "red1", "purple1" };
@@ -5787,8 +5787,8 @@ void show_plan(GtkWidget *widget, s_base *sb)
 
   gtk_container_set_border_width(GTK_CONTAINER(extbox), 10);
 
-  frgfx = gtk_frame_new("Trajectories of input and output signals");
-  gtk_label_set_markup(GTK_LABEL(gtk_frame_get_label_widget(GTK_FRAME(frgfx))), "<b>Trajectories of input and output signals</b>");
+  frgfx = gtk_frame_new("Trajectories of output signals");
+  gtk_label_set_markup(GTK_LABEL(gtk_frame_get_label_widget(GTK_FRAME(frgfx))), "<b>Trajectories of output signals</b>");
   gtk_frame_set_label_align(GTK_FRAME(frgfx), 0.5, 0.5);
 
   gtk_container_set_border_width(GTK_CONTAINER(frgfx), 5);

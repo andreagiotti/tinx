@@ -11,7 +11,7 @@
 
 #include "tinx_dt.h"
 
-#define VER "11.0.9 DT (dual core)"
+#define VER "11.1.0 DT (dual core)"
 
 const arc null_arc = {NULL, no_link};
 const event null_event = {{NULL, no_link}, NULL_TIME};
@@ -4182,6 +4182,12 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           for(i = 0; i < num_ls; i += 2)
             if(!strcmp(ls[i].name, name) && arc_eq(ls[i].e, null_arc))
               {
+                if(max_ls >= MAX_NUMERIC_LITERALS - 1)
+                  {
+                    fprintf(stderr, "%s: Too many numeric signals\n", file_name);
+                    exit(EXIT_FAILURE);
+                  }
+
                 init_literal(&ls[max_ls], name, bufsiz);
 
                 ls[max_ls].ne = ls[i].ne;
@@ -4197,6 +4203,12 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
                 max_ls++;
               }
 
+          if(max_ls >= MAX_NUMERIC_LITERALS - 1)
+            {
+              fprintf(stderr, "%s: Too many numeric signals\n", file_name);
+              exit(EXIT_FAILURE);
+            }
+
           init_literal(&ls[max_ls], name, bufsiz);
 
           ls[max_ls].ne = e;
@@ -4210,12 +4222,6 @@ k_base *open_base(char *base_name, char *logfile_name, char *xref_name, bool str
           ls[max_ls].e = arc_neg(e);
 
           max_ls++;
-
-          if(max_ls >= MAX_NUMERIC_LITERALS - 1)
-            {
-              fprintf(stderr, "%s: Too many numeric signals\n", file_name);
-              exit(EXIT_FAILURE);
-            }
         }
 
       if(rtype != io_quiet && sclass != quiet_stream)

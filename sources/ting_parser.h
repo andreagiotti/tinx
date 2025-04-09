@@ -120,49 +120,51 @@ typedef struct tracker
     TOKEN_LTEQ = 301,              /* TOKEN_LTEQ  */
     TOKEN_GTEQ = 302,              /* TOKEN_GTEQ  */
     TOKEN_PLUS = 303,              /* TOKEN_PLUS  */
-    TOKEN_MINUS = 304,             /* TOKEN_MINUS  */
-    TOKEN_MUL = 305,               /* TOKEN_MUL  */
-    TOKEN_DIV = 306,               /* TOKEN_DIV  */
-    TOKEN_MOD = 307,               /* TOKEN_MOD  */
-    TOKEN_POW = 308,               /* TOKEN_POW  */
-    TOKEN_ROOT = 309,              /* TOKEN_ROOT  */
-    TOKEN_LOG = 310,               /* TOKEN_LOG  */
-    TOKEN_SIN = 311,               /* TOKEN_SIN  */
-    TOKEN_COS = 312,               /* TOKEN_COS  */
-    TOKEN_TAN = 313,               /* TOKEN_TAN  */
-    TOKEN_ASIN = 314,              /* TOKEN_ASIN  */
-    TOKEN_ACOS = 315,              /* TOKEN_ACOS  */
-    TOKEN_ATAN = 316,              /* TOKEN_ATAN  */
-    TOKEN_SUM = 317,               /* TOKEN_SUM  */
-    TOKEN_PROD = 318,              /* TOKEN_PROD  */
-    TOKEN_KE = 319,                /* TOKEN_KE  */
-    TOKEN_KPI = 320,               /* TOKEN_KPI  */
-    TOKEN_ON = 321,                /* TOKEN_ON  */
-    TOKEN_IN = 322,                /* TOKEN_IN  */
-    TOKEN_IS = 323,                /* TOKEN_IS  */
-    TOKEN_NEG = 324,               /* TOKEN_NEG  */
-    TOKEN_ANY = 325,               /* TOKEN_ANY  */
-    TOKEN_IPC = 326,               /* TOKEN_IPC  */
-    TOKEN_FILE = 327,              /* TOKEN_FILE  */
-    TOKEN_REMOTE = 328,            /* TOKEN_REMOTE  */
-    TOKEN_BINARY = 329,            /* TOKEN_BINARY  */
-    TOKEN_PACKED = 330,            /* TOKEN_PACKED  */
-    TOKEN_UNKNOWN = 331,           /* TOKEN_UNKNOWN  */
-    TOKEN_FALSE = 332,             /* TOKEN_FALSE  */
-    TOKEN_TRUE = 333,              /* TOKEN_TRUE  */
-    TOKEN_DEFAULT = 334,           /* TOKEN_DEFAULT  */
-    TOKEN_RAW = 335,               /* TOKEN_RAW  */
-    TOKEN_FILTER = 336,            /* TOKEN_FILTER  */
-    TOKEN_OMIT = 337,              /* TOKEN_OMIT  */
-    TOKEN_UNDERSCORE = 338,        /* TOKEN_UNDERSCORE  */
-    TOKEN_NAME = 339,              /* TOKEN_NAME  */
-    TOKEN_RICHNAME = 340,          /* TOKEN_RICHNAME  */
-    TOKEN_REALNAME = 341,          /* TOKEN_REALNAME  */
-    TOKEN_REALRICH = 342,          /* TOKEN_REALRICH  */
-    TOKEN_STRING = 343,            /* TOKEN_STRING  */
-    TOKEN_ITERATOR = 344,          /* TOKEN_ITERATOR  */
-    TOKEN_NUMBER = 345,            /* TOKEN_NUMBER  */
-    TOKEN_REAL = 346               /* TOKEN_REAL  */
+    TOKEN_PPLUS = 304,             /* TOKEN_PPLUS  */
+    TOKEN_MINUS = 305,             /* TOKEN_MINUS  */
+    TOKEN_MUL = 306,               /* TOKEN_MUL  */
+    TOKEN_MMUL = 307,              /* TOKEN_MMUL  */
+    TOKEN_DIV = 308,               /* TOKEN_DIV  */
+    TOKEN_MOD = 309,               /* TOKEN_MOD  */
+    TOKEN_POW = 310,               /* TOKEN_POW  */
+    TOKEN_ROOT = 311,              /* TOKEN_ROOT  */
+    TOKEN_LOG = 312,               /* TOKEN_LOG  */
+    TOKEN_SIN = 313,               /* TOKEN_SIN  */
+    TOKEN_COS = 314,               /* TOKEN_COS  */
+    TOKEN_TAN = 315,               /* TOKEN_TAN  */
+    TOKEN_ASIN = 316,              /* TOKEN_ASIN  */
+    TOKEN_ACOS = 317,              /* TOKEN_ACOS  */
+    TOKEN_ATAN = 318,              /* TOKEN_ATAN  */
+    TOKEN_SUM = 319,               /* TOKEN_SUM  */
+    TOKEN_PROD = 320,              /* TOKEN_PROD  */
+    TOKEN_KE = 321,                /* TOKEN_KE  */
+    TOKEN_KPI = 322,               /* TOKEN_KPI  */
+    TOKEN_ON = 323,                /* TOKEN_ON  */
+    TOKEN_IN = 324,                /* TOKEN_IN  */
+    TOKEN_IS = 325,                /* TOKEN_IS  */
+    TOKEN_NEG = 326,               /* TOKEN_NEG  */
+    TOKEN_ANY = 327,               /* TOKEN_ANY  */
+    TOKEN_IPC = 328,               /* TOKEN_IPC  */
+    TOKEN_FILE = 329,              /* TOKEN_FILE  */
+    TOKEN_REMOTE = 330,            /* TOKEN_REMOTE  */
+    TOKEN_BINARY = 331,            /* TOKEN_BINARY  */
+    TOKEN_PACKED = 332,            /* TOKEN_PACKED  */
+    TOKEN_UNKNOWN = 333,           /* TOKEN_UNKNOWN  */
+    TOKEN_FALSE = 334,             /* TOKEN_FALSE  */
+    TOKEN_TRUE = 335,              /* TOKEN_TRUE  */
+    TOKEN_DEFAULT = 336,           /* TOKEN_DEFAULT  */
+    TOKEN_RAW = 337,               /* TOKEN_RAW  */
+    TOKEN_FILTER = 338,            /* TOKEN_FILTER  */
+    TOKEN_OMIT = 339,              /* TOKEN_OMIT  */
+    TOKEN_UNDERSCORE = 340,        /* TOKEN_UNDERSCORE  */
+    TOKEN_NAME = 341,              /* TOKEN_NAME  */
+    TOKEN_RICHNAME = 342,          /* TOKEN_RICHNAME  */
+    TOKEN_REALNAME = 343,          /* TOKEN_REALNAME  */
+    TOKEN_REALRICH = 344,          /* TOKEN_REALRICH  */
+    TOKEN_STRING = 345,            /* TOKEN_STRING  */
+    TOKEN_ITERATOR = 346,          /* TOKEN_ITERATOR  */
+    TOKEN_NUMBER = 347,            /* TOKEN_NUMBER  */
+    TOKEN_REAL = 348               /* TOKEN_REAL  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -178,7 +180,7 @@ union YYSTYPE
   real realval;
   btl_specification *other;
 
-#line 182 "ting_parser.h"
+#line 184 "ting_parser.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
